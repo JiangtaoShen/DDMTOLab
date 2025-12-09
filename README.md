@@ -1,2 +1,2 @@
 # DDMTOLab
-A python platform for Data-Driven Multitask Optimization.
+DDMTOLab: A python platform for Data-Driven Multitask Optimization.
