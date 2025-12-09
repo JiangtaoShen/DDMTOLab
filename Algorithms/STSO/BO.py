@@ -1,14 +1,20 @@
 """
 Bayesian Optimization (BO)
 
+This module implements Bayesian Optimization for expensive black-box function optimization.
+
+References
+----------
+.. [1] Jones, Donald R., Matthias Schonlau, and William J. Welch.
+   "Efficient global optimization of expensive black-box functions."
+   Journal of Global optimization 13.4 (1998): 455-492.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.11
 Version: 1.0
-
-References:
-[1] Jones, Donald R., Matthias Schonlau, and William J. Welch. "Efficient global optimization of expensive black-box
-    functions." Journal of Global optimization 13.4 (1998): 455-492.
 """
 from tqdm import tqdm
 import torch
@@ -21,6 +27,14 @@ warnings.filterwarnings("ignore")
 
 
 class BO:
+    """
+    Bayesian Optimization algorithm for expensive optimization problems.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '1-K',
@@ -37,17 +51,42 @@ class BO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData', name='BO_test',
-                 disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData',
+                 name='BO_test', disable_tqdm=True):
         """
-        Bayesian Optimization (BO)
+        Initialize Bayesian Optimization algorithm.
 
-        Args:
-            problem: MTOP instance
-            n_initial (int or List[int]): Number of initial samples per task (default: 50)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 100)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 50)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 100)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'BO_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
@@ -58,6 +97,14 @@ class BO:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the Bayesian Optimization algorithm.
+
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         data_type = torch.float
         start_time = time.time()
         problem = self.problem
