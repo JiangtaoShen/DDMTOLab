@@ -60,55 +60,81 @@ pip install -e .
 
 ### Basic Usage
 ```python
-from DDMTOLab.problems import Sphere
-from DDMTOLab.algorithms import GA
+import numpy as np
+from Methods.mtop import MTOP
+from Algorithms.STSO.GA import GA
 
-# Create problem
-problem = Sphere(n_tasks=1, dims=[30])
+def t1(x):
+    return (6 * x - 2) ** 2 * np.sin(12 * x - 4)
 
-# Initialize algorithm
-algorithm = GA(problem=problem, n=[100], max_nfes=[10000])
+problem = MTOP()
+problem.add_task(t1, dim=1)
 
-# Run optimization
-results = algorithm.optimize()
+results = GA(problem).optimize()
+print(results.best_decs, results.best_objs)
 
-# Access results
-print(f"Best objective: {results.best_objs[0]}")
-print(f"Runtime: {results.runtime:.2f}s")
+from Methods.test_data_analysis import TestDataAnalyzer
+TestDataAnalyzer().run()
 ```
 
 ### Batch Experiments
 ```python
 from Methods.batch_experiment import BatchExperiment
-from Problems.MTSO.cec17_mtso import CEC17MTSO
-from Algorithms.STSO.GA import GA
-from Algorithms.STSO.DE import DE
-
-# Create batch experiment
-batch_exp = BatchExperiment(base_path='./Data')
-
-# Add problems
-cec17 = CEC17MTSO()
-batch_exp.add_problem(cec17.P1, 'P1')
-batch_exp.add_problem(cec17.P2, 'P2')
-
-# Add algorithms
-batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=10000)
-batch_exp.add_algorithm(DE, 'DE', n=100, max_nfes=10000)
-
-# Run experiments
-batch_exp.run(n_runs=30, max_workers=8)
-```
-
-### Data Analysis
-```python
 from Methods.data_analysis import DataAnalyzer
+from Algorithms.STSO.GA import GA
+from Algorithms.STSO.PSO import PSO
+from Algorithms.STSO.DE import DE
+from Algorithms.MTSO.EMEA import EMEA
+from Algorithms.MTSO.MFEA import MFEA
+from Problems.MTSO.cec17_mtso import CEC17MTSO
 
-# Create analyzer
-analyzer = DataAnalyzer(data_path='./Data', save_path='./Results')
+if __name__ == '__main__':
+    # Step 1: Create batch experiment manager
+    batch_exp = BatchExperiment(
+        base_path='./Data',      # Data save path
+        clear_folder=True        # Clear existing data
+    )
 
-# Run complete analysis pipeline
-results = analyzer.run()
+    # Step 2: Add test problems
+    cec17mtso = CEC17MTSO()
+    batch_exp.add_problem(cec17mtso.P1, 'P1')
+    batch_exp.add_problem(cec17mtso.P2, 'P2')
+    batch_exp.add_problem(cec17mtso.P3, 'P3')
+
+    # Step 3: Add algorithms with parameters
+    batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(DE, 'DE', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(PSO, 'PSO', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(EMEA, 'EMEA', n=100, max_nfes=20000)
+
+    # Step 4: Run batch experiments
+    batch_exp.run(
+        n_runs=20,          # Run each algorithm-problem combination 20 times
+        verbose=True,       # Show progress information
+        max_workers=8       # Use 8 parallel processes
+    )
+
+    # Step 5: Configure data analyzer
+    analyzer = DataAnalyzer(
+        data_path='./Data',                                      # Experiment data path
+        settings=None,                                           # No SETTINGS needed (single-objective)
+        algorithm_order=['GA', 'DE', 'PSO', 'EMEA', 'MFEA'],   # Algorithm display order
+        save_path='./Results',                                   # Results save path
+        table_format='latex',                                    # Table format
+        figure_format='pdf',                                     # Figure format
+        statistic_type='mean',                                   # Statistic type
+        significance_level=0.05,                                 # Significance level
+        rank_sum_test=True,                                      # Perform rank-sum test
+        log_scale=True,                                          # Logarithmic scale
+        show_pf=True,                                            # Show Pareto front
+        show_nd=True,                                            # Show non-dominated solutions
+        best_so_far=True,                                        # Use best-so-far values
+        clear_results=True                                       # Clear old results
+    )
+
+    # Step 6: Run data analysis
+    results = analyzer.run()
 ```
 
 ## 🎯 Key Components
