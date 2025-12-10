@@ -171,6 +171,8 @@ DDMTOLab is designed for researchers working on:
 
 ## 📊 Example Results
 
+Results from the batch experiment above:
+
 <p align="center">
   <img src="docs/images/P1-Task1.png" alt="Convergence 1" width="30%">
   <img src="docs/images/P1-Task2.png" alt="Convergence 2" width="30%">
