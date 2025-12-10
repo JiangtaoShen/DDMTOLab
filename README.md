@@ -83,24 +83,24 @@ import numpy as np
 from Methods.mtop import MTOP
 from Algorithms.STSO.GA import GA
 
-# Define objective function: Forrester function
+# Step 1: Define objective function
 def t1(x):
     """Forrester function: (6x-2)^2 * sin(12x-4)"""
     return (6 * x - 2) ** 2 * np.sin(12 * x - 4)
 
-# Create multi-task optimization problem
+# Step 2: Create optimization problem
 problem = MTOP()
-problem.add_task(t1, dim=1)  # Add 1-dimensional task
+problem.add_task(t1, dim=1)
 
-# Run genetic algorithm optimization
+# Step 3: Run optimization
 results = GA(problem).optimize()
 
-# Print optimization results
-print(results.best_decs, results.best_objs)  # Best decision variables and objective values
+# Step 4: Display results
+print(results.best_decs, results.best_objs)
 
-# Analyze and visualize test results
+# Step 5: Analyze and visualize
 from Methods.test_data_analysis import TestDataAnalyzer
-TestDataAnalyzer().run()  # Generate convergence curves and statistical tables
+TestDataAnalyzer().run()
 ```
 
 ### Batch Experiments
