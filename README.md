@@ -42,16 +42,6 @@ Whether you're working on expensive black-box optimization, multi-objective opti
 - ⚡ **Parallel Computing** - Multi-core support for batch experiments
 - 📝 **Complete Documentation** - Comprehensive **[Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)** and API reference
 
-## 🔬 Applications
-
-DDMTOLab is designed for both researchers and practitioners working on:
-
-- Expensive black-box optimization
-- Multi-task optimization and transfer learning
-- Multi-objective optimization
-- Algorithm benchmarking and comparison
-- Real-world engineering optimization
-
 ## 🚀 Quick Start
 
 👉 **[Get Started with Our Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)**
