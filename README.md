@@ -109,37 +109,25 @@ analyzer = DataAnalyzer(data_path='./Data', save_path='./Results')
 results = analyzer.run()
 ```
 
-## 📚 Documentation
-
-Full documentation is available at: **[https://jiangtaoshen.github.io/DDMTOLab/](https://jiangtaoshen.github.io/DDMTOLab/)**
-
-- [Installation Guide](https://jiangtaoshen.github.io/DDMTOLab/installation.html)
-- [Quick Start Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)
-- [Problem Definition](https://jiangtaoshen.github.io/DDMTOLab/problems.html)
-- [Algorithm Implementation](https://jiangtaoshen.github.io/DDMTOLab/algorithms.html)
-- [Utility Methods](https://jiangtaoshen.github.io/DDMTOLab/methods.html)
-- [API Reference](https://jiangtaoshen.github.io/DDMTOLab/api.html)
-
 ## 🎯 Key Components
 
 ### Problems
 - **Single-Task Single-Objective (STSO)**: Classic benchmark functions
 - **Single-Task Multi-Objective (STMO)**: ZDT, DTLZ, WFG test suites
-- **Multi-Task Single-Objective (MTSO)**: CEC competition problems
-- **Multi-Task Multi-Objective (MTMO)**: Advanced multi-task scenarios
+- **Multi-Task Single-Objective (MTSO)**: CEC17 MTSO, CEC19 MaTSO
+- **Multi-Task Multi-Objective (MTMO)**: CEC17 MTMO
 - **Real-World Problems (WRP)**: Engineering and industrial applications
 
 ### Algorithms
-- **Evolutionary Algorithms**: GA, DE, PSO, etc.
-- **Multi-Objective Algorithms**: NSGA-II, MOEA/D, NSGA-III
-- **Multi-Task Algorithms**: MFEA, MFDE, MFPSO
-- **Surrogate-Based Methods**: Bayesian optimization, Kriging
-- **Transfer Learning**: Knowledge transfer mechanisms
+- **Single-Task Single-Objective (STSO)**: GA, DE, PSO, CSO, BO, etc.
+- **Single-Task Multi-Objective (STMO)**: NSGA-II, RVEA, etc.
+- **Multi-Task Single-Objective (MTSO)**: MFEA, EMEA, G-MFEA, MTBO, RA-MTEA, SELF, etc.
+- **Multi-Task Multi-Objective (MTMO)**: MO-MFEA, etc.
 
 ### Utilities
 - **Batch Experiments**: Parallel execution framework
 - **Data Analysis**: Statistical testing and visualization
-- **Performance Metrics**: IGD, HV, GD, Spacing, etc.
+- **Performance Metrics**: IGD, HV, etc.
 - **Algorithm Components**: Reusable building blocks
 
 ## 🔬 Research Applications
@@ -159,17 +147,6 @@ DDMTOLab is designed for researchers working on:
   <img src="docs/images/convergence_example.png" alt="Convergence Curves" width="45%">
   <img src="docs/images/pareto_example.png" alt="Pareto Fronts" width="45%">
 </p>
-
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
-
-### How to Contribute
-- Report bugs and issues
-- Suggest new features
-- Add new algorithms or problems
-- Improve documentation
-- Submit pull requests
 
 ## 📄 Citation
 
@@ -193,10 +170,6 @@ If you use DDMTOLab in your research, please cite:
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🌟 Acknowledgments
-
-Special thanks to all contributors and the optimization research community for their valuable feedback and support.
 
 ---
 
