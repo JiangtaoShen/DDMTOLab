@@ -172,8 +172,9 @@ DDMTOLab is designed for researchers working on:
 ## 📊 Example Results
 
 <p align="center">
-  <img src="docs/images/convergence_example.png" alt="Convergence Curves" width="45%">
-  <img src="docs/images/pareto_example.png" alt="Pareto Fronts" width="45%">
+  <img src="docs/images/P1-Task1.png" alt="Convergence 1" width="30%">
+  <img src="docs/images/P1-Task2.png" alt="Convergence 2" width="30%">
+  <img src="docs/images/runtime_comparison.png" alt="Runtime" width="30%">
 </p>
 
 ## 📄 Citation
