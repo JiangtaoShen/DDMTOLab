@@ -1,14 +1,19 @@
 """
 A Surrogate-Assisted Evolutionary Framework for Expensive Multitask Optimization Problems (SELF)
 
+This module implements SELF using multi-task Gaussian processes and Bayesian optimization for expensive multi-task optimization.
+
+References
+----------
+.. [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask
+   optimization problems." IEEE Transactions on Evolutionary Computation (2024).
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.18
 Version: 1.0
-
-References:
-[1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask optimization problems."
-    IEEE Transactions on Evolutionary Computation (2024).
 """
 import numpy as np
 from tqdm import tqdm
@@ -29,6 +34,14 @@ warnings.filterwarnings("ignore")
 
 
 class SELF:
+    """
+    Surrogate-Assisted Evolutionary Framework for expensive multi-task optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -43,21 +56,50 @@ class SELF:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, max_nfes=None, np=10, F=0.5, CR=0.9, ng=50, nl=50, save_data=True, save_path='./Data',
                  name='self_test', disable_tqdm=True):
         """
-        A Surrogate-Assisted Evolutionary Framework for Expensive Multitask Optimization Problems (SELF)
+        Initialize SELF algorithm.
 
-        Args:
-            problem: MTOP instance
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 100)
-            np (int): Population size (default: 10)
-            F (float): Mutation factor (default: 0.6)
-            CR (float): Crossover rate (default: 0.7)
-            ng (int):  Number of trial vectors in the global knowledge transfer phase (default: 50)
-            nl (int): Sample size of training GP model in the local knowledge transfer phase (default: 50)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 200)
+        np : int, optional
+            Population size (default: 10)
+        F : float, optional
+            Mutation factor for DE (default: 0.5)
+        CR : float, optional
+            Crossover rate for DE (default: 0.9)
+        ng : int, optional
+            Number of trial vectors in global knowledge transfer phase (default: 50)
+        nl : int, optional
+            Sample size for training GP model in local knowledge transfer phase (default: 50)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'self_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.max_nfes = max_nfes if max_nfes is not None else 200
@@ -72,7 +114,14 @@ class SELF:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the SELF algorithm with three phases: global transfer, local optimization, and local transfer.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         data_type = torch.double
         problem = self.problem
@@ -226,29 +275,18 @@ class SELF:
         return results
 
 
-def de_generation_with_core(
-    parents: np.ndarray,
-    parents_objs: np.ndarray,
-    core_parent: np.ndarray,
-    n_off: int,
-    F: float,
-    CR: float
-) -> np.ndarray:
+def de_generation_with_core(parents, parents_objs, core_parent, n_off, F, CR):
     """
-    Generate offspring using DE with hybrid mutation strategy.
-
-    Strategy:
-    - 50% probability: DE/best/1 with binomial crossover
-    - 50% probability: DE/current/1 with mutation only (no crossover)
+    Generate offspring using hybrid DE mutation strategy.
 
     Parameters
     ----------
     parents : np.ndarray
-        Array of parent solutions, shape (n, d)
+        Parent solutions of shape (n, d)
     parents_objs : np.ndarray
-        Objective values of parents, shape (n,) or (n, 1)
+        Objective values of parents of shape (n,) or (n, 1)
     core_parent : np.ndarray
-        Current individual being evolved, shape (1, d) or (d,)
+        Current individual being evolved of shape (1, d) or (d,)
     n_off : int
         Number of offspring to generate
     F : float
@@ -259,7 +297,13 @@ def de_generation_with_core(
     Returns
     -------
     offdecs : np.ndarray
-        Offspring array, shape (n_off, d), clipped to [0, 1]
+        Offspring array of shape (n_off, d), clipped to [0, 1]
+
+    Notes
+    -----
+    Uses a hybrid strategy with 50% probability each:
+    - DE/best/1 with binomial crossover: v = best + F*(r2 - r3)
+    - DE/current/1 without crossover: v = current + F*(r2 - r3)
     """
     n, d = parents.shape
 
@@ -293,21 +337,16 @@ def de_generation_with_core(
     return offdecs
 
 
-def bo_next_point_de(
-    decs: np.ndarray,
-    objs: np.ndarray,
-    dim: int,
-    data_type: torch.dtype = torch.float
-) -> np.ndarray:
+def bo_next_point_de(decs, objs, dim, data_type=torch.float):
     """
     Generate next sampling point using Bayesian Optimization with Log Expected Improvement.
 
     Parameters
     ----------
     decs : np.ndarray
-        Decision variables (training data), shape (n_samples, dim)
+        Decision variables (training data) of shape (n_samples, dim)
     objs : np.ndarray
-        Objective values (training data), shape (n_samples, 1)
+        Objective values (training data) of shape (n_samples, 1)
     dim : int
         Dimension of the problem
     data_type : torch.dtype, optional
@@ -316,7 +355,13 @@ def bo_next_point_de(
     Returns
     -------
     candidate_np : np.ndarray
-        Next sampling point, shape (1, dim)
+        Next sampling point of shape (1, dim)
+
+    Notes
+    -----
+    Builds a Gaussian Process with the provided data, constructs a Log Expected Improvement
+    acquisition function, and optimizes it using Differential Evolution to find the next
+    most promising point to evaluate.
     """
     # Prepare training data for Gaussian Process
     train_X = torch.tensor(decs, dtype=data_type)

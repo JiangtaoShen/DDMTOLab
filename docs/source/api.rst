@@ -1,7 +1,7 @@
-.. _api_reference:
+.. _api:
 
-API Reference
-=============
+API
+===
 
 Algorithms
 ----------
@@ -9,96 +9,165 @@ Algorithms
 Single-Task Single-Objective (STSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Bayesian Optimization
-^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: Algorithms.STSO.BO
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Particle Swarm Optimization
-^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: Algorithms.STSO.PSO
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Differential Evolution
-^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: Algorithms.STSO.DE
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Genetic Algorithm
-^^^^^^^^^^^^^^^^^
+GA
+^^
 
 .. automodule:: Algorithms.STSO.GA
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.GA.GA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
-Competitive Swarm Optimizer
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+DE
+^^
+
+.. automodule:: Algorithms.STSO.DE
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.DE.DE
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+PSO
+^^^
+
+.. automodule:: Algorithms.STSO.PSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.PSO.PSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+CSO
+^^^
 
 .. automodule:: Algorithms.STSO.CSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.CSO.CSO
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+BO
+^^
+
+.. automodule:: Algorithms.STSO.BO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.BO.BO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 Multi-Task Single-Objective (MTSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Multi-Task Bayesian Optimization
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-.. automodule:: Algorithms.MTSO.MTBO
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Multi-Factorial Evolutionary Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+MFEA
+^^^^
 
 .. automodule:: Algorithms.MTSO.MFEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MFEA.MFEA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
-Genetic Multi-Factorial Evolutionary Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. autofunction:: Algorithms.MTSO.MFEA.mfea_selection
 
-.. automodule:: Algorithms.MTSO.GMFEA
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-Evolutionary Multi-Task Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+EMEA
+^^^^
 
 .. automodule:: Algorithms.MTSO.EMEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.EMEA.EMEA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
-Regularity Model-Assisted Multi-Task Evolutionary Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. autofunction:: Algorithms.MTSO.EMEA.mDA
+
+G-MFEA
+^^^^^^
+
+.. automodule:: Algorithms.MTSO.GMFEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.GMFEA.GMFEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+.. autofunction:: Algorithms.MTSO.GMFEA.decs_translation
+.. autofunction:: Algorithms.MTSO.GMFEA.dimension_shuffling
+.. autofunction:: Algorithms.MTSO.GMFEA.convert_to_original_decision_space
+
+MTBO
+^^^^
+
+.. automodule:: Algorithms.MTSO.MTBO
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MTBO.MTBO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+RAMTEA
+^^^^^^^
 
 .. automodule:: Algorithms.MTSO.RAMTEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.RAMTEA.RAMTEA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
-SELF Algorithm
-^^^^^^^^^^^^^^
+.. autofunction:: Algorithms.MTSO.RAMTEA.ramtea_knowledge_transfer
+
+SELF
+^^^^
 
 .. automodule:: Algorithms.MTSO.SELF
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.SELF.SELF
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+.. autofunction:: Algorithms.MTSO.SELF.de_generation_with_core
+.. autofunction:: Algorithms.MTSO.SELF.bo_next_point_de
+
 
 Single-Task Multi-Objective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -107,28 +176,45 @@ NSGA-II
 ^^^^^^^
 
 .. automodule:: Algorithms.STMO.NSGAII
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.NSGAII.NSGAII
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 RVEA
 ^^^^
 
 .. automodule:: Algorithms.STMO.RVEA
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.RVEA.RVEA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 Multi-Task Multi-Objective (MTMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Multi-Objective Multi-Factorial Evolutionary Algorithm
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+MO-MFEA
+^^^^^^^
 
 .. automodule:: Algorithms.MTMO.MOMFEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MOMFEA.MOMFEA
    :members:
    :undoc-members:
    :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+.. autofunction:: Algorithms.MTMO.MOMFEA.momfea_selection
 
 Problems
 --------
@@ -140,6 +226,16 @@ Classical Single-Objective Functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. automodule:: Problems.STSO.classical_so
+   :members:
+   :undoc-members:
+
+Single-Task Multi-Objective Problems
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+DTLZ Test Suite
+^^^^^^^^^^^^^^^
+
+.. automodule:: Problems.STMO.DTLZ
    :members:
    :undoc-members:
 
@@ -167,16 +263,6 @@ CEC19 MATSO Benchmark
    :members:
    :undoc-members:
 
-Single-Task Multi-Objective Problems
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-DTLZ Test Suite
-^^^^^^^^^^^^^^^
-
-.. automodule:: Problems.STMO.DTLZ
-   :members:
-   :undoc-members:
-
 Multi-Task Multi-Objective Problems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -193,8 +279,8 @@ Real-World Optimization Problems
 PINN Hyperparameter Optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.RWO.PINN_HPO.pinn_hpo
-   :members:
+.. autoclass:: Problems.RWO.PINN_HPO.pinn_hpo.PINN_HPO
+   :members: P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12
    :undoc-members:
 
 Methods and Utilities
@@ -225,7 +311,51 @@ Metrics
 MTOP Base Class
 ~~~~~~~~~~~~~~~
 
-.. automodule:: Methods.mtop
+The **MTOP (Multi-Task Optimization Problem)** class provides a flexible and powerful framework for defining and managing multiple optimization tasks with different characteristics.
+
+**Key Features:**
+
+* Multi-task Management: Define and manage multiple optimization tasks
+* Flexible Function Handling: Supports vectorized and non-vectorized functions
+* Cross-platform Compatibility: Pickle-compatible wrappers for parallel execution
+* Unified Evaluation Mode: Optional padding of results to consistent dimensions
+* Selective Evaluation: Evaluate specific objectives or constraints
+
+**Quick Example:**
+
+.. code-block:: python
+
+    from Methods.mtop import MTOP
+    import numpy as np
+
+    def sphere(x):
+        return np.sum(x**2, axis=1)
+
+    mtop = MTOP()
+    mtop.add_task(sphere, dim=3)
+    X = np.random.rand(10, 3)
+    objectives, constraints = mtop.evaluate_task(0, X)
+
+MTOP Class
+^^^^^^^^^^
+
+.. autoclass:: Methods.mtop.MTOP
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+ObjectiveFunctionWrapper
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: Methods.mtop.ObjectiveFunctionWrapper
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+ConstraintFunctionWrapper
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: Methods.mtop.ConstraintFunctionWrapper
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,14 +1,19 @@
 """
 Radial Basis Functions-Assisted MTEA (RAMTEA)
 
+This module implements RAMTEA for expensive multi-task optimization with surrogate-assisted adaptive knowledge transfer.
+
+References
+----------
+.. [1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive
+   multitasking optimization." 2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.20
 Version: 1.0
-
-References:
-[1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive multitasking optimization."
-    2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.
 """
 from tqdm import tqdm
 import time
@@ -18,17 +23,16 @@ from Algorithms.STSO.GA import GA
 from Methods.Algo_Methods.sim_evaluation import sim_calculate
 from Methods.Algo_Methods.algo_utils import *
 
-class RAMTEA:
 
-    algorithm_information = {
-        'Tasks': '2-K',
-        'Objectives': '1',
-        'Constraints': '0',
-        'Cost': 'expensive',
-        'Dimensions': 'equal/unequal',
-        'Initial Samples': 'equal',
-        'Maximum NFEs': 'equal/unequal'
-    }
+class RAMTEA:
+    """
+    Radial Basis Functions-Assisted Multi-Task Evolutionary Algorithm for expensive optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -43,17 +47,46 @@ class RAMTEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, pop_size=50, w_max=50, save_data=True, save_path='./Data',
-                 name='ramtea_test', disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, pop_size=50, w_max=50, save_data=True,
+                 save_path='./Data', name='ramtea_test', disable_tqdm=True):
         """
-        Radial Basis Functions-Assisted MTEA (RAMTEA)
+        Initialize RAMTEA algorithm.
 
-        Args:
-            problem: MTOP instance
-            n_initial (int or List[int]): Number of initial samples per task (default: 50)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 100)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 50)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 100)
+        pop_size : int, optional
+            Population size for GA optimization on surrogate (default: 50)
+        w_max : int, optional
+            Maximum number of generations for GA optimization on surrogate (default: 50)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'ramtea_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
@@ -66,7 +99,14 @@ class RAMTEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the RAMTEA algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -137,18 +177,9 @@ class RAMTEA:
         return results
 
 
-def ramtea_knowledge_transfer(
-    task_idx: int,
-    active_tasks: list[int],
-    best_solutions: list[np.ndarray | None],
-    dims: list[int],
-    sim: np.ndarray,
-    nfes_per_task: list[int],
-    max_nfes_per_task: list[int]
-) -> np.ndarray | None:
+def ramtea_knowledge_transfer(task_idx, active_tasks, best_solutions, dims, sim, nfes_per_task, max_nfes_per_task):
     """
-    RAMTEA knowledge transfer: construct candidate solutions by borrowing
-    from other tasks.
+    Construct candidate solutions via similarity-based knowledge transfer.
 
     Parameters
     ----------
@@ -157,22 +188,28 @@ def ramtea_knowledge_transfer(
     active_tasks : list[int]
         List of active task indices
     best_solutions : list[np.ndarray or None]
-        Best solutions for each task, length: nt.
-        Each element can be None or np.ndarray
+        Best solutions for each task, length nt. Each element can be None or np.ndarray
     dims : list[int]
-        Dimensions of each task, length: nt
+        Dimensions of each task, length nt
     sim : np.ndarray
-        Similarity matrix between tasks, shape: (nt, nt)
+        Task similarity matrix of shape (nt, nt)
     nfes_per_task : list[int]
-        Number of function evaluations consumed for each task, length: nt
+        Number of function evaluations consumed for each task, length nt
     max_nfes_per_task : list[int]
-        Maximum number of function evaluations for each task, length: nt
+        Maximum number of function evaluations for each task, length nt
 
     Returns
     -------
     candidates : np.ndarray or None
-        Candidate solutions for current task, shape: (n_candidates, dims[task_idx]).
+        Candidate solutions for current task of shape (n_candidates, dims[task_idx]).
         Returns None if current task has exhausted its evaluation budget
+
+    Notes
+    -----
+    Knowledge transfer is performed with probability proportional to task similarity.
+    The current task's best solution is always included, and solutions from other tasks
+    are borrowed based on similarity values. Dimension alignment is performed via
+    zero-padding or truncation as needed.
     """
     # Check if current task has exhausted its evaluation budget
     if nfes_per_task[task_idx] >= max_nfes_per_task[task_idx]:

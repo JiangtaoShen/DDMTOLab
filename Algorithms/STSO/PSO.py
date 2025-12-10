@@ -1,14 +1,19 @@
 """
 Particle Swarm Optimization (PSO)
 
+This module implements Particle Swarm Optimization for single-objective optimization problems.
+
+References
+----------
+.. [1] Kennedy, James, and Russell Eberhart. "Particle swarm optimization." Proceedings of
+   ICNN'95-international conference on neural networks. Vol. 4. IEEE, 1995.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.23
 Version: 1.0
-
-References:
-[1] Kennedy, James, and Russell Eberhart. Particle swarm optimization. Proceedings of ICNN'95-international conference
-    on neural networks. Vol. 4. IEEE, 1995.
 """
 import time
 from tqdm import tqdm
@@ -17,6 +22,14 @@ from Methods.Algo_Methods.algo_utils import *
 
 
 class PSO:
+    """
+    Particle Swarm Optimization algorithm for single-objective optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '1-K',
@@ -31,21 +44,50 @@ class PSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, min_w=0.4, max_w=0.9, c1=0.2, c2=0.2, save_data=True,
                  save_path='./TestData', name='PSO_test', disable_tqdm=True):
         """
-        Particle Swarm Optimization (PSO)
+        Initialize Particle Swarm Optimization algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int or List[int]): Population size per task (default: 100)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 10000)
-            min_w (float): Minimum inertia weight (default: 0.4)
-            max_w (float): Maximum inertia weight (default: 0.9)
-            c1 (float): Cognitive coefficient (or self-learning factor) (default: 0.2)
-            c2 (float): Social coefficient (or swarm-learning factor) (default: 0.2)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        min_w : float, optional
+            Minimum inertia weight (default: 0.4)
+        max_w : float, optional
+            Maximum inertia weight (default: 0.9)
+        c1 : float, optional
+            Cognitive coefficient (self-learning factor) (default: 0.2)
+        c2 : float, optional
+            Social coefficient (swarm-learning factor) (default: 0.2)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'PSO_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -60,7 +102,14 @@ class PSO:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the Particle Swarm Optimization algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         dims = problem.dims

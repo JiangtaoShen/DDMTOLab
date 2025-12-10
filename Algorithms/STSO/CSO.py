@@ -1,22 +1,34 @@
 """
 Competitive Swarm Optimizer (CSO)
 
+This module implements Competitive Swarm Optimizer for single-objective optimization problems.
+
+References
+----------
+.. [1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization."
+   IEEE Transactions on Cybernetics 45.2 (2015): 191-204.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.31
 Version: 1.0
-
-References:
-[1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization."
-    IEEE Transactions on Cybernetics 45.2 (2015): 191-204.
 """
 import time
 from tqdm import tqdm
-from typing import List
 from Methods.Algo_Methods.algo_utils import *
 
 
 class CSO:
+    """
+    Competitive Swarm Optimizer algorithm for single-objective optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '1-K',
@@ -31,18 +43,44 @@ class CSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, phi=0.1, save_data=True, save_path='./Data', name='cso_test',
                  disable_tqdm=True):
         """
-        Competitive Swarm Optimizer (CSO)
+        Initialize Competitive Swarm Optimizer algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int or List[int]): Population size per task (default: 100)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 10000)
-            phi (float): Social influence parameter for mean position learning (default: 0.1)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        phi : float, optional
+            Social influence parameter for mean position learning (default: 0.1)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'cso_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -54,7 +92,14 @@ class CSO:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the Competitive Swarm Optimizer algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks

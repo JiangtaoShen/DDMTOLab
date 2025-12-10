@@ -1,14 +1,19 @@
 """
 Evolutionary Multitasking via Explicit Autoencoding (EMEA)
 
+This module implements EMEA for multi-task optimization with knowledge transfer via autoencoding.
+
+References
+----------
+.. [1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding."
+   IEEE transactions on cybernetics 49.9 (2018): 3457-3470.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.25
 Version: 1.0
-
-References:
-[1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding." IEEE transactions on cybernetics 49.9
-    (2018): 3457-3470.
 """
 from tqdm import tqdm
 import time
@@ -16,6 +21,14 @@ from Methods.Algo_Methods.algo_utils import *
 
 
 class EMEA:
+    """
+    Evolutionary Multitasking via Explicit Autoencoding for multi-task optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -30,23 +43,54 @@ class EMEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, SNum=10, TGap=10, muc=2, mum=5, F=0.5, CR=0.6, save_data=True,
                  save_path='./TestData', name='EMEA_test', disable_tqdm=True):
         """
-        Evolutionary Multitasking via Explicit Autoencoding (EMEA)
+        Initialize EMEA algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int): Population size per task (default: 100)
-            max_nfes (int): Maximum number of function evaluations per task (default: 10000)
-            SNum (int): Number of transferred solutions (default: 10)
-            TGap (int): Transfer interval of generations (default: 10)
-            muc (float): Distribution index for simulated binary crossover (SBX) (default: 2.0).
-            mum (float): Distribution index for polynomial mutation (PM) (default: 5.0).
-            F (float): Mutation factor (default: 0.5)
-            CR (float): Crossover rate (default: 0.6)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        SNum : int, optional
+            Number of transferred solutions (default: 10)
+        TGap : int, optional
+            Transfer interval in generations (default: 10)
+        muc : float, optional
+            Distribution index for simulated binary crossover (SBX) (default: 2.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (PM) (default: 5.0)
+        F : float, optional
+            Scaling factor for DE mutation (default: 0.5)
+        CR : float, optional
+            Crossover rate for DE (default: 0.6)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'EMEA_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -63,7 +107,14 @@ class EMEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the EMEA algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -149,27 +200,30 @@ class EMEA:
         return results
 
 
-def mDA(
-    curr_decs: np.ndarray,
-    his_decs: np.ndarray,
-    his_best_decs: np.ndarray
-) -> np.ndarray:
+def mDA(curr_decs, his_decs, his_best_decs):
     """
-    Multi-Domain Adaptation (mDA) function for knowledge transfer between tasks.
+    Marginalized Denoising Autoencoder for cross-domain knowledge transfer.
 
     Parameters
     ----------
     curr_decs : np.ndarray
-        Current population, shape: (n, d_curr)
+        Current task population of shape (n, d_curr)
     his_decs : np.ndarray
-        Historical population from another domain, shape: (n, d_his)
+        Historical task population of shape (n, d_his)
     his_best_decs : np.ndarray
-        Best solution(s) from the historical domain, shape: (m, d_his)
+        Best solution(s) from historical task of shape (m, d_his)
 
     Returns
     -------
     inject_decs : np.ndarray
-        Transformed solution(s), shape: (m, d_curr)
+        Transformed solution(s) mapped to current task domain of shape (m, d_curr)
+
+    Notes
+    -----
+    The mDA learns a linear transformation W that maps solutions from the historical task
+    domain to the current task domain using ridge regression:
+    W = P @ (Q + λI)^(-1)
+    where P = xx @ noise^T, Q = noise @ noise^T, and λ is the regularization parameter.
     """
     curr_len = curr_decs.shape[1]
     his_len = his_decs.shape[1]

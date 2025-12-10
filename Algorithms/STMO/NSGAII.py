@@ -1,14 +1,19 @@
 """
 Nondominated Sorting Genetic Algorithm II (NSGA-II)
 
+This module implements NSGA-II for multi-objective optimization problems.
+
+References
+----------
+.. [1] Deb, Kalyanmoy, et al. "A fast and elitist multiobjective genetic algorithm: NSGA-II."
+   IEEE transactions on evolutionary computation 6.2 (2002): 182-197.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.23
 Version: 1.0
-
-References:
-[1] Deb, Kalyanmoy, et al. A fast and elitist multiobjective genetic algorithm: NSGA-II. IEEE transactions on evolutionary
-    computation 6.2 (2002): 182-197.
 """
 from tqdm import tqdm
 import time
@@ -16,6 +21,14 @@ from Methods.Algo_Methods.algo_utils import *
 
 
 class NSGAII:
+    """
+    Nondominated Sorting Genetic Algorithm II for multi-objective optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '1-K',
@@ -30,19 +43,46 @@ class NSGAII:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./TestData',
                  name='NSGA-II_test', disable_tqdm=True):
         """
-        Nondominated Sorting Genetic Algorithm II (NSGA-II)
+        Initialize NSGA-II algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int or List[int]): Population size per task (default: 100)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 10000)
-            muc (float): Distribution index for simulated binary crossover (SBX) (default: 2.0).
-            mum (float): Distribution index for polynomial mutation (PM) (default: 5.0).
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        muc : float, optional
+            Distribution index for simulated binary crossover (SBX) (default: 20.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (PM) (default: 15.0)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'NSGA-II_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -55,7 +95,14 @@ class NSGAII:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the NSGA-II algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, constraints, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -115,31 +162,31 @@ class NSGAII:
         return results
 
 
-def nsga2_sort(
-    objs: np.ndarray,
-    cons: np.ndarray | None = None
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def nsga2_sort(objs, cons=None):
     """
-    Sort solutions based on NSGA-II criteria: non-dominated sorting first,
-    then crowding distance (larger is better).
+    Sort solutions based on NSGA-II criteria using non-dominated sorting and crowding distance.
 
     Parameters
     ----------
     objs : np.ndarray
-        Objective value matrix, shape: (pop_size, n_obj)
-    cons : np.ndarray or None, optional
-        Constraint matrix, shape: (pop_size, n_con). If None, no constraints
-        are considered (default: None)
+        Objective value matrix of shape (pop_size, n_obj)
+    cons : np.ndarray, optional
+        Constraint matrix of shape (pop_size, n_con). If None, no constraints are considered (default: None)
 
     Returns
     -------
     rank : np.ndarray
-        Ranking of each solution (0-based index after sorting), shape: (pop_size,).
+        Ranking of each solution (0-based index after sorting) of shape (pop_size,).
         rank[i] indicates the position of solution i in the sorted order
     front_no : np.ndarray
-        Non-dominated front number of each solution, shape: (pop_size,)
+        Non-dominated front number of each solution of shape (pop_size,)
     crowd_dis : np.ndarray
-        Crowding distance of each solution, shape: (pop_size,)
+        Crowding distance of each solution of shape (pop_size,)
+
+    Notes
+    -----
+    Solutions are sorted first by front number (ascending), then by crowding distance (descending).
+    Larger crowding distance values indicate better diversity preservation.
     """
     pop_size = objs.shape[0]
 

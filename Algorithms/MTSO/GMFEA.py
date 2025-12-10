@@ -1,23 +1,35 @@
 """
 Generalized Multifactorial Evolutionary Algorithm (G-MFEA)
 
+This module implements G-MFEA for expensive multi-task optimization with adaptive knowledge transfer.
+
+References
+----------
+.. [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive
+   problems." IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.19
 Version: 1.0
-
-References:
-[1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive problems.
-    " IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
 """
 import time
-import copy
 from tqdm import tqdm
 from Algorithms.MTSO.MFEA import mfea_selection
 from Methods.Algo_Methods.algo_utils import *
 
 
 class GMFEA:
+    """
+    Generalized Multifactorial Evolutionary Algorithm for expensive multi-task optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -32,22 +44,52 @@ class GMFEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, mu=0.4, phi=0.1, theta=0.02,  scale_factor=1.25,
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, mu=0.4, phi=0.1, theta=0.02, scale_factor=1.25,
                  save_data=True, save_path='./Data', name='gmfea_test', disable_tqdm=True):
         """
-        Generalized Multifactorial Evolutionary Algorithm (G-MFEA)
+        Initialize G-MFEA algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int): Population size per task (default: 100)
-            max_nfes (int): Maximum number of function evaluations per task (default: 10000)
-            rmp (float): Random mating probability for inter-task crossover (default: 0.3)
-            mu (float):  The percentage of the best solutions to estimate current optimums (default: 0.4)
-            phi (float): The threshold value to start the decision variable translation strategy (default: 0.1)
-            theta (float): The frequency of calculating translated direction (default: 0.02)
-            scale_factor (float): The scale factor for the translation decision variables (default: 1.25)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int, optional
+            Population size per task (default: 100)
+        max_nfes : int, optional
+            Maximum number of function evaluations per task (default: 10000)
+        rmp : float, optional
+            Random mating probability for inter-task crossover (default: 0.3)
+        mu : float, optional
+            Percentage of best solutions to estimate current optimums (default: 0.4)
+        phi : float, optional
+            Threshold value to start decision variable translation strategy (default: 0.1)
+        theta : float, optional
+            Frequency of calculating translation direction (default: 0.02)
+        scale_factor : float, optional
+            Scale factor for translation of decision variables (default: 1.25)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'gmfea_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -63,7 +105,14 @@ class GMFEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the G-MFEA algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         n = self.n
@@ -87,8 +136,8 @@ class GMFEA:
 
         while nfes < max_nfes:
             # Translate decision variables toward population center
-            trans_decs, trans_vectors = decs_translation(decs, objs, nfes, max_nfes, dims, n, gen, self.phi, self.theta,
-                                                         self.mu, self.scale_factor)
+            trans_decs, trans_vectors = decs_translation(decs, objs, nfes, max_nfes, dims, n, gen, self.phi,
+                                                         self.theta, self.mu, self.scale_factor)
 
             # Transform populations to unified search space
             pop_decs = space_transfer(problem, trans_decs, type='uni')
@@ -128,8 +177,8 @@ class GMFEA:
                 # Inverse transformation: restore dimensions and translate back
                 off_sf1 = off_sfs[i]
                 off_sf2 = off_sfs[i + 1]
-                off_dec1, off_dec2 = convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1, sf2,
-                                                                        dims, l1, l2, trans_vectors)
+                off_dec1, off_dec2 = convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1,
+                                                                        sf2, dims, l1, l2, trans_vectors)
 
                 off_decs[i, :] = off_dec1
                 off_decs[i + 1, :] = off_dec2
@@ -169,36 +218,22 @@ class GMFEA:
         return results
 
 
-def decs_translation(
-    decs: list[np.ndarray],
-    objs: list[np.ndarray],
-    nfes: int,
-    max_nfes: int,
-    dims: list[int],
-    n: int,
-    gen: int,
-    phi: float,
-    theta: float,
-    mu: float,
-    scale_factor: float
-) -> tuple[list[np.ndarray], list[np.ndarray]]:
+def decs_translation(decs, objs, nfes, max_nfes, dims, n, gen, phi, theta, mu, scale_factor):
     """
     Translate decision variables toward the center of the decision space.
-    This facilitates knowledge transfer between tasks by moving populations
-    closer together.
 
     Parameters
     ----------
     decs : list[np.ndarray]
-        Decision variables for all tasks, length: nt, each of shape: (n, d_i)
+        Decision variables for all tasks, length nt, each of shape (n, d_i)
     objs : list[np.ndarray]
-        Objective values for all tasks, length: nt, each of shape: (n, n_obj)
+        Objective values for all tasks, length nt, each of shape (n, n_obj)
     nfes : int
         Current number of function evaluations
     max_nfes : int
         Maximum number of function evaluations
     dims : list[int]
-        Dimensions of each task, length: nt
+        Dimensions of each task, length nt
     n : int
         Population size
     gen : int
@@ -215,9 +250,16 @@ def decs_translation(
     Returns
     -------
     trans_decs : list[np.ndarray]
-        Translated decision variables, length: nt, each of shape: (n, d_i)
+        Translated decision variables, length nt, each of shape (n, d_i)
     trans_vectors : list[np.ndarray]
-        Translation vectors used for each task, length: nt, each of shape: (d_i,)
+        Translation vectors used for each task, length nt, each of shape (d_i,)
+
+    Notes
+    -----
+    Translation moves populations toward the center point (0.5) of the normalized decision space.
+    The translation vector is computed as: d_i = scale_factor * α * (cp_i - m_i),
+    where α = (nfes/max_nfes)² is an adaptive coefficient, cp_i is the center point,
+    and m_i is the mean position of top μ% individuals.
     """
     nt = len(decs)
 
@@ -259,19 +301,9 @@ def decs_translation(
     return trans_decs, trans_vectors
 
 
-def dimension_shuffling(
-    p1: int,
-    p2: int,
-    sf1: int,
-    sf2: int,
-    dims: list[int],
-    pop_decs: np.ndarray,
-    pop_sfs: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray | None, np.ndarray | None]:
+def dimension_shuffling(p1, p2, sf1, sf2, dims, pop_decs, pop_sfs):
     """
-    Handle dimension mismatch between parent individuals from different tasks.
-    Uses random dimension shuffling strategy to align parents with different
-    dimensionalities.
+    Handle dimension mismatch between parents using random dimension shuffling.
 
     Parameters
     ----------
@@ -284,22 +316,28 @@ def dimension_shuffling(
     sf2 : int
         Skill factor (task ID) of second parent
     dims : list[int]
-        Dimensions of each task, length: nt
+        Dimensions of each task, length nt
     pop_decs : np.ndarray
-        Population decision variables, shape: (pop_size, d_max)
+        Population decision variables of shape (pop_size, d_max)
     pop_sfs : np.ndarray
-        Population skill factors, shape: (pop_size, 1)
+        Population skill factors of shape (pop_size, 1)
 
     Returns
     -------
     p1_dec : np.ndarray
-        Processed decision variables of first parent, shape: (d_max,)
+        Processed decision variables of first parent of shape (d_max,)
     p2_dec : np.ndarray
-        Processed decision variables of second parent, shape: (d_max,)
+        Processed decision variables of second parent of shape (d_max,)
     l1 : np.ndarray or None
         Shuffling indices used for p1, None if no shuffling needed
     l2 : np.ndarray or None
         Shuffling indices used for p2, None if no shuffling needed
+
+    Notes
+    -----
+    When parents have different dimensionalities, the lower-dimensional parent borrows
+    genetic material from a random individual of the higher-dimensional task. The parent's
+    genes are placed into randomly selected dimensions via shuffling indices.
     """
     # Get dimensions of both parent tasks
     dim_1 = dims[sf1]
@@ -343,29 +381,16 @@ def dimension_shuffling(
     return p1_dec, p2_dec, l1, l2
 
 
-def convert_to_original_decision_space(
-    off_dec1: np.ndarray,
-    off_dec2: np.ndarray,
-    off_sf1: int,
-    off_sf2: int,
-    sf1: int,
-    sf2: int,
-    dims: list[int],
-    l1: np.ndarray | None,
-    l2: np.ndarray | None,
-    trans_vectors: list[np.ndarray]
-) -> tuple[np.ndarray, np.ndarray]:
+def convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1, sf2, dims, l1, l2, trans_vectors):
     """
-    Convert offspring decision variables back to their original task space.
-    This reverses the dimension shuffling and translation operations applied
-    earlier.
+    Convert offspring back to original task space by reversing shuffling and translation.
 
     Parameters
     ----------
     off_dec1 : np.ndarray
-        First offspring decision variables, shape: (d,)
+        First offspring decision variables of shape (d,)
     off_dec2 : np.ndarray
-        Second offspring decision variables, shape: (d,)
+        Second offspring decision variables of shape (d,)
     off_sf1 : int
         Skill factor (task ID) of first offspring
     off_sf2 : int
@@ -375,20 +400,25 @@ def convert_to_original_decision_space(
     sf2 : int
         Skill factor of second parent
     dims : list[int]
-        Dimensions of each task, length: nt
+        Dimensions of each task, length nt
     l1 : np.ndarray or None
         Shuffling indices used for parent 1, None if no shuffling
     l2 : np.ndarray or None
         Shuffling indices used for parent 2, None if no shuffling
     trans_vectors : list[np.ndarray]
-        Translation vectors applied to each task, length: nt
+        Translation vectors applied to each task, length nt
 
     Returns
     -------
     off_dec1 : np.ndarray
-        First offspring in original space, padded to max dimension, shape: (d_max,)
+        First offspring in original space, padded to max dimension of shape (d_max,)
     off_dec2 : np.ndarray
-        Second offspring in original space, padded to max dimension, shape: (d_max,)
+        Second offspring in original space, padded to max dimension of shape (d_max,)
+
+    Notes
+    -----
+    This function reverses the dimension shuffling by extracting genes at shuffled positions,
+    subtracts the translation vectors, clips to valid bounds, and pads to maximum dimension.
     """
     # Reverse dimension shuffling for parent 1's task if it was applied
     if l1 is not None:

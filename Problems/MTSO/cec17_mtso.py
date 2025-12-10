@@ -1,13 +1,46 @@
 import scipy.io
 from Problems.BasicFunctions.basic_functions import *
 from Methods.mtop import MTOP
+import numpy as np
 
 class CEC17MTSO:
+    """
+    Implementation of the CEC 2017 Competition on Evolutionary Multi-Task Optimization (EMTO)
+    benchmark problems P1 to P9.
+
+    These problems are two-task optimization scenarios designed to test the ability
+    of algorithms to leverage knowledge transfer under various relationships
+    between tasks (similarity of global optima and search spaces).
+
+    Parameters
+    ----------
+    mat_dir : str, optional
+        Directory path to the MAT files containing rotation matrices and global
+        optima (GO) vectors for the tasks (default: '../Problems/MTSO/data_cec17mtso').
+
+    Attributes
+    ----------
+    mat_dir : str
+        The directory path for problem data files.
+    """
 
     def __init__(self, mat_dir='../Problems/MTSO/data_cec17mtso'):
         self.mat_dir = mat_dir
 
-    def P1(self):
+    def P1(self) -> MTOP:
+        """
+        Generates Problem 1: **CI-HS** (Complete Intersection - High Similarity).
+
+        - Task 1: Rotated and shifted **Griewank** (Dim 50, [-100, 100])
+        - Task 2: Rotated and shifted **Rastrigin** (Dim 50, [-50, 50])
+        - Characteristic: **Complete Overlap** of the global optima and **High Similarity**
+          of the solution space structures (Griewank, Rastrigin are both multi-modal).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # CI-HS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/CI_H.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -26,7 +59,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -50), upper_bound=np.full(50, 50))
         return problem
 
-    def P2(self):
+    def P2(self) -> MTOP:
+        """
+        Generates Problem 2: **CI-MS** (Complete Intersection - Medium Similarity).
+
+        - Task 1: Rotated and shifted **Ackley** (Dim 50, [-50, 50])
+        - Task 2: Rotated and shifted **Rastrigin** (Dim 50, [-50, 50])
+        - Characteristic: **Complete Overlap** of the global optima and **Medium Similarity**
+          of the solution space structures (Ackley is generally smoother than Rastrigin).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # CI-MS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/CI_M.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -45,7 +91,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -50), upper_bound=np.full(50, 50))
         return problem
 
-    def P3(self):
+    def P3(self) -> MTOP:
+        """
+        Generates Problem 3: **CI-LS** (Complete Intersection - Low Similarity).
+
+        - Task 1: Rotated and shifted **Ackley** (Dim 50, [-50, 50])
+        - Task 2: Standard **Schwefel** (Dim 50, [-500, 500])
+        - Characteristic: **Complete Overlap** of the global optima and **Low Similarity**
+          of the solution space structures (Schwefel is very difficult, Ackley is moderate).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # CI-LS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/CI_L.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -64,7 +123,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -500), upper_bound=np.full(50, 500))
         return problem
 
-    def P4(self):
+    def P4(self) -> MTOP:
+        """
+        Generates Problem 4: **PI-HS** (Partial Intersection - High Similarity).
+
+        - Task 1: Rotated and shifted **Rastrigin** (Dim 50, [-50, 50])
+        - Task 2: Shifted **Sphere** (Dim 50, [-100, 100])
+        - Characteristic: **Partial Overlap** of the global optima and **High Similarity**
+          of the solution space structures (Rastrigin is multi-modal, Sphere is uni-modal).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # PI-HS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/PI_H.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -83,7 +155,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -100), upper_bound=np.full(50, 100))
         return problem
 
-    def P5(self):
+    def P5(self) -> MTOP:
+        """
+        Generates Problem 5: **PI-MS** (Partial Intersection - Medium Similarity).
+
+        - Task 1: Rotated and shifted **Ackley** (Dim 50, [-50, 50])
+        - Task 2: Standard **Rosenbrock** (Dim 50, [-50, 50])
+        - Characteristic: **Partial Overlap** of the global optima and **Medium Similarity**
+          of the solution space structures (Ackley is multi-modal, Rosenbrock is uni-modal and valley-shaped).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # PI-MS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/PI_M.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -102,7 +187,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -50), upper_bound=np.full(50, 50))
         return problem
 
-    def P6(self):
+    def P6(self) -> MTOP:
+        """
+        Generates Problem 6: **PI-LS** (Partial Intersection - Low Similarity).
+
+        - Task 1: Rotated and shifted **Ackley** (Dim 50, [-50, 50])
+        - Task 2: Rotated and shifted **Weierstrass** (Dim 25, [-0.5, 0.5])
+        - Characteristic: **Partial Overlap** of the global optima, **Unequal Dimensions** (50 vs 25),
+          and **Low Similarity** (Weierstrass is highly complex and non-differentiable).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # PI-LS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/PI_L.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -121,7 +219,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=25, lower_bound=np.full(25, -0.5), upper_bound=np.full(25, 0.5))
         return problem
 
-    def P7(self):
+    def P7(self) -> MTOP:
+        """
+        Generates Problem 7: **NI-HS** (No Intersection - High Similarity).
+
+        - Task 1: Standard **Rosenbrock** (Dim 50, [-50, 50])
+        - Task 2: Rotated and shifted **Rastrigin** (Dim 50, [-50, 50])
+        - Characteristic: **No Overlap** of the global optima and **High Similarity**
+          of the solution space structures.
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # NI-HS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/NI_H.mat')
         rotation_task1 = np.eye(50, dtype=float)
@@ -140,7 +251,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -50), upper_bound=np.full(50, 50))
         return problem
 
-    def P8(self):
+    def P8(self) -> MTOP:
+        """
+        Generates Problem 8: **NI-MS** (No Intersection - Medium Similarity).
+
+        - Task 1: Rotated and shifted **Griewank** (Dim 50, [-100, 100])
+        - Task 2: Rotated and shifted **Weierstrass** (Dim 50, [-0.5, 0.5])
+        - Characteristic: **No Overlap** of the global optima and **Medium Similarity**
+          of the solution space structures.
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # NI-MS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/NI_M.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()
@@ -159,7 +283,20 @@ class CEC17MTSO:
         problem.add_task(T2, dim=50, lower_bound=np.full(50, -0.5), upper_bound=np.full(50, 0.5))
         return problem
 
-    def P9(self):
+    def P9(self) -> MTOP:
+        """
+        Generates Problem 9: **NI-LS** (No Intersection - Low Similarity).
+
+        - Task 1: Rotated and shifted **Rastrigin** (Dim 50, [-50, 50])
+        - Task 2: Standard **Schwefel** (Dim 50, [-500, 500])
+        - Characteristic: **No Overlap** of the global optima and **Low Similarity**
+          of the solution space structures (Rastrigin is multi-modal, Schwefel is highly complex/difficult).
+
+        Returns
+        -------
+        MTOP
+            A Multi-Task Optimization Problem instance containing Task 1 and Task 2.
+        """
         # NI-LS
         mat_data = scipy.io.loadmat(f'{self.mat_dir}/NI_L.mat')
         rotation_task1 = mat_data['Rotation_Task1'].squeeze()

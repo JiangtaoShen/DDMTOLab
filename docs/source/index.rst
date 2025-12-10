@@ -1,7 +1,12 @@
-Welcome to DDMTOLab's Documentation!
+DDMTOLab
 ====================================
 
-**DDMTOLab** is a Python platform for Data-Driven Multitask Optimization.
+.. image:: _static/logo.png
+   :align: center
+   :alt: DDMTOLab Logo
+   :width: 200px
+|
+**DDMTOLab** is a comprehensive Python platform for data-driven multitask optimization, featuring 50+ algorithms, 100+ problems, and powerful experiment tools for algorithm development and performance evaluation.
 
 .. image:: https://img.shields.io/github/stars/JiangtaoShen/DDMTOLab?style=social
    :target: https://github.com/JiangtaoShen/DDMTOLab
@@ -13,11 +18,11 @@ Welcome to DDMTOLab's Documentation!
 Features
 --------
 
-* 🚀 **Comprehensive Algorithms**: BO, MTBO, PSO, DE, GA, CSO
-* 🔧 **Flexible Framework**: Easy-to-use API
-* 📊 **Rich Problem Suite**: Synthetic and real-world problems
-* 🤖 **Data-Driven**: Leveraging ML for optimization
-* 🔌 **Extensible**: Easy to add custom algorithms
+* 🚀 **Comprehensive Algorithms** - Single/multi-task, single/multi-objective optimization
+* 📊 **Rich Problem Suite** - Benchmark functions and real-world applications
+* 🤖 **Data-Driven Optimization** - Surrogate-based methods for expensive problems
+* 🔧 **Flexible Framework** - Simple API and intuitive workflow
+* 🔌 **Fully Extensible** - Custom algorithms, problems, and metrics
 
 Quick Links
 -----------
@@ -25,7 +30,10 @@ Quick Links
 * `GitHub Repository <https://github.com/JiangtaoShen/DDMTOLab>`_
 * :ref:`installation`
 * :ref:`quickstart`
-* :ref:`api_reference`
+* :ref:`problems`
+* :ref:`algorithms`
+* :ref:`methods`
+* :ref:`api`
 
 .. toctree::
    :maxdepth: 2
@@ -33,6 +41,9 @@ Quick Links
 
    installation
    quickstart
+   problems
+   algorithms
+   methods
    api
 
 Indices and Tables
@@ -47,10 +58,10 @@ Citation
 
 If you use DDMTOLab in your research, please cite::
 
-   @software{ddmtolab2024,
-     author = {Shen, Jiangtao},
-     title = {DDMTOLab: A Python Platform for Data-Driven Multitask Optimization},
-     year = {2024},
+   @software{ddmtolab2025,
+     author = {Jiangtao Shen},
+     title = {DDMTOLab: A Python platform for Data-Driven Multitask Optimization},
+     year = {2025},
      url = {https://github.com/JiangtaoShen/DDMTOLab}
    }
 

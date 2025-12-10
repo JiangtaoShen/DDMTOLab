@@ -1,14 +1,19 @@
 """
 Multiobjective Multifactorial Evolutionary Algorithm (MOMFEA)
 
+This module implements MOMFEA for multi-objective multi-task optimization with knowledge transfer.
+
+References
+----------
+.. [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward
+   Evolutionary Multitasking." IEEE Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.27
 Version: 1.0
-
-References:
-[1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. Multifactorial Evolution: Toward Evolutionary Multitasking. IEEE
-    Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
 """
 import time
 from tqdm import tqdm
@@ -17,6 +22,14 @@ from Methods.Algo_Methods.algo_utils import *
 
 
 class MOMFEA:
+    """
+    Multiobjective Multifactorial Evolutionary Algorithm for multi-objective multi-task optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -31,18 +44,44 @@ class MOMFEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp = 0.3, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./Data',
                  name='momfea_test', disable_tqdm=True):
         """
-        Multiobjective Multifactorial Evolutionary Algorithm (MOMFEA)
+        Initialize MOMFEA algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int): Population size per task (default: 100)
-            max_nfes (int): Maximum number of function evaluations per task (default: 10000)
-            rmp (float): Random mating probability for inter-task crossover (default: 0.3)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int, optional
+            Population size per task (default: 100)
+        max_nfes : int, optional
+            Maximum number of function evaluations per task (default: 10000)
+        rmp : float, optional
+            Random mating probability for inter-task crossover (default: 0.3)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'momfea_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -54,7 +93,14 @@ class MOMFEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the MOMFEA algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, constraints, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         n = self.n
@@ -168,29 +214,20 @@ class MOMFEA:
         return results
 
 
-def momfea_selection(
-    all_decs: np.ndarray,
-    all_objs: np.ndarray,
-    all_cons: np.ndarray,
-    all_sfs: np.ndarray,
-    n: int,
-    nt: int
-) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+def momfea_selection(all_decs, all_objs, all_cons, all_sfs, n, nt):
     """
-    Environmental selection for MOMFEA: selects top-n individuals per task
-    based on NSGA-II criteria.
+    Environmental selection for MOMFEA using NSGA-II criteria.
 
     Parameters
     ----------
     all_decs : np.ndarray
-        Decision variable matrix of the combined population, shape: (n_total, d_max)
+        Decision variable matrix of the combined population of shape (n_total, d_max)
     all_objs : np.ndarray
-        Objective value matrix corresponding to all_decs, shape: (n_total, n_obj)
+        Objective value matrix corresponding to all_decs of shape (n_total, n_obj)
     all_cons : np.ndarray
-        Constraint value matrix corresponding to all_decs, shape: (n_total, n_con)
+        Constraint value matrix corresponding to all_decs of shape (n_total, n_con)
     all_sfs : np.ndarray
-        Skill factor array indicating task assignment for each individual,
-        shape: (n_total, 1)
+        Skill factor array indicating task assignment for each individual of shape (n_total, 1)
     n : int
         Number of individuals to select per task (population size per task)
     nt : int
@@ -199,17 +236,19 @@ def momfea_selection(
     Returns
     -------
     pop_decs : list[np.ndarray]
-        Selected decision variable matrices for each task,
-        length: nt, each of shape: (n, d_max)
+        Selected decision variable matrices for each task, length nt, each of shape (n, d_max)
     pop_objs : list[np.ndarray]
-        Selected objective value matrices for each task,
-        length: nt, each of shape: (n, n_obj)
+        Selected objective value matrices for each task, length nt, each of shape (n, n_obj)
     pop_cons : list[np.ndarray]
-        Selected constraint matrices for each task,
-        length: nt, each of shape: (n, n_con)
+        Selected constraint matrices for each task, length nt, each of shape (n, n_con)
     pop_sfs : list[np.ndarray]
-        Selected skill factor arrays for each task,
-        length: nt, each of shape: (n, 1)
+        Selected skill factor arrays for each task, length nt, each of shape (n, 1)
+
+    Notes
+    -----
+    Selection is performed independently for each task using NSGA-II sorting based on
+    non-dominated rank and crowding distance. The top-n individuals with smallest rank
+    values are retained for each task.
     """
     pop_decs, pop_objs, pop_cons, pop_sfs = [], [], [], []
 

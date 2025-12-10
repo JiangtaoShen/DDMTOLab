@@ -1,14 +1,19 @@
 """
 Reference Vector Guided Evolutionary Algorithm (RVEA)
 
+This module implements RVEA for many-objective optimization problems.
+
+References
+----------
+.. [1] Cheng, Ran, et al. "A reference vector guided evolutionary algorithm for many-objective
+   optimization." IEEE transactions on evolutionary computation 20.5 (2016): 773-791.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.25
 Version: 1.0
-
-References:
-[1] Cheng, Ran, et al. "A reference vector guided evolutionary algorithm for many-objective optimization."
-    IEEE transactions on evolutionary computation 20.5 (2016): 773-791.
 """
 from tqdm import tqdm
 import time
@@ -16,7 +21,16 @@ from scipy.spatial.distance import cdist
 from Methods.Algo_Methods.uniform_point import uniform_point
 from Methods.Algo_Methods.algo_utils import *
 
+
 class RVEA:
+    """
+    Reference Vector Guided Evolutionary Algorithm for many-objective optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '1-K',
@@ -31,19 +45,46 @@ class RVEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, alpha=2.0, fr=0.1, save_data=True, save_path='./TestData',
                  name='RVEA_test', disable_tqdm=True):
         """
-        Nondominated Sorting Genetic Algorithm II (NSGA-II)
+        Initialize RVEA algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int or List[int]): Population size per task (default: 100)
-            max_nfes (int or List[int]): Maximum number of function evaluations per task (default: 10000)
-            alpha (float): The parameter controlling the rate of change of penalty (default: 2.0).
-            fr (float): The frequency of employing reference vector adaptation (default: 0.1).
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        alpha : float, optional
+            Parameter controlling the rate of change of penalty (default: 2.0)
+        fr : float, optional
+            Frequency of employing reference vector adaptation (default: 0.1)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'RVEA_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -56,7 +97,14 @@ class RVEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the RVEA algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, constraints, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -125,30 +173,32 @@ class RVEA:
         return results
 
 
-def rvea_selection(
-    objs: np.ndarray,
-    cons: np.ndarray,
-    v: np.ndarray,
-    theta: float
-) -> np.ndarray:
+def rvea_selection(objs, cons, v, theta):
     """
-    Environmental selection of RVEA using angle-penalized distance.
+    Environmental selection using angle-penalized distance metric.
 
     Parameters
     ----------
     objs : np.ndarray
-        Objective value matrix, shape: (N, M)
+        Objective value matrix of shape (N, M)
     cons : np.ndarray
-        Constraint value matrix, shape: (N, K)
+        Constraint value matrix of shape (N, K)
     v : np.ndarray
-        Reference vectors, shape: (NV, M)
+        Reference vectors of shape (NV, M)
     theta : float
         Penalty parameter controlling the balance between convergence and diversity
 
     Returns
     -------
     index : np.ndarray
-        Indices of selected solutions, shape: (n_selected,)
+        Indices of selected solutions of shape (n_selected,)
+
+    Notes
+    -----
+    The angle-penalized distance (APD) combines both convergence and diversity:
+    APD = (1 + M * theta * angle / gamma) * distance
+    where M is the number of objectives, angle is the angle between solution and reference vector,
+    gamma is the smallest angle between reference vectors, and distance is the Euclidean norm.
     """
     N, M = objs.shape
     NV = v.shape[0]

@@ -1,14 +1,19 @@
 """
 Multifactorial Evolutionary Algorithm (MFEA)
 
+This module implements MFEA for multi-task optimization with knowledge transfer across tasks.
+
+References
+----------
+.. [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward
+   Evolutionary Multitasking." IEEE Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
+
+Notes
+-----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.12
 Version: 1.0
-
-References:
-[1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. Multifactorial Evolution: Toward Evolutionary Multitasking. IEEE
-    Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
 """
 import time
 from tqdm import tqdm
@@ -16,6 +21,14 @@ from Methods.Algo_Methods.algo_utils import *
 
 
 class MFEA:
+    """
+    Multifactorial Evolutionary Algorithm for multi-task optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
 
     algorithm_information = {
         'n_tasks': '2-K',
@@ -30,18 +43,44 @@ class MFEA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
+        """
+        Get algorithm information.
+
+        Parameters
+        ----------
+        print_info : bool, optional
+            Whether to print information (default: True)
+
+        Returns
+        -------
+        dict
+            Algorithm information dictionary
+        """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp = 0.3, save_data=True, save_path='./TestData', name='MFEA_test',
-                 disable_tqdm=True):
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./TestData',
+                 name='MFEA_test', disable_tqdm=True):
         """
-        Multifactorial Evolutionary Algorithm (MFEA)
+        Initialize Multifactorial Evolutionary Algorithm.
 
-        Args:
-            problem: MTOP instance
-            n (int): Population size per task (default: 100)
-            max_nfes (int): Maximum number of function evaluations per task (default: 10000)
-            rmp (float): Random mating probability for inter-task crossover (default: 0.3)
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int, optional
+            Population size per task (default: 100)
+        max_nfes : int, optional
+            Maximum number of function evaluations per task (default: 10000)
+        rmp : float, optional
+            Random mating probability for inter-task crossover (default: 0.3)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './TestData')
+        name : str, optional
+            Name for the experiment (default: 'MFEA_test')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.n = n if n is not None else 100
@@ -53,7 +92,14 @@ class MFEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the Multifactorial Evolutionary Algorithm.
 
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -148,28 +194,21 @@ class MFEA:
         return results
 
 
-def mfea_selection(
-    all_decs: np.ndarray,
-    all_objs: np.ndarray,
-    all_sfs: np.ndarray,
-    n: int,
-    nt: int
-) -> tuple[list[np.ndarray], list[np.ndarray], list[np.ndarray]]:
+def mfea_selection(all_decs, all_objs, all_sfs, n, nt):
     """
-    Environmental selection for MFEA: selects top-n individuals per task
-    based on objective values.
+    Environmental selection for MFEA based on elitist strategy.
 
     Parameters
     ----------
     all_decs : np.ndarray
-        Decision variable matrix of the combined population, shape: (n_total, d_max).
+        Decision variable matrix of the combined population of shape (n_total, d_max).
         Contains solutions from all tasks in unified search space
     all_objs : np.ndarray
-        Objective value matrix corresponding to all_decs, shape: (n_total, 1).
+        Objective value matrix corresponding to all_decs of shape (n_total, 1).
         Each individual has been evaluated on its assigned task
     all_sfs : np.ndarray
-        Skill factor array indicating task assignment for each individual,
-        shape: (n_total, 1). Values range from 0 to nt-1
+        Skill factor array indicating task assignment for each individual of shape (n_total, 1).
+        Values range from 0 to nt-1
     n : int
         Number of individuals to select per task (population size per task)
     nt : int
@@ -178,14 +217,16 @@ def mfea_selection(
     Returns
     -------
     pop_decs : list[np.ndarray]
-        Selected decision variable matrices for each task,
-        length: nt, each of shape: (n, d_max)
+        Selected decision variable matrices for each task, length nt, each of shape (n, d_max)
     pop_objs : list[np.ndarray]
-        Selected objective value matrices for each task,
-        length: nt, each of shape: (n, 1)
+        Selected objective value matrices for each task, length nt, each of shape (n, 1)
     pop_sfs : list[np.ndarray]
-        Selected skill factor arrays for each task,
-        length: nt, each of shape: (n, 1)
+        Selected skill factor arrays for each task, length nt, each of shape (n, 1)
+
+    Notes
+    -----
+    Selection is performed independently for each task by selecting the top-n individuals
+    with minimum objective values among those assigned to that task.
     """
     pop_decs, pop_objs, pop_sfs = [], [], []
 
@@ -197,7 +238,8 @@ def mfea_selection(
 
         # Select top-n individuals with minimum objective values
         indices_select = selection_elit(current_objs, n)
-        selected_decs, selected_objs, selected_sfs = select_by_index(indices_select, current_decs, current_objs, current_sfs)
+        selected_decs, selected_objs, selected_sfs = select_by_index(indices_select, current_decs, current_objs,
+                                                                      current_sfs)
 
         # Store selected individuals for this task
         pop_decs, pop_objs, pop_sfs = append_history(

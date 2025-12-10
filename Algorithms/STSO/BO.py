@@ -1,7 +1,7 @@
 """
 Bayesian Optimization (BO)
 
-This module implements Bayesian Optimization for expensive black-box function optimization.
+This module implements Bayesian Optimization for expensive single-objective optimization problems.
 
 References
 ----------
@@ -48,7 +48,6 @@ class BO:
         'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
-
     @classmethod
     def get_algorithm_information(cls, print_info=True):
         """
