@@ -58,7 +58,7 @@ DDMTOLab is designed for both researchers and practitioners working on:
 
 DDMTOLab requires:
 
-* Python 3.9 or later (recommended: Python 3.10)
+* Python 3.10+
 * PyTorch 2.5+ with CUDA 12.1 support (for GPU acceleration)
 * BoTorch 0.16+
 * GPyTorch 1.14+
