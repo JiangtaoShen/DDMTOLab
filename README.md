@@ -1,11 +1,11 @@
-# DDMTOLab: Data-Driven Multitask Optimization Laboratory
+# DDMTOLab
 
 <p align="center">
   <img src="docs/source/_static/logo.png" alt="DDMTOLab Logo" width="300">
 </p>
 
 <p align="center">
-  <strong>A Comprehensive Python Platform for Data-Driven Multitask Optimization</strong>
+  <strong>Data-Driven Multitask Optimization Laboratory</strong>
 </p>
 
 <p align="center">
