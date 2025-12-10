@@ -70,15 +70,11 @@ DDMTOLab requires:
 * tqdm
 
 ### Installation
-```bash
-pip install ddmtolab
-```
 
-Or install from source:
 ```bash
 git clone https://github.com/JiangtaoShen/DDMTOLab.git
 cd DDMTOLab
-pip install -e .
+pip install -r requirements.txt
 ```
 
 ### Basic Usage
