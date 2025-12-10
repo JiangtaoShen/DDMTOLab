@@ -56,6 +56,19 @@ DDMTOLab is designed for both researchers and practitioners working on:
 
 👉 **[Get Started with Our Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)**
 
+DDMTOLab requires:
+
+* Python 3.9 or later (recommended: Python 3.10)
+* PyTorch 2.5+ with CUDA 12.1 support (for GPU acceleration)
+* BoTorch 0.16+
+* GPyTorch 1.14+
+* NumPy 2.0+
+* SciPy 1.15+
+* scikit-learn 1.7+
+* Pandas 2.3+
+* Matplotlib 3.10+
+* tqdm
+
 ### Installation
 ```bash
 pip install ddmtolab
