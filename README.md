@@ -35,9 +35,9 @@ Whether you're working on expensive black-box optimization, multi-objective opti
 
 - 🚀 **Comprehensive Algorithms** - Single/multi-task, single/multi-objective optimization algorithms
 - 📊 **Rich Problem Suite** - Extensive benchmark functions and real-world applications
-- 🤖 **Data-Driven Optimization** - Surrogate-based methods for expensive problems
+- 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
 - 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
-- 🔌 **Fully Extensible** - Easy to add custom algorithms, problems, and metrics
+- 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
 - 📈 **Powerful Analysis Tools** - Built-in visualization and statistical analysis
 - ⚡ **Parallel Computing** - Multi-core support for batch experiments
 - 📝 **Complete Documentation** - Comprehensive guides and API reference
