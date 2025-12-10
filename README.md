@@ -158,9 +158,9 @@ if __name__ == '__main__':
 Results from the batch experiment above:
 
 <p align="center">
-  <img src="docs/images/P1-Task1.png" alt="Convergence 1" width="30%">
-  <img src="docs/images/P1-Task2.png" alt="Convergence 2" width="30%">
-  <img src="docs/images/runtime_comparison.png" alt="Runtime" width="30%">
+  <img src="docs/images/P1-Task1.png" alt="Convergence 1" width="28%">
+  <img src="docs/images/P1-Task2.png" alt="Convergence 2" width="28%">
+  <img src="docs/images/runtime_comparison.png" alt="Runtime" width="33%">
 </p>
 
 ## 🎯 Key Components
