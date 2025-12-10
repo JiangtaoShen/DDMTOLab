@@ -1,4 +1,4 @@
-# DDMTOLab
+# DDMTOLab: Data-Driven Multitask Optimization Laboratory
 
 <p align="center">
   <img src="docs/source/_static/logo.png" alt="DDMTOLab Logo" width="300">
