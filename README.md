@@ -40,7 +40,7 @@ Whether you're working on expensive black-box optimization, multi-objective opti
 - 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
 - 📈 **Powerful Analysis Tools** - Built-in visualization and statistical analysis
 - ⚡ **Parallel Computing** - Multi-core support for batch experiments
-- 📝 **Complete Documentation** - Comprehensive guides and API reference **[Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)**
+- 📝 **Complete Documentation** - Comprehensive **[Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)** and API reference
 
 ## 🔬 Applications
 
