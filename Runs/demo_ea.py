@@ -36,7 +36,7 @@ if __name__ == '__main__':
         algorithm_order=['GA', 'DE', 'PSO', 'EMEA', 'MFEA'],
         save_path='./Results',
         table_format='latex',
-        figure_format='pdf',
+        figure_format='png',
         statistic_type='mean',
         significance_level=0.05,
         rank_sum_test=True,
