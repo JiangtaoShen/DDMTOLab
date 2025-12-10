@@ -27,9 +27,9 @@
 
 ## 📖 Overview
 
-**DDMTOLab** is a comprehensive Python platform designed for data-driven multitask optimization, featuring **50+ algorithms**, **100+ benchmark problems**, and powerful experiment tools for algorithm development and performance evaluation.
+**DDMTOLab** is a comprehensive Python platform designed for data-driven multitask optimization, featuring **20+ algorithms**, **100+ benchmark problems**, and powerful experiment tools for algorithm development and performance evaluation.
 
-Whether you're working on expensive black-box optimization, multi-objective optimization, or complex multi-task scenarios, DDMTOLab provides a flexible and extensible framework to accelerate your research and support real-world applications.
+Whether you're working on expensive black-box optimization, multi-objective optimization, or complex multi-task scenarios, DDMTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
 
 ## ✨ Features
 
