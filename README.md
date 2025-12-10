@@ -16,7 +16,7 @@
     <img src="https://img.shields.io/github/stars/JiangtaoShen/DDMTOLab?style=social" alt="GitHub Stars">
   </a>
   <a href="https://www.python.org/downloads/">
-    <img src="https://img.shields.io/badge/Python-3.7+-blue.svg" alt="Python Version">
+    <img src="https://img.shields.io/badge/Python-3.10+-blue.svg" alt="Python Version">
   </a>
   <a href="https://github.com/JiangtaoShen/DDMTOLab/blob/main/LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License">
