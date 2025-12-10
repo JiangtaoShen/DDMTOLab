@@ -1,11 +1,13 @@
 """
 UniformPoint - Generate a set of uniformly distributed points.
 
-Reference:
-[1] Y. Tian, X. Xiang, X. Zhang, R. Cheng, and Y. Jin. Sampling reference points on the Pareto fronts of benchmark
-    multi-objective optimization problems. Proceedings of the IEEE Congress on Evolutionary Computation, 2018.
-[2] T. Takagi, K. Takadama, and H. Sato. Incremental lattice design of weight vector set. Proceedings of the Genetic
-    and Evolutionary Computation Conference Companion, 2020, 1486-1494.
+References
+----------
+    [1] Y. Tian, X. Xiang, X. Zhang, R. Cheng, and Y. Jin. Sampling reference points on the Pareto fronts of benchmark
+        multi-objective optimization problems. Proceedings of the IEEE Congress on Evolutionary Computation, 2018.
+
+    [2] T. Takagi, K. Takadama, and H. Sato. Incremental lattice design of weight vector set. Proceedings of the Genetic
+        and Evolutionary Computation Conference Companion, 2020, 1486–1494.
 """
 
 import numpy as np
@@ -26,6 +28,7 @@ def uniform_point(N: int, M: int, method: str = 'NBI') -> tuple[np.ndarray, int]
         Number of objectives/dimensions
     method : str, optional
         Sampling method to use (default: 'NBI'). Options:
+
         - 'NBI': Normal-boundary intersection method
         - 'ILD': Incremental lattice design
         - 'MUD': Mixture uniform design

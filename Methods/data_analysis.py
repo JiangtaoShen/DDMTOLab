@@ -81,15 +81,18 @@ class ScanResult:
     """
     Result of scanning a data directory.
 
-    Attributes:
-        algorithms: List[str]
-            Sorted list of algorithm names found in the directory.
-        problems: List[str]
-            Sorted list of problem names extracted from filenames.
-        runs: int
-            Number of independent runs per algorithm-problem combination.
-        data_path: Path
-            Path to the scanned data directory.
+    :no-index:
+
+    Attributes
+    ----------
+    algorithms : List[str]
+        Sorted list of algorithm names found in the directory.
+    problems : List[str]
+        Sorted list of problem names extracted from filenames.
+    runs : int
+        Number of independent runs per algorithm-problem combination.
+    data_path : Path
+        Path to the scanned data directory.
     """
     algorithms: List[str]
     problems: List[str]
@@ -102,32 +105,30 @@ class MetricResults:
     """
     Container for all metric calculation results.
 
-    Attributes:
-        metric_values: Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
-            Nested dictionary storing metric values per generation.
-            Structure: metric_values[algorithm][problem][run] = List[np.ndarray]
-            where each np.ndarray contains metric values per generation for each task.
+    :no-index:
 
-        best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-            Nested dictionary storing final best metric values.
-            Structure: best_values[algorithm][problem][run] = List[float]
-            where each float is the final best value for each task.
-
-        objective_values: Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
-            Nested dictionary storing original objective values.
-            Structure: objective_values[algorithm][problem][run] = List[np.ndarray]
-            where each np.ndarray has shape (n_solutions, n_objectives).
-
-        runtime: Dict[str, Dict[str, Dict[int, float]]]
-            Nested dictionary storing runtime in seconds.
-            Structure: runtime[algorithm][problem][run] = float
-
-        max_nfes: Dict[str, Dict[str, List[int]]]
-            Nested dictionary storing maximum number of function evaluations.
-            Structure: max_nfes[algorithm][problem] = List[int] (per task)
-
-        metric_name: Optional[str]
-            Name of the metric used (e.g., 'IGD', 'HV', or None for single-objective).
+    Attributes
+    ----------
+    metric_values : Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
+        Nested dictionary storing metric values per generation.
+        Structure: metric_values[algorithm][problem][run] = List[np.ndarray]
+        where each np.ndarray contains metric values per generation for each task.
+    best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+        Nested dictionary storing final best metric values.
+        Structure: best_values[algorithm][problem][run] = List[float]
+        where each float is the final best value for each task.
+    objective_values : Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
+        Nested dictionary storing original objective values.
+        Structure: objective_values[algorithm][problem][run] = List[np.ndarray]
+        where each np.ndarray has shape (n_solutions, n_objectives).
+    runtime : Dict[str, Dict[str, Dict[int, float]]]
+        Nested dictionary storing runtime in seconds.
+        Structure: runtime[algorithm][problem][run] = float
+    max_nfes : Dict[str, Dict[str, List[int]]]
+        Nested dictionary storing maximum number of function evaluations.
+        Structure: max_nfes[algorithm][problem] = List[int] (per task)
+    metric_name : Optional[str]
+        Name of the metric used (e.g., 'IGD', 'HV', or None for single-objective).
     """
     metric_values: Dict[str, Dict[str, Dict[int, Any]]]
     best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
@@ -142,19 +143,22 @@ class TableConfig:
     """
     Configuration for table generation.
 
-    Attributes:
-        table_format: TableFormat
-            Output format (EXCEL or LATEX).
-        statistic_type: StatisticType
-            Type of statistic to display (MEAN, MEDIAN, MAX, MIN).
-        significance_level: float
-            P-value threshold for statistical significance testing.
-            Default: 0.05
-        rank_sum_test: bool
-            Whether to perform Wilcoxon rank-sum test.
-            Default: True
-        save_path: Path
-            Directory path to save output tables.
+    :no-index:
+
+    Attributes
+    ----------
+    table_format : TableFormat
+        Output format (EXCEL or LATEX).
+    statistic_type : StatisticType
+        Type of statistic to display (MEAN, MEDIAN, MAX, MIN).
+    significance_level : float
+        P-value threshold for statistical significance testing.
+        Default: 0.05
+    rank_sum_test : bool
+        Whether to perform Wilcoxon rank-sum test.
+        Default: True
+    save_path : Path
+        Directory path to save output tables.
     """
     table_format: TableFormat = TableFormat.EXCEL
     statistic_type: StatisticType = StatisticType.MEAN
@@ -168,27 +172,30 @@ class PlotConfig:
     """
     Configuration for plot generation.
 
-    Attributes:
-        figure_format: str
-            Output figure format (e.g., 'pdf', 'png', 'svg').
-            Default: 'pdf'
-        statistic_type: StatisticType
-            Type of statistic for selecting representative run.
-        log_scale: bool
-            Whether to use logarithmic scale for y-axis.
-            Default: False
-        show_pf: bool
-            Whether to show true Pareto front in ND solution plots.
-            Default: True
-        show_nd: bool
-            Whether to filter and show only non-dominated solutions.
-            Default: True
-        save_path: Path
-            Directory path to save output figures.
-        colors: List[str]
-            Color palette for plotting algorithms.
-        markers: List[str]
-            Marker styles for plotting algorithms.
+    :no-index:
+
+    Attributes
+    ----------
+    figure_format : str
+        Output figure format (e.g., 'pdf', 'png', 'svg').
+        Default: 'pdf'
+    statistic_type : StatisticType
+        Type of statistic for selecting representative run.
+    log_scale : bool
+        Whether to use logarithmic scale for y-axis.
+        Default: False
+    show_pf : bool
+        Whether to show true Pareto front in ND solution plots.
+        Default: True
+    show_nd : bool
+        Whether to filter and show only non-dominated solutions.
+        Default: True
+    save_path : Path
+        Directory path to save output figures.
+    colors : List[str]
+        Color palette for plotting algorithms.
+    markers : List[str]
+        Marker styles for plotting algorithms.
     """
     figure_format: str = 'pdf'
     statistic_type: StatisticType = StatisticType.MEAN
@@ -205,11 +212,14 @@ class ComparisonResult:
     """
     Result of statistical comparison between algorithms.
 
-    Attributes:
-        symbol: str
-            Comparison symbol: '+' (better), '-' (worse), '=' (no significant difference).
-        p_value: Optional[float]
-            P-value from statistical test, or None if test not performed.
+    :no-index:
+
+    Attributes
+    ----------
+    symbol : str
+        Comparison symbol: '+' (better), '-' (worse), '=' (no significant difference).
+    p_value : Optional[float]
+        P-value from statistical test, or None if test not performed.
     """
     symbol: str
     p_value: Optional[float] = None
@@ -220,13 +230,16 @@ class ComparisonCounts:
     """
     Aggregated comparison counts for an algorithm.
 
-    Attributes:
-        plus: int
-            Number of significantly better results.
-        minus: int
-            Number of significantly worse results.
-        equal: int
-            Number of statistically equivalent results.
+    :no-index:
+
+    Attributes
+    ----------
+    plus : int
+        Number of significantly better results.
+    minus : int
+        Number of significantly worse results.
+    equal : int
+        Number of statistically equivalent results.
     """
     plus: int = 0
     minus: int = 0
@@ -247,18 +260,23 @@ class DataUtils:
         """
         Load and return a Python object from a pickle file.
 
-        Parameters:
-            file_path: Path
-                Path to the pickle file.
+        Parameters
+        ----------
+        file_path : Path
+            Path to the pickle file.
 
-        Returns:
-            Dict[str, Any]
-                Unpickled Python object (typically a dictionary containing
-                'all_objs', 'runtime', 'max_nfes' keys).
+        Returns
+        -------
+        Dict[str, Any]
+            Unpickled Python object (typically a dictionary containing
+            'all_objs', 'runtime', 'max_nfes' keys).
 
-        Raises:
-            FileNotFoundError: If the pickle file does not exist.
-            pickle.UnpicklingError: If the file cannot be unpickled.
+        Raises
+        ------
+        FileNotFoundError
+            If the pickle file does not exist.
+        pickle.UnpicklingError
+            If the file cannot be unpickled.
         """
         with open(file_path, 'rb') as f:
             return pickle.load(f)
@@ -273,32 +291,34 @@ class DataUtils:
         """
         Load reference data (Pareto Front or reference point) for a specific problem and task.
 
-        Parameters:
-            settings: Dict[str, Any]
-                Dictionary containing problem configurations and reference definitions.
-                Expected keys:
-                    - problem (str): Contains task definitions
-                    - 'n_ref' (int, optional): Number of reference points (default: 10000)
-                    - 'ref_path' (str, optional): Path to reference files (default: './MOReference')
+        Parameters
+        ----------
+        settings : Dict[str, Any]
+            Dictionary containing problem configurations and reference definitions.
+            Expected keys:
 
-            problem: str
-                Name of the problem (e.g., "P1", "P2").
+            - problem (str): Contains task definitions
+            - 'n_ref' (int, optional): Number of reference points (default: 10000)
+            - 'ref_path' (str, optional): Path to reference files (default: './MOReference')
+        problem : str
+            Name of the problem (e.g., "P1", "P2").
+        task_identifier : Union[str, int]
+            Task identifier - either task name (str like "T1") or index (int like 0).
+        n_objectives : int
+            Number of objectives for the problem.
 
-            task_identifier: Union[str, int]
-                Task identifier - either task name (str like "T1") or index (int like 0).
+        Returns
+        -------
+        Optional[np.ndarray]
+            Reference data with shape (n_points, n_objectives), or None if not available.
 
-            n_objectives: int
-                Number of objectives for the problem.
+        Notes
+        -----
+        Supports three types of reference definitions:
 
-        Returns:
-            Optional[np.ndarray]
-                Reference data with shape (n_points, n_objectives), or None if not available.
-
-        Notes:
-            Supports three types of reference definitions:
-            1. Callable: Function that returns reference data
-            2. String: File path to .npy or .csv reference file
-            3. Array-like: Direct reference data (list, tuple, np.ndarray)
+        1. Callable: Function that returns reference data
+        2. String: File path to .npy or .csv reference file
+        3. Array-like: Direct reference data (list, tuple, np.ndarray)
         """
         # Convert task index to task name if necessary
         task_name = f"T{task_identifier + 1}" if isinstance(task_identifier, int) else task_identifier
@@ -348,19 +368,21 @@ class DataUtils:
         """
         Load reference data from file.
 
-        Parameters:
-            settings: Dict[str, Any]
-                Settings dictionary containing 'ref_path'.
-            ref_definition: str
-                File path or filename.
-            problem: str
-                Problem name for alternative path construction.
-            task_name: str
-                Task name for alternative path construction.
+        Parameters
+        ----------
+        settings : Dict[str, Any]
+            Settings dictionary containing 'ref_path'.
+        ref_definition : str
+            File path or filename.
+        problem : str
+            Problem name for alternative path construction.
+        task_name : str
+            Task name for alternative path construction.
 
-        Returns:
-            Optional[np.ndarray]
-                Loaded reference data or None if loading fails.
+        Returns
+        -------
+        Optional[np.ndarray]
+            Loaded reference data or None if loading fails.
         """
         ref_path = settings.get('ref_path', './MOReference')
 
@@ -404,13 +426,15 @@ class DataUtils:
         """
         Determine optimization direction based on metric type.
 
-        Parameters:
-            metric_name: Optional[str]
-                Name of the metric ('IGD', 'HV', or None for single-objective).
+        Parameters
+        ----------
+        metric_name : Optional[str]
+            Name of the metric ('IGD', 'HV', or None for single-objective).
 
-        Returns:
-            OptimizationDirection
-                MINIMIZE for IGD and single-objective, MAXIMIZE for HV.
+        Returns
+        -------
+        OptimizationDirection
+            MINIMIZE for IGD and single-objective, MAXIMIZE for HV.
         """
         if metric_name is None:
             return OptimizationDirection.MINIMIZE
@@ -441,17 +465,19 @@ class StatisticsCalculator:
         """
         Calculate a statistical measure and optional standard deviation from data.
 
-        Parameters:
-            data: List[float]
-                List of numeric values to compute statistics from.
-            statistic_type: StatisticType
-                Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN).
+        Parameters
+        ----------
+        data : List[float]
+            List of numeric values to compute statistics from.
+        statistic_type : StatisticType
+            Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN).
 
-        Returns:
-            Tuple[float, Optional[float]]
-                Tuple of (statistic_value, std_value).
-                std_value is only returned for MEAN, None otherwise.
-                Returns (np.nan, np.nan) for empty data.
+        Returns
+        -------
+        Tuple[float, Optional[float]]
+            Tuple of (statistic_value, std_value).
+            std_value is only returned for MEAN, None otherwise.
+            Returns (np.nan, np.nan) for empty data.
         """
         if len(data) == 0:
             return np.nan, np.nan
@@ -479,20 +505,22 @@ class StatisticsCalculator:
         """
         Perform Wilcoxon rank-sum test to compare two algorithms.
 
-        Parameters:
-            algo_data: List[float]
-                Data from the algorithm being tested.
-            base_data: List[float]
-                Data from the baseline algorithm.
-            significance_level: float
-                P-value threshold for significance (default: 0.05).
-            direction: OptimizationDirection
-                Optimization direction (MINIMIZE or MAXIMIZE).
+        Parameters
+        ----------
+        algo_data : List[float]
+            Data from the algorithm being tested.
+        base_data : List[float]
+            Data from the baseline algorithm.
+        significance_level : float, optional
+            P-value threshold for significance (default: 0.05).
+        direction : OptimizationDirection, optional
+            Optimization direction (MINIMIZE or MAXIMIZE).
 
-        Returns:
-            ComparisonResult
-                Result containing comparison symbol and p-value.
-                Symbol: '+' (better), '-' (worse), '=' (no significant difference).
+        Returns
+        -------
+        ComparisonResult
+            Result containing comparison symbol and p-value.
+            Symbol: '+' (better), '-' (worse), '=' (no significant difference).
         """
         if len(algo_data) == 0 or len(base_data) == 0:
             return ComparisonResult(symbol='=', p_value=None)
@@ -525,19 +553,21 @@ class StatisticsCalculator:
         """
         Collect non-NaN values from all runs for a specific algorithm-problem-task combination.
 
-        Parameters:
-            all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-                Nested dictionary containing best metric values.
-            algo: str
-                Algorithm name.
-            prob: str
-                Problem name.
-            task_idx: int
-                Task index (0-based).
+        Parameters
+        ----------
+        all_best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Nested dictionary containing best metric values.
+        algo : str
+            Algorithm name.
+        prob : str
+            Problem name.
+        task_idx : int
+            Task index (0-based).
 
-        Returns:
-            List[float]
-                List of non-NaN metric values from all runs.
+        Returns
+        -------
+        List[float]
+            List of non-NaN metric values from all runs.
         """
         data = []
         for run in all_best_values[algo][prob].keys():
@@ -557,21 +587,23 @@ class StatisticsCalculator:
         """
         Select a representative run based on the specified statistic type.
 
-        Parameters:
-            all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-                Nested dictionary containing best metric values.
-            algo: str
-                Algorithm name.
-            prob: str
-                Problem name.
-            task_idx: int
-                Task index (0-based).
-            statistic_type: StatisticType
-                Type of statistic (MEAN returns None as all runs are used).
+        Parameters
+        ----------
+        all_best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Nested dictionary containing best metric values.
+        algo : str
+            Algorithm name.
+        prob : str
+            Problem name.
+        task_idx : int
+            Task index (0-based).
+        statistic_type : StatisticType
+            Type of statistic (MEAN returns None as all runs are used).
 
-        Returns:
-            Optional[int]
-                Run number of the representative run, or None if MEAN or no valid data.
+        Returns
+        -------
+        Optional[int]
+            Run number of the representative run, or None if MEAN or no valid data.
         """
         if statistic_type == StatisticType.MEAN:
             return None
@@ -618,9 +650,10 @@ class TableGenerator:
         """
         Initialize TableGenerator with configuration.
 
-        Parameters:
-            config: TableConfig
-                Configuration object for table generation.
+        Parameters
+        ----------
+        config : TableConfig
+            Configuration object for table generation.
         """
         self.config = config
 
@@ -633,21 +666,21 @@ class TableGenerator:
         """
         Generate comparison table with statistical analysis.
 
-        Parameters:
-            all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-                Nested dictionary containing best metric values.
-                Structure: all_best_values[algorithm][problem][run] = List[float]
+        Parameters
+        ----------
+        all_best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Nested dictionary containing best metric values.
+            Structure: all_best_values[algorithm][problem][run] = List[float]
+        algorithm_order : List[str]
+            List of algorithm names in display order.
+            The last algorithm is treated as the baseline for comparisons.
+        metric_name : Optional[str], optional
+            Metric name to determine optimization direction.
 
-            algorithm_order: List[str]
-                List of algorithm names in display order.
-                The last algorithm is treated as the baseline for comparisons.
-
-            metric_name: Optional[str]
-                Metric name to determine optimization direction.
-
-        Returns:
-            Union[pd.DataFrame, str]
-                DataFrame for Excel format, LaTeX string for LaTeX format.
+        Returns
+        -------
+        Union[pd.DataFrame, str]
+            DataFrame for Excel format, LaTeX string for LaTeX format.
         """
         # Extract problems and determine task count
         problems = sorted(all_best_values[algorithm_order[0]].keys())
@@ -679,21 +712,23 @@ class TableGenerator:
         """
         Generate table rows with formatted metric values and statistical comparisons.
 
-        Parameters:
-            all_best_values: Dict
-                Best metric values dictionary.
-            algorithm_order: List[str]
-                Algorithm display order.
-            problems: List[str]
-                List of problem names.
-            num_tasks: int
-                Number of tasks per problem.
-            direction: OptimizationDirection
-                Optimization direction.
+        Parameters
+        ----------
+        all_best_values : Dict
+            Best metric values dictionary.
+        algorithm_order : List[str]
+            Algorithm display order.
+        problems : List[str]
+            List of problem names.
+        num_tasks : int
+            Number of tasks per problem.
+        direction : OptimizationDirection
+            Optimization direction.
 
-        Returns:
-            Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts]]
-                Tuple of (rows, comparison_counts).
+        Returns
+        -------
+        Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts]]
+            Tuple of (rows, comparison_counts).
         """
         base_algo = algorithm_order[-1]
         rows = []
@@ -750,17 +785,19 @@ class TableGenerator:
         """
         Format a table cell with statistic value, optional std deviation, and comparison symbol.
 
-        Parameters:
-            stat_value: float
-                Statistical value.
-            std_value: Optional[float]
-                Standard deviation (or None).
-            symbol: str
-                Comparison symbol.
+        Parameters
+        ----------
+        stat_value : float
+            Statistical value.
+        std_value : Optional[float]
+            Standard deviation (or None).
+        symbol : str
+            Comparison symbol.
 
-        Returns:
-            str
-                Formatted cell content string.
+        Returns
+        -------
+        str
+            Formatted cell content string.
         """
         if np.isnan(stat_value):
             return 'N/A'
@@ -798,17 +835,19 @@ class TableGenerator:
         """
         Find the algorithm with the best performance in a table row.
 
-        Parameters:
-            row: Dict[str, Any]
-                Dictionary mapping algorithm names to formatted cell values.
-            algorithm_order: List[str]
-                List of algorithm names.
-            direction: OptimizationDirection
-                Optimization direction.
+        Parameters
+        ----------
+        row : Dict[str, Any]
+            Dictionary mapping algorithm names to formatted cell values.
+        algorithm_order : List[str]
+            List of algorithm names.
+        direction : OptimizationDirection
+            Optimization direction.
 
-        Returns:
-            Optional[str]
-                Name of the best-performing algorithm or None.
+        Returns
+        -------
+        Optional[str]
+            Name of the best-performing algorithm or None.
         """
         best_val = None
         best_algo = None
@@ -843,19 +882,21 @@ class TableGenerator:
         """
         Generate and save a formatted Excel table.
 
-        Parameters:
-            rows: List[Dict[str, Any]]
-                Table row data.
-            algorithm_order: List[str]
-                Algorithm display order.
-            comparison_counts: Dict[str, ComparisonCounts]
-                Comparison result counts.
-            direction: OptimizationDirection
-                Optimization direction.
+        Parameters
+        ----------
+        rows : List[Dict[str, Any]]
+            Table row data.
+        algorithm_order : List[str]
+            Algorithm display order.
+        comparison_counts : Dict[str, ComparisonCounts]
+            Comparison result counts.
+        direction : OptimizationDirection
+            Optimization direction.
 
-        Returns:
-            pd.DataFrame
-                DataFrame containing the table data.
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the table data.
         """
         # Append summary row
         if self.config.rank_sum_test:
@@ -893,15 +934,16 @@ class TableGenerator:
         """
         Apply formatting to Excel workbook.
 
-        Parameters:
-            output_file: Path
-                Path to Excel file.
-            df: pd.DataFrame
-                DataFrame for row count reference.
-            algorithm_order: List[str]
-                Algorithm names.
-            direction: OptimizationDirection
-                Optimization direction for best value highlighting.
+        Parameters
+        ----------
+        output_file : Path
+            Path to Excel file.
+        df : pd.DataFrame
+            DataFrame for row count reference.
+        algorithm_order : List[str]
+            Algorithm names.
+        direction : OptimizationDirection
+            Optimization direction for best value highlighting.
         """
         wb = load_workbook(output_file)
         ws = wb.active
@@ -978,19 +1020,21 @@ class TableGenerator:
         """
         Generate and save a LaTeX-formatted table.
 
-        Parameters:
-            rows: List[Dict[str, Any]]
-                Table row data.
-            algorithm_order: List[str]
-                Algorithm display order.
-            comparison_counts: Dict[str, ComparisonCounts]
-                Comparison result counts.
-            direction: OptimizationDirection
-                Optimization direction.
+        Parameters
+        ----------
+        rows : List[Dict[str, Any]]
+            Table row data.
+        algorithm_order : List[str]
+            Algorithm display order.
+        comparison_counts : Dict[str, ComparisonCounts]
+            Comparison result counts.
+        direction : OptimizationDirection
+            Optimization direction.
 
-        Returns:
-            str
-                LaTeX table string.
+        Returns
+        -------
+        str
+            LaTeX table string.
         """
         df = pd.DataFrame(rows)
 
@@ -1065,9 +1109,10 @@ class PlotGenerator:
         """
         Initialize PlotGenerator with configuration.
 
-        Parameters:
-            config: PlotConfig
-                Configuration object for plot generation.
+        Parameters
+        ----------
+        config : PlotConfig
+            Configuration object for plot generation.
         """
         self.config = config
 
@@ -1082,27 +1127,25 @@ class PlotGenerator:
         """
         Generate and save convergence curve plots for all algorithms, problems, and tasks.
 
-        Parameters:
-            metric_values: Dict[str, Dict[str, Dict[int, Any]]]
-                Metric values per generation.
-                Structure: metric_values[algorithm][problem][run] = List[np.ndarray]
+        Parameters
+        ----------
+        metric_values : Dict[str, Dict[str, Dict[int, Any]]]
+            Metric values per generation.
+            Structure: metric_values[algorithm][problem][run] = List[np.ndarray]
+        best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Best metric values for representative run selection.
+        max_nfes : Dict[str, Dict[str, List[int]]]
+            Maximum number of function evaluations per task.
+            Structure: max_nfes[algorithm][problem] = List[int]
+        algorithm_order : List[str]
+            List of algorithm names to plot.
+        metric_name : Optional[str], optional
+            Metric name for y-axis label.
 
-            best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-                Best metric values for representative run selection.
-
-            max_nfes: Dict[str, Dict[str, List[int]]]
-                Maximum number of function evaluations per task.
-                Structure: max_nfes[algorithm][problem] = List[int]
-
-            algorithm_order: List[str]
-                List of algorithm names to plot.
-
-            metric_name: Optional[str]
-                Metric name for y-axis label.
-
-        Returns:
-            None
-                Saves figures to disk.
+        Returns
+        -------
+        None
+            Saves figures to disk.
         """
         problems = sorted(metric_values[algorithm_order[0]].keys())
         save_dir = Path(self.config.save_path)
@@ -1142,27 +1185,29 @@ class PlotGenerator:
         """
         Create a single convergence curve figure.
 
-        Parameters:
-            num_tasks: int
-                Total number of tasks.
-            metric_values: Dict
-                Metric values dictionary.
-            best_values: Dict
-                Best values dictionary.
-            max_nfes: Dict
-                Max NFEs dictionary.
-            algorithm_order: List[str]
-                Algorithm order.
-            prob: str
-                Problem name.
-            task_idx: int
-                Task index.
-            metric_name: Optional[str]
-                Metric name for label.
+        Parameters
+        ----------
+        num_tasks : int
+            Total number of tasks.
+        metric_values : Dict
+            Metric values dictionary.
+        best_values : Dict
+            Best values dictionary.
+        max_nfes : Dict
+            Max NFEs dictionary.
+        algorithm_order : List[str]
+            Algorithm order.
+        prob : str
+            Problem name.
+        task_idx : int
+            Task index.
+        metric_name : Optional[str]
+            Metric name for label.
 
-        Returns:
-            plt.Figure
-                Matplotlib figure object.
+        Returns
+        -------
+        plt.Figure
+            Matplotlib figure object.
         """
         fig, ax = plt.subplots(figsize=(5, 3.5))
 
@@ -1218,21 +1263,23 @@ class PlotGenerator:
         """
         Extract convergence curve for a specific configuration.
 
-        Parameters:
-            metric_values: Dict
-                Metric values dictionary.
-            algo: str
-                Algorithm name.
-            prob: str
-                Problem name.
-            task_idx: int
-                Task index.
-            run: Optional[int]
-                Specific run number (None for mean across runs).
+        Parameters
+        ----------
+        metric_values : Dict
+            Metric values dictionary.
+        algo : str
+            Algorithm name.
+        prob : str
+            Problem name.
+        task_idx : int
+            Task index.
+        run : Optional[int]
+            Specific run number (None for mean across runs).
 
-        Returns:
-            np.ndarray
-                Convergence curve values.
+        Returns
+        -------
+        np.ndarray
+            Convergence curve values.
         """
         if run is not None:
             return np.array(metric_values[algo][prob][run][task_idx])
@@ -1254,9 +1301,10 @@ class PlotGenerator:
         """
         Apply scientific notation to axes if values exceed threshold.
 
-        Parameters:
-            ax: plt.Axes
-                Matplotlib axes object.
+        Parameters
+        ----------
+        ax : plt.Axes
+            Matplotlib axes object.
         """
         threshold = 1000
         xmax = ax.get_xlim()[1]
@@ -1277,17 +1325,18 @@ class PlotGenerator:
         """
         Generate and save a bar plot showing average runtime comparison.
 
-        Parameters:
-            runtime: Dict[str, Dict[str, Dict[int, float]]]
-                Runtime dictionary.
-                Structure: runtime[algorithm][problem][run] = float (seconds)
+        Parameters
+        ----------
+        runtime : Dict[str, Dict[str, Dict[int, float]]]
+            Runtime dictionary.
+            Structure: runtime[algorithm][problem][run] = float (seconds)
+        algorithm_order : List[str]
+            List of algorithm names in display order.
 
-            algorithm_order: List[str]
-                List of algorithm names in display order.
-
-        Returns:
-            None
-                Saves figure to disk.
+        Returns
+        -------
+        None
+            Saves figure to disk.
         """
         problems = sorted(runtime[algorithm_order[0]].keys())
         save_dir = Path(self.config.save_path)
@@ -1344,24 +1393,23 @@ class PlotGenerator:
         """
         Generate and save non-dominated solution plots.
 
-        Parameters:
-            best_values: Dict[str, Dict[str, Dict[int, List[float]]]]
-                Best values for representative run selection.
+        Parameters
+        ----------
+        best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Best values for representative run selection.
+        objective_values : Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
+            Original objective values.
+            Structure: objective_values[algorithm][problem][run] = List[np.ndarray]
+            where each np.ndarray has shape (n_solutions, n_objectives).
+        algorithm_order : List[str]
+            List of algorithm names.
+        settings : Optional[Dict[str, Any]], optional
+            Problem settings for loading true Pareto fronts.
 
-            objective_values: Dict[str, Dict[str, Dict[int, List[np.ndarray]]]]
-                Original objective values.
-                Structure: objective_values[algorithm][problem][run] = List[np.ndarray]
-                where each np.ndarray has shape (n_solutions, n_objectives).
-
-            algorithm_order: List[str]
-                List of algorithm names.
-
-            settings: Optional[Dict[str, Any]]
-                Problem settings for loading true Pareto fronts.
-
-        Returns:
-            None
-                Saves figures to disk.
+        Returns
+        -------
+        None
+            Saves figures to disk.
         """
         nd_folder = Path(self.config.save_path) / 'ND_Solutions'
         nd_folder.mkdir(parents=True, exist_ok=True)
@@ -1431,25 +1479,27 @@ class PlotGenerator:
         """
         Create a non-dominated solution plot.
 
-        Parameters:
-            nd_solutions: np.ndarray
-                Non-dominated solutions array with shape (n_solutions, n_objectives).
-            true_pf: Optional[np.ndarray]
-                True Pareto front array.
-            n_objectives: int
-                Number of objectives.
-            n_tasks: int
-                Total number of tasks.
-            prob: str
-                Problem name.
-            task_idx: int
-                Task index.
-            algo: str
-                Algorithm name.
+        Parameters
+        ----------
+        nd_solutions : np.ndarray
+            Non-dominated solutions array with shape (n_solutions, n_objectives).
+        true_pf : Optional[np.ndarray]
+            True Pareto front array.
+        n_objectives : int
+            Number of objectives.
+        n_tasks : int
+            Total number of tasks.
+        prob : str
+            Problem name.
+        task_idx : int
+            Task index.
+        algo : str
+            Algorithm name.
 
-        Returns:
-            plt.Figure
-                Matplotlib figure object.
+        Returns
+        -------
+        plt.Figure
+            Matplotlib figure object.
         """
         fig = plt.figure(figsize=(4.5, 3.5))
 
@@ -1516,6 +1566,7 @@ class DataAnalyzer:
     Main class for comprehensive data analysis and visualization of multi-task optimization experiments.
 
     This class provides a complete pipeline for:
+
     - Scanning data directories to detect algorithms, problems, and runs
     - Calculating performance metrics (IGD, HV, or objective values)
     - Generating statistical comparison tables (Excel or LaTeX)
@@ -1523,17 +1574,18 @@ class DataAnalyzer:
     - Visualizing runtime comparisons
     - Plotting non-dominated solutions
 
-    Attributes:
-        data_path: Path
-            Path to the data directory containing experiment results.
-        settings: Optional[Dict[str, Any]]
-            Problem settings including reference definitions and metric configuration.
-        algorithm_order: Optional[List[str]]
-            Custom ordering of algorithms for display.
-        table_config: TableConfig
-            Configuration for table generation.
-        plot_config: PlotConfig
-            Configuration for plot generation.
+    Attributes
+    ----------
+    data_path : Path
+        Path to the data directory containing experiment results.
+    settings : Optional[Dict[str, Any]]
+        Problem settings including reference definitions and metric configuration.
+    algorithm_order : Optional[List[str]]
+        Custom ordering of algorithms for display.
+    table_config : TableConfig
+        Configuration for table generation.
+    plot_config : PlotConfig
+        Configuration for plot generation.
     """
 
     def __init__(
@@ -1556,69 +1608,59 @@ class DataAnalyzer:
         """
         Initialize DataAnalyzer with configuration parameters.
 
-        Parameters:
-            data_path: Union[str, Path]
-                Path to data directory containing algorithm subdirectories.
-                Each subdirectory should contain pickle files named: ALGO_problem_run.pkl
-                Default: './Data'
+        Parameters
+        ----------
+        data_path : Union[str, Path], optional
+            Path to data directory containing algorithm subdirectories.
+            Each subdirectory should contain pickle files named: ALGO_problem_run.pkl
+            Default: './Data'
+        settings : Optional[Dict[str, Any]], optional
+            Problem settings dictionary containing:
 
-            settings: Optional[Dict[str, Any]]
-                Problem settings dictionary containing:
-                    - Problem names as keys (e.g., 'P1', 'P2')
-                    - Task definitions as nested dictionaries
-                    - 'metric': str ('IGD' or 'HV')
-                    - 'ref_path': str (path to reference files)
-                    - 'n_ref': int (number of reference points)
-                Default: None (single-objective mode)
+            - Problem names as keys (e.g., 'P1', 'P2')
+            - Task definitions as nested dictionaries
+            - 'metric': str ('IGD' or 'HV')
+            - 'ref_path': str (path to reference files)
+            - 'n_ref': int (number of reference points)
 
-            algorithm_order: Optional[List[str]]
-                Custom ordering of algorithms for display.
-                The last algorithm is used as baseline for statistical tests.
-                Default: None (alphabetical order)
-
-            save_path: Union[str, Path]
-                Directory path to save all output files.
-                Default: './Results'
-
-            table_format: str
-                Output table format: 'excel' or 'latex'.
-                Default: 'excel'
-
-            figure_format: str
-                Output figure format: 'pdf', 'png', 'svg', etc.
-                Default: 'pdf'
-
-            statistic_type: str
-                Type of statistic: 'mean', 'median', 'max', 'min'.
-                Default: 'mean'
-
-            significance_level: float
-                P-value threshold for statistical significance testing.
-                Default: 0.05
-
-            rank_sum_test: bool
-                Whether to perform Wilcoxon rank-sum test.
-                Default: True
-
-            log_scale: bool
-                Whether to use logarithmic scale for convergence plot y-axis.
-                Default: False
-
-            show_pf: bool
-                Whether to show true Pareto front in ND solution plots.
-                Default: True
-
-            show_nd: bool
-                Whether to filter and show only non-dominated solutions.
-                Default: True
-
-            best_so_far: bool
-                Whether to use best-so-far metric values.
-                Default: True
-
-            clear_results: bool
-                Whether to clear existing results folder before analysis.
-                Default: True
+            Default: None (single-objective mode)
+        algorithm_order : Optional[List[str]], optional
+            Custom ordering of algorithms for display.
+            The last algorithm is used as baseline for statistical tests.
+            Default: None (alphabetical order)
+        save_path : Union[str, Path], optional
+            Directory path to save all output files.
+            Default: './Results'
+        table_format : str, optional
+            Output table format: 'excel' or 'latex'.
+            Default: 'excel'
+        figure_format : str, optional
+            Output figure format: 'pdf', 'png', 'svg', etc.
+            Default: 'pdf'
+        statistic_type : str, optional
+            Type of statistic: 'mean', 'median', 'max', 'min'.
+            Default: 'mean'
+        significance_level : float, optional
+            P-value threshold for statistical significance testing.
+            Default: 0.05
+        rank_sum_test : bool, optional
+            Whether to perform Wilcoxon rank-sum test.
+            Default: True
+        log_scale : bool, optional
+            Whether to use logarithmic scale for convergence plot y-axis.
+            Default: False
+        show_pf : bool, optional
+            Whether to show true Pareto front in ND solution plots.
+            Default: True
+        show_nd : bool, optional
+            Whether to filter and show only non-dominated solutions.
+            Default: True
+        best_so_far : bool, optional
+            Whether to use best-so-far metric values.
+            Default: True
+        clear_results : bool, optional
+            Whether to clear existing results folder before analysis.
+            Default: True
         """
         self.data_path = Path(data_path)
         self.settings = settings
@@ -1656,17 +1698,22 @@ class DataAnalyzer:
         """
         Scan the data directory to detect algorithms, problems, run counts.
 
-        Returns:
-            ScanResult
-                Dataclass containing:
-                    - algorithms: List[str] - Sorted list of algorithm names
-                    - problems: List[str] - Sorted list of problem names
-                    - runs: int - Number of independent runs
-                    - data_path: Path - Path to scanned directory
+        Returns
+        -------
+        ScanResult
+            Dataclass containing:
 
-        Raises:
-            FileNotFoundError: If data_path does not exist.
-            ValueError: If no algorithm directories or pickle files found.
+            - algorithms: List[str] - Sorted list of algorithm names
+            - problems: List[str] - Sorted list of problem names
+            - runs: int - Number of independent runs
+            - data_path: Path - Path to scanned directory
+
+        Raises
+        ------
+        FileNotFoundError
+            If data_path does not exist.
+        ValueError
+            If no algorithm directories or pickle files found.
         """
         algorithms = []
         problems = []
@@ -1710,18 +1757,22 @@ class DataAnalyzer:
         """
         Calculate metric values for all algorithms, problems, and runs.
 
-        Returns:
-            MetricResults
-                Dataclass containing all computed metrics:
-                    - metric_values: Metric values per generation
-                    - best_values: Final best metric values
-                    - objective_values: Original objective values
-                    - runtime: Runtime in seconds
-                    - max_nfes: Maximum function evaluations
-                    - metric_name: Name of metric used
+        Returns
+        -------
+        MetricResults
+            Dataclass containing all computed metrics:
 
-        Raises:
-            RuntimeError: If scan_data() has not been called.
+            - metric_values: Metric values per generation
+            - best_values: Final best metric values
+            - objective_values: Original objective values
+            - runtime: Runtime in seconds
+            - max_nfes: Maximum function evaluations
+            - metric_name: Name of metric used
+
+        Raises
+        ------
+        RuntimeError
+            If scan_data() has not been called.
         """
         if self._scan_result is None:
             self.scan_data()
@@ -1792,16 +1843,18 @@ class DataAnalyzer:
         """
         Calculate metric values for a single run.
 
-        Parameters:
-            data: Dict[str, Any]
-                Loaded pickle data containing 'all_objs' key.
-            prob: str
-                Problem name for loading references.
+        Parameters
+        ----------
+        data : Dict[str, Any]
+            Loaded pickle data containing 'all_objs' key.
+        prob : str
+            Problem name for loading references.
 
-        Returns:
-            Tuple[List[np.ndarray], List[np.ndarray]]
-                Tuple of (metric_values, metric_values_best_so_far).
-                Each is a list of arrays, one per task.
+        Returns
+        -------
+        Tuple[List[np.ndarray], List[np.ndarray]]
+            Tuple of (metric_values, metric_values_best_so_far).
+            Each is a list of arrays, one per task.
         """
         all_objs = data['all_objs']
         n_tasks = len(all_objs)
@@ -1857,12 +1910,15 @@ class DataAnalyzer:
         """
         Generate comparison tables with statistical analysis.
 
-        Returns:
-            Union[pd.DataFrame, str]
-                DataFrame for Excel format, LaTeX string for LaTeX format.
+        Returns
+        -------
+        Union[pd.DataFrame, str]
+            DataFrame for Excel format, LaTeX string for LaTeX format.
 
-        Raises:
-            RuntimeError: If calculate_metrics() has not been called.
+        Raises
+        ------
+        RuntimeError
+            If calculate_metrics() has not been called.
         """
         if self._metric_results is None:
             self.calculate_metrics()
@@ -1880,12 +1936,15 @@ class DataAnalyzer:
         """
         Generate and save convergence curve plots.
 
-        Returns:
-            None
-                Saves figures to disk at configured save_path.
+        Returns
+        -------
+        None
+            Saves figures to disk at configured save_path.
 
-        Raises:
-            RuntimeError: If calculate_metrics() has not been called.
+        Raises
+        ------
+        RuntimeError
+            If calculate_metrics() has not been called.
         """
         if self._metric_results is None:
             self.calculate_metrics()
@@ -1905,12 +1964,15 @@ class DataAnalyzer:
         """
         Generate and save runtime comparison bar plots.
 
-        Returns:
-            None
-                Saves figure to disk at configured save_path.
+        Returns
+        -------
+        None
+            Saves figure to disk at configured save_path.
 
-        Raises:
-            RuntimeError: If calculate_metrics() has not been called.
+        Raises
+        ------
+        RuntimeError
+            If calculate_metrics() has not been called.
         """
         if self._metric_results is None:
             self.calculate_metrics()
@@ -1924,12 +1986,15 @@ class DataAnalyzer:
         """
         Generate and save non-dominated solution visualization plots.
 
-        Returns:
-            None
-                Saves figures to disk at configured save_path/ND_Solutions/.
+        Returns
+        -------
+        None
+            Saves figures to disk at configured save_path/ND_Solutions/.
 
-        Raises:
-            RuntimeError: If calculate_metrics() has not been called.
+        Raises
+        ------
+        RuntimeError
+            If calculate_metrics() has not been called.
         """
         if self._metric_results is None:
             self.calculate_metrics()
@@ -1949,6 +2014,7 @@ class DataAnalyzer:
         Execute the complete analysis pipeline.
 
         This method runs all analysis steps in sequence:
+
         1. Clear existing results (if configured)
         2. Scan data directory
         3. Calculate metrics
@@ -1957,9 +2023,10 @@ class DataAnalyzer:
         6. Generate runtime plots
         7. Generate non-dominated solution plots
 
-        Returns:
-            MetricResults
-                Complete metric results from the analysis.
+        Returns
+        -------
+        MetricResults
+            Complete metric results from the analysis.
         """
         print("=" * 60)
         print('🚀🚀🚀 Starting Data Analysis Pipeline! 🚀🚀🚀')
@@ -2019,7 +2086,7 @@ if __name__ == '__main__':
 
     Example 1: Quick Start - Full Pipeline
     --------------------------------------
-    Run complete analysis with default settings:
+    Run complete analysis with default settings::
 
         from data_analyzer import DataAnalyzer
 
@@ -2029,7 +2096,7 @@ if __name__ == '__main__':
 
     Example 2: Multi-Objective Optimization with Custom Settings
     ------------------------------------------------------------
-    Analyze multi-objective results with IGD metric:
+    Analyze multi-objective results with IGD metric::
 
         from data_analyzer import DataAnalyzer
 
@@ -2059,7 +2126,7 @@ if __name__ == '__main__':
 
     Example 3: Step-by-Step Analysis
     --------------------------------
-    Execute individual analysis steps for fine-grained control:
+    Execute individual analysis steps for fine-grained control::
 
         from data_analyzer import DataAnalyzer
 
@@ -2087,7 +2154,7 @@ if __name__ == '__main__':
 
     Example 4: Custom Table Generation
     ----------------------------------
-    Generate tables with specific statistical settings:
+    Generate tables with specific statistical settings::
 
         from data_analyzer import (
             DataAnalyzer, TableGenerator, TableConfig, 
@@ -2119,7 +2186,7 @@ if __name__ == '__main__':
 
     Example 5: Custom Plot Generation
     ---------------------------------
-    Create plots with specific visual settings:
+    Create plots with specific visual settings::
 
         from data_analyzer import DataAnalyzer, PlotGenerator, PlotConfig, StatisticType
 
@@ -2151,7 +2218,7 @@ if __name__ == '__main__':
 
     Example 6: Access Raw Results
     -----------------------------
-    Access computed metrics for custom analysis:
+    Access computed metrics for custom analysis::
 
         from data_analyzer import DataAnalyzer
 
@@ -2179,7 +2246,7 @@ if __name__ == '__main__':
 
     Example 7: Using Utility Classes Directly
     -----------------------------------------
-    Use statistics and data utilities independently:
+    Use statistics and data utilities independently::
 
         from data_analyzer import (
             StatisticsCalculator, DataUtils, 
@@ -2212,7 +2279,7 @@ if __name__ == '__main__':
 
     Data Directory Structure
     ------------------------
-    Expected directory structure for input data:
+    Expected directory structure for input data::
 
         ./Data/
         ├── Algorithm1/
@@ -2226,14 +2293,15 @@ if __name__ == '__main__':
         └── ...
 
     Each .pkl file should contain a dictionary with keys:
-        - 'all_objs': List[List[np.ndarray]] - Objectives per task per generation
-        - 'runtime': float - Total runtime in seconds
-        - 'max_nfes': List[int] - Max function evaluations per task
+
+    - 'all_objs': List[List[np.ndarray]] - Objectives per task per generation
+    - 'runtime': float - Total runtime in seconds
+    - 'max_nfes': List[int] - Max function evaluations per task
 
 
     Output Structure
     ----------------
-    Generated output files:
+    Generated output files::
 
         ./Results/
         ├── results_table_mean.xlsx      # or .tex for LaTeX

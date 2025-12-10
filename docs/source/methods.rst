@@ -17,7 +17,7 @@ The batch experiment module provides a complete framework for running multiple o
 Module Features
 ~~~~~~~~~~~~~~~
 
-The ``BatchExperiment`` class offers the following core features:
+The ``BatchExperiment`` class offers:
 
 1. **Flexible Configuration**: Support for adding multiple test problems and algorithms with their parameter configurations
 2. **Parallel Computing**: Utilize multi-core CPU for parallel execution to significantly improve efficiency
@@ -62,7 +62,7 @@ Use the ``add_problem`` method to add optimization problems:
 
 - ``problem_creator``: Problem creation function that generates problem instances
 - ``problem_name``: Problem name for result file naming
-- ``**problem_params``: Optional parameters passed to the problem creator (e.g., dimension)
+- ``**problem_params``: Optional parameters passed to the problem creator (e.g., maximum number of fitness evaluations)
 
 Adding Algorithms
 ~~~~~~~~~~~~~~~~~
@@ -217,7 +217,7 @@ Data Analysis
 
     from Methods.data_analysis import DataAnalyzer
 
-The data analysis module provides comprehensive analysis and visualization for multi-task optimization experiment results, including metric calculation, statistical comparison tables, convergence curves, runtime analysis, and Pareto front visualization.
+The data analysis module provides comprehensive analysis and visualization for optimization results, including metric calculation, statistical comparison tables, convergence curves, runtime analysis, Pareto front visualization, etc.
 
 Module Features
 ~~~~~~~~~~~~~~~
@@ -237,7 +237,7 @@ The ``DataAnalyzer`` class offers:
 Class Initialization
 ~~~~~~~~~~~~~~~~~~~~
 
-Initialize the ``DataAnalyzer`` with rich configuration options:
+Initialize the ``DataAnalyzer`` with configuration options:
 
 .. code-block:: python
 
@@ -687,4 +687,4 @@ See Also
 
 * :ref:`problems` - Problem definition guide
 * :ref:`algorithms` - Algorithm implementation guide
-* :ref:`api_reference` - Complete API documentation
+* :ref:`api` - Complete API documentation

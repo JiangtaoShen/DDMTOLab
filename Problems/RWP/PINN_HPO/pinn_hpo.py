@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 import time
-from Problems.RWO.PINN_HPO.pinnhpo_utils import get_data_2d, plot_func_2d
+from Problems.RWP.PINN_HPO.pinnhpo_utils import get_data_2d, plot_func_2d
 from Problems.BasicFunctions.basic_functions import *
 from Methods.mtop import MTOP
 import warnings

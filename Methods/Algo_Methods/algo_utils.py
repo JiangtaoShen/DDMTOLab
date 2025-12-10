@@ -14,10 +14,13 @@ from dataclasses import dataclass
 import copy
 from typing import Any, List, Tuple, Union, Optional
 
+
 @dataclass
 class Results:
     """
     Container for optimization results.
+
+    :no-index:
 
     Attributes
     ----------
@@ -49,20 +52,21 @@ class Results:
 
 
 def build_save_results(
-    all_decs: List[List[np.ndarray]],
-    all_objs: List[List[np.ndarray]],
-    runtime: float,
-    max_nfes: List[int],
-    all_cons: Optional[List[List[np.ndarray]]] = None,
-    save_path: Optional[str] = None,
-    filename: Optional[str] = None,
-    save_data: bool = True,
-    **kwargs
+        all_decs: List[List[np.ndarray]],
+        all_objs: List[List[np.ndarray]],
+        runtime: float,
+        max_nfes: List[int],
+        all_cons: Optional[List[List[np.ndarray]]] = None,
+        save_path: Optional[str] = None,
+        filename: Optional[str] = None,
+        save_data: bool = True,
+        **kwargs
 ) -> Results:
     """
     Extract best solutions, build results, and optionally save to file.
 
     Automatically detects single-objective vs multi-objective tasks:
+
     - Single-objective (n_objs=1): returns the best individual
     - Multi-objective (n_objs>1): returns the entire final population (Pareto front)
 
@@ -174,11 +178,11 @@ def get_algorithm_information(algorithm_class: type, print_info: bool = True) ->
 
 
 def init_history(
-    decs: List[np.ndarray],
-    objs: List[np.ndarray],
-    cons: Optional[List[np.ndarray]] = None
+        decs: List[np.ndarray],
+        objs: List[np.ndarray],
+        cons: Optional[List[np.ndarray]] = None
 ) -> Union[tuple[List[List[np.ndarray]], List[List[np.ndarray]]],
-           tuple[List[List[np.ndarray]], List[List[np.ndarray]], List[List[np.ndarray]]]]:
+tuple[List[List[np.ndarray]], List[List[np.ndarray]], List[List[np.ndarray]]]]:
     """
     Initialize history storage for populations across generations.
 
@@ -224,6 +228,7 @@ def vstack_groups(*args: Union[List[np.ndarray], tuple[np.ndarray, ...], None]) 
     ----------
     *args : Union[List[np.ndarray], tuple[np.ndarray, ...], None]
         Variable number of arguments, each can be:
+
         - List of arrays to stack vertically
         - Tuple of arrays (any number) to stack
         - None (will be skipped)
@@ -253,9 +258,9 @@ def append_history(*pairs: Any) -> Tuple[list, ...]:
     ----------
     *pairs : tuple
         Alternating pairs of (history_list, current_data).
+
         - history_list: List to store historical data
-        - current_data: Either a single np.ndarray (single task) or
-          List[np.ndarray] (multi-task)
+        - current_data: Either a single np.ndarray (single task) or List[np.ndarray] (multi-task)
 
     Returns
     -------
@@ -322,6 +327,7 @@ def par_list(par: Union[int, List[int]], n_tasks: int) -> List[int]:
     -------
     par_per_task : List[int]
         List of parameter values, one for each task.
+
         - If par is int: returns [par, par, ..., par] (n_tasks times)
         - If par is list: returns the list as is
     """
@@ -333,9 +339,9 @@ def par_list(par: Union[int, List[int]], n_tasks: int) -> List[int]:
 
 
 def reorganize_initial_data(
-    data: List[np.ndarray],
-    nt: int,
-    n_initial_per_task: List[int]
+        data: List[np.ndarray],
+        nt: int,
+        n_initial_per_task: List[int]
 ) -> List[List[np.ndarray]]:
     """
     Reorganize initial data by task and number of initial points.
@@ -366,10 +372,10 @@ def reorganize_initial_data(
 
 
 def initialization(
-    problem: 'MTOP',
-    n: Union[int, List[int]],
-    method: str = 'random',
-    the_same: bool = False
+        problem: 'MTOP',
+        n: Union[int, List[int]],
+        method: str = 'random',
+        the_same: bool = False
 ) -> List[np.ndarray]:
     """
     Initialize decision variable matrices for multiple tasks.
@@ -380,6 +386,7 @@ def initialization(
         An instance of the MTOP class
     n : Union[int, List[int]]
         Number of samples per task.
+
         - If int: same number of samples for all tasks
         - If list: number of samples for each task, e.g., [30, 50]
     method : str, optional
@@ -477,6 +484,7 @@ def evaluation(
         - True: evaluate all objectives for all tasks (default)
         - False: skip objective evaluation for all tasks
         - List: per-task specification, each element can be:
+
             - True/False: evaluate all/none
             - int: evaluate only the i-th objective
             - List[int]: evaluate specified objectives
@@ -489,10 +497,12 @@ def evaluation(
     -------
     objs : list of ndarray
         List of objective value matrices for each task.
+
         - Normal mode: shape [n, m_i] or [n, len(selected)]
         - Unified mode: shape [n, m_max]
     cons : list of ndarray
         List of constraint value matrices for each task.
+
         - Normal mode: shape [n, c_i] or [n, 1] if no constraints
         - Unified mode: shape [n, c_max]
     """
@@ -586,10 +596,12 @@ def evaluation_single(
     -------
     objs : ndarray
         Objective values for the task.
+
         - Normal mode: shape [n, m] or [n, len(selected)]
         - Unified mode: shape [n, m_max]
     cons : ndarray
         Constraint values for the task.
+
         - Normal mode: shape [n, c] or [n, 1] if no constraints
         - Unified mode: shape [n, c_max]
     """
@@ -650,9 +662,9 @@ def _pad_to_size(arr: np.ndarray, target_size: int, fill_value: float) -> np.nda
 
 
 def crossover(
-    par_dec1: np.ndarray,
-    par_dec2: np.ndarray,
-    mu: float = 2
+        par_dec1: np.ndarray,
+        par_dec2: np.ndarray,
+        mu: float = 2
 ) -> tuple[np.ndarray, np.ndarray]:
     """
     Perform Simulated Binary Crossover (SBX) on two decision vectors.
@@ -812,14 +824,14 @@ def de_generation(parents: np.ndarray, F: float, CR: float) -> np.ndarray:
 
 
 def space_transfer(
-    problem: 'MTOP',
-    decs: List[np.ndarray],
-    objs: Optional[List[np.ndarray]] = None,
-    cons: Optional[List[np.ndarray]] = None,
-    type: str = 'real'
+        problem: 'MTOP',
+        decs: List[np.ndarray],
+        objs: Optional[List[np.ndarray]] = None,
+        cons: Optional[List[np.ndarray]] = None,
+        type: str = 'real'
 ) -> Union[List[np.ndarray],
-           tuple[List[np.ndarray], List[np.ndarray]],
-           tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
+tuple[List[np.ndarray], List[np.ndarray]],
+tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
     """
     Transfer decision variables, objectives, and constraints between unified and real spaces.
 
@@ -829,18 +841,22 @@ def space_transfer(
         An instance of the MTOP class containing task configuration
     decs : List[np.ndarray]
         List of decision variable matrices.
+
         - Real space: decs[i] has shape (n_i, d_i)
         - Unified space: decs[i] has shape (n_i, d_max)
     objs : List[np.ndarray], optional
         List of objective value matrices (default: None).
+
         - Real space: objs[i] has shape (n_i, m_i)
         - Unified space: objs[i] has shape (n_i, m_max)
     cons : List[np.ndarray], optional
         List of constraint value matrices (default: None).
+
         - Real space: cons[i] has shape (n_i, c_i)
         - Unified space: cons[i] has shape (n_i, c_max)
     type : str, optional
         Transfer type (default: 'real'):
+
         - 'uni': Pad matrices with zeros to the maximum dimension (Unified Space)
         - 'real': Truncate matrices back to their original dimensions (Real Space)
 
@@ -932,6 +948,7 @@ def nd_sort(objs: np.ndarray, *args) -> Tuple[np.ndarray, int]:
         Objective value matrix, shape (n, m)
     *args : tuple
         Optional arguments:
+
         - (n_sort,): Number of solutions to sort
         - (cons, n_sort): Constraint matrix and number of solutions to sort
 
@@ -1068,10 +1085,10 @@ def crowding_distance(pop_obj: np.ndarray, front_no: Optional[np.ndarray] = None
 
 
 def tournament_selection(
-    K: int,
-    N: int,
-    *fitness_arrays: np.ndarray,
-    rng: Optional[np.random.Generator] = None
+        K: int,
+        N: int,
+        *fitness_arrays: np.ndarray,
+        rng: Optional[np.random.Generator] = None
 ) -> np.ndarray:
     """
     Perform tournament selection on a population.
@@ -1121,10 +1138,10 @@ def tournament_selection(
 
 
 def selection_elit(
-    objs: np.ndarray,
-    n: int,
-    cons: Optional[np.ndarray] = None,
-    epsilon: float = 0
+        objs: np.ndarray,
+        n: int,
+        cons: Optional[np.ndarray] = None,
+        epsilon: float = 0
 ) -> np.ndarray:
     """
     Elite selection for single-objective (optionally constrained) optimization.
@@ -1162,12 +1179,12 @@ def selection_elit(
 
 
 def trim_excess_evaluations(
-    all_decs: List[List[np.ndarray]],
-    all_objs: List[List[np.ndarray]],
-    nt: int,
-    max_nfes_per_task: List[int],
-    nfes_per_task: List[int],
-    all_cons: Optional[List[List[np.ndarray]]] = None
+        all_decs: List[List[np.ndarray]],
+        all_objs: List[List[np.ndarray]],
+        nt: int,
+        max_nfes_per_task: List[int],
+        nfes_per_task: List[int],
+        all_cons: Optional[List[List[np.ndarray]]] = None
 ) -> Union[
     Tuple[List[List[np.ndarray]], List[List[np.ndarray]], List[int]],
     Tuple[List[List[np.ndarray]], List[List[np.ndarray]], List[int], List[List[np.ndarray]]]
@@ -1267,9 +1284,9 @@ def trim_excess_evaluations(
 
 
 def normalize(
-    data: Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
-    axis: int = 0,
-    method: str = 'minmax'
+        data: Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
+        axis: int = 0,
+        method: str = 'minmax'
 ) -> Tuple[
     Union[np.ndarray, List[np.ndarray]],
     Union[np.ndarray, List[np.ndarray]],
@@ -1278,23 +1295,34 @@ def normalize(
     """
     Normalize input data (arrays or matrices).
 
-    Parameters:
-        data: Supports the following input formats
-              - Single 1D array: [1, 2, 3]
-              - Single 2D matrix: [[1,2], [3,4]]
-              - List of multiple arrays/matrices: [[1,2,3], [4,5,6]] or [matrix1, matrix2]
-        axis: Axis along which to normalize (only applies to 2D+ data)
-              - 0: Column-wise normalization (default, recommended for multi-objective optimization)
-              - 1: Row-wise normalization
-              - For 1D arrays, global normalization is always used
-        method: Normalization method
-              - 'minmax': Min-max normalization, scales to [0, 1] (default)
-              - 'zscore': Z-score normalization, mean=0, std=1
+    Parameters
+    ----------
+    data : Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]]
+        Supports the following input formats:
 
-    Returns:
-        normalized: Normalized result (same format as input)
-        stat1: min values (minmax) or mean values (zscore)
-        stat2: max values (minmax) or std values (zscore)
+        - Single 1D array: [1, 2, 3]
+        - Single 2D matrix: [[1,2], [3,4]]
+        - List of multiple arrays/matrices: [[1,2,3], [4,5,6]] or [matrix1, matrix2]
+    axis : int, optional
+        Axis along which to normalize (only applies to 2D+ data), default is 0.
+
+        - 0: Column-wise normalization (default, recommended for multi-objective optimization)
+        - 1: Row-wise normalization
+        - For 1D arrays, global normalization is always used
+    method : str, optional
+        Normalization method, default is 'minmax'.
+
+        - 'minmax': Min-max normalization, scales to [0, 1] (default)
+        - 'zscore': Z-score normalization, mean=0, std=1
+
+    Returns
+    -------
+    normalized : Union[np.ndarray, List[np.ndarray]]
+        Normalized result (same format as input)
+    stat1 : Union[np.ndarray, List[np.ndarray]]
+        Min values (minmax) or mean values (zscore)
+    stat2 : Union[np.ndarray, List[np.ndarray]]
+        Max values (minmax) or std values (zscore)
     """
     if method not in ['minmax', 'zscore']:
         raise ValueError("method must be 'minmax' or 'zscore'")
@@ -1377,31 +1405,42 @@ def normalize(
 
 
 def denormalize(
-    data: Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
-    stat1: Union[np.ndarray, List[np.ndarray]],
-    stat2: Union[np.ndarray, List[np.ndarray]],
-    axis: int = 0,
-    method: str = 'minmax'
+        data: Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]],
+        stat1: Union[np.ndarray, List[np.ndarray]],
+        stat2: Union[np.ndarray, List[np.ndarray]],
+        axis: int = 0,
+        method: str = 'minmax'
 ) -> Union[np.ndarray, List[np.ndarray]]:
     """
     Inverse normalization to restore original scale.
 
-    Parameters:
-        data: Normalized data (same format as normalize() output)
-              - Single 1D array: [0, 0.25, 0.5, 0.75, 1]
-              - Single 2D matrix: [[0, 0], [0.5, 0.5], [1, 1]]
-              - List of multiple arrays/matrices
-        stat1: min values (minmax) or mean values (zscore) from normalize()
-        stat2: max values (minmax) or std values (zscore) from normalize()
-        axis: Must match the axis used in normalize()
-              - 0: Column-wise normalization (default)
-              - 1: Row-wise normalization
-        method: Must match the method used in normalize()
-              - 'minmax': Inverse min-max normalization (default)
-              - 'zscore': Inverse z-score normalization
+    Parameters
+    ----------
+    data : Union[np.ndarray, List[float], List[np.ndarray], List[List[float]]]
+        Normalized data (same format as normalize() output).
 
-    Returns:
-        restored: Restored data in original scale (same format as input)
+        - Single 1D array: [0, 0.25, 0.5, 0.75, 1]
+        - Single 2D matrix: [[0, 0], [0.5, 0.5], [1, 1]]
+        - List of multiple arrays/matrices
+    stat1 : Union[np.ndarray, List[np.ndarray]]
+        Min values (minmax) or mean values (zscore) from normalize()
+    stat2 : Union[np.ndarray, List[np.ndarray]]
+        Max values (minmax) or std values (zscore) from normalize()
+    axis : int, optional
+        Must match the axis used in normalize(), default is 0.
+
+        - 0: Column-wise normalization (default)
+        - 1: Row-wise normalization
+    method : str, optional
+        Must match the method used in normalize(), default is 'minmax'.
+
+        - 'minmax': Inverse min-max normalization (default)
+        - 'zscore': Inverse z-score normalization
+
+    Returns
+    -------
+    restored : Union[np.ndarray, List[np.ndarray]]
+        Restored data in original scale (same format as input)
     """
     if method not in ['minmax', 'zscore']:
         raise ValueError("method must be 'minmax' or 'zscore'")

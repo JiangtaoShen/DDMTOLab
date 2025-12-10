@@ -261,12 +261,6 @@ class MTOP:
     --------
     ObjectiveFunctionWrapper : Wrapper for objective functions
     ConstraintFunctionWrapper : Wrapper for constraint functions
-
-    References
-    ----------
-    .. [1] Gupta, A., Ong, Y. S., & Feng, L. (2016). Multifactorial evolution:
-           toward evolutionary multitasking. IEEE Transactions on Evolutionary
-           Computation, 20(3), 343-357.
     """
 
     def __init__(self, unified_eval_mode: bool = False, fill_value: float = 0.0):

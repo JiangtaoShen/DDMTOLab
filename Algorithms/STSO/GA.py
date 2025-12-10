@@ -5,9 +5,9 @@ This module implements the Genetic Algorithm for single-objective optimization p
 
 References
 ----------
-.. [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning.
+    [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning.
    Addison-Wesley, Reading, MA, 1989.
-.. [2] John H. Holland. Adaptation in Natural and Artificial Systems: An Introductory Analysis
+    [2] John H. Holland. Adaptation in Natural and Artificial Systems: An Introductory Analysis
    with Applications to Biology, Control, and Artificial Intelligence. University of Michigan Press,
    Ann Arbor, MI, 1st edition, 1975. Reprinted by MIT Press in 1992.
 

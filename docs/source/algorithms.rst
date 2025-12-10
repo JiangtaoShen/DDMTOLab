@@ -28,7 +28,9 @@ Algorithms must be implemented as **classes** and include the following core com
 3. **Initialization Method**: ``__init__`` method that must accept a ``problem`` (MTOP instance) as the first parameter
 4. **Optimization Method**: ``optimize`` method that executes the optimization process and returns a ``Results`` object
 
-**Example Structure**::
+**Example Structure**:
+
+.. code-block:: python
 
     class AlgorithmName:
         # Component 1: Algorithm metadata (required)
@@ -64,7 +66,9 @@ Rule 2: Algorithm Input
 
 Algorithms must accept an ``MTOP`` instance as an input parameter. The ``MTOP`` instance encapsulates complete information about the optimization problem, through which the algorithm obtains all problem information. Other parameters can be freely designed according to algorithm requirements.
 
-**Example**::
+**Example**:
+
+.. code-block:: python
 
     def __init__(self, problem, n=None, max_nfes=None, ...):
         """
@@ -81,7 +85,9 @@ Rule 3: Algorithm Output
 
 Algorithms must return a result object conforming to the ``Results`` dataclass specification. The ``Results`` class encapsulates complete information about the optimization process:
 
-**Results Dataclass Definition**::
+**Results Dataclass Definition**:
+
+.. code-block:: python
 
     @dataclass
     class Results:
@@ -106,16 +112,16 @@ Algorithms must return a result object conforming to the ``Results`` dataclass s
      - Description
    * - ``best_decs``
      - ``List[np.ndarray]``
-     - **Best decision variables**. List length is the number of tasks K. ``best_decs[i]`` is the best decision variable for task i. Shape is (n, D^i), where n is the number of optimal solutions (n=1 for single-objective; n≥2 for multi-objective)
+     - **Best decision variables**. List length is the number of tasks K. ``best_decs[i]`` is the best decision variable for task i. Shape is :math:`(n, D^i)`, where n is the number of optimal solutions (n=1 for single-objective; n≥2 for multi-objective)
    * - ``best_objs``
      - ``List[np.ndarray]``
-     - **Best objective values**. List length is K. ``best_objs[i]`` is the best objective value for task i. Shape is (n, M^i)
+     - **Best objective values**. List length is K. ``best_objs[i]`` is the best objective value for task i. Shape is :math:`(n, M^i)`
    * - ``all_decs``
      - ``List[List[np.ndarray]]``
-     - **Decision variable history**. ``all_decs[i][g]`` represents all decision variables of task i at generation g. Shape is (n, D^i)
+     - **Decision variable history**. ``all_decs[i][g]`` represents all decision variables of task i at generation g. Shape is :math:`(n, D^i)`
    * - ``all_objs``
      - ``List[List[np.ndarray]]``
-     - **Objective value history**. ``all_objs[i][g]`` represents all objective values of task i at generation g. Shape is (n, M^i)
+     - **Objective value history**. ``all_objs[i][g]`` represents all objective values of task i at generation g. Shape is :math:`(n, M^i)`
    * - ``runtime``
      - ``float``
      - **Total runtime** (seconds). Records total time from start to end for performance evaluation
@@ -124,10 +130,10 @@ Algorithms must return a result object conforming to the ``Results`` dataclass s
      - **Maximum function evaluations**. List length is K. ``max_nfes[i]`` is the maximum number of function evaluations for task i
    * - ``best_cons``
      - ``Optional[List[np.ndarray]]``
-     - **Best constraint values** (optional). Used only in constrained optimization. ``best_cons[i]`` is the constraint value corresponding to the best solution of task i. Shape is (n, C^i). None for unconstrained problems
+     - **Best constraint values** (optional). Used only in constrained optimization. ``best_cons[i]`` is the constraint value corresponding to the best solution of task i. Shape is :math:`(n, C^i)`. None for unconstrained problems
    * - ``all_cons``
      - ``Optional[List[List[np.ndarray]]]``
-     - **Constraint evolution history** (optional). ``all_cons[i][g]`` represents all constraint values of task i at generation g. Shape is (n, C^i). None for unconstrained problems
+     - **Constraint evolution history** (optional). ``all_cons[i][g]`` represents all constraint values of task i at generation g. Shape is :math:`(n, C^i)`. None for unconstrained problems
 
 The input/output structure is straightforward: **input must include an MTOP instance, and output must follow the specified data structure**.
 
@@ -163,7 +169,9 @@ Algorithms must declare their basic characteristics through the ``algorithm_info
    * - ``param``
      - Algorithm parameter constraint. ``equal`` requires same parameters (e.g., population size, evaluation count) across tasks, ``unequal`` allows different parameters per task
 
-**Example: GA Metadata Declaration**::
+**Example: GA Metadata Declaration**:
+
+.. code-block:: python
 
     class GA:
         algorithm_information = {
@@ -187,14 +195,18 @@ Algorithms must declare their basic characteristics through the ``algorithm_info
 Viewing Algorithm Metadata
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**DDMTOLab** provides the ``get_algorithm_information`` class method for each algorithm to retrieve and display metadata::
+**DDMTOLab** provides the ``get_algorithm_information`` class method for each algorithm to retrieve and display metadata:
+
+.. code-block:: python
 
     from Algorithms.STSO.GA import GA
 
     # Call class method to view GA metadata
     GA.get_algorithm_information()
 
-**Output**::
+**Output**:
+
+.. code-block:: none
 
     🤖️ GA
     Algorithm Information:
@@ -210,13 +222,17 @@ Viewing Algorithm Metadata
 
 This method prints the algorithm name and all metadata fields in a structured format, helping users quickly understand the algorithm's scope and characteristic constraints. By viewing the metadata, users can determine whether an algorithm is suitable for their optimization problem.
 
-The method also supports returning metadata as a dictionary for programmatic processing::
+The method also supports returning metadata as a dictionary for programmatic processing:
+
+.. code-block:: python
 
     from Algorithms.STSO.GA import GA
     info = GA.get_algorithm_information(print_info=False)
     print(info)
 
-**Output**::
+**Output**:
+
+.. code-block:: python
 
     {'n_tasks': '1-K', 'dims': 'unequal', 'objs': 'unequal', 'n_objs': '1',
      'cons': 'unequal', 'n_cons': '0', 'expensive': 'False',
@@ -228,7 +244,9 @@ Using Algorithms
 Basic Usage
 ~~~~~~~~~~~
 
-**Example: Single-Task Optimization**::
+**Example: Single-Task Optimization**:
+
+.. code-block:: python
 
     from DDMTOLab.problems import Sphere
     from DDMTOLab.algorithms.STSO.GA import GA
@@ -252,7 +270,9 @@ Basic Usage
     print(f"Best objective: {results.best_objs[0]}")
     print(f"Runtime: {results.runtime:.2f}s")
 
-**Example: Multi-Task Optimization**::
+**Example: Multi-Task Optimization**:
+
+.. code-block:: python
 
     from DDMTOLab.problems import MTOP
     from DDMTOLab.algorithms.MTSO.MFEA import MFEA
@@ -282,7 +302,9 @@ Basic Usage
 Advanced Configuration
 ~~~~~~~~~~~~~~~~~~~~~~
 
-**Custom Parameter Settings**::
+**Custom Parameter Settings**:
+
+.. code-block:: python
 
     # Configure algorithm with custom parameters
     algorithm = GA(
@@ -295,7 +317,9 @@ Advanced Configuration
         tournament_size=3     # Tournament size
     )
 
-**Accessing Evolution History**::
+**Accessing Optimization History**:
+
+.. code-block:: python
 
     results = algorithm.optimize()
 
@@ -317,7 +341,9 @@ Implementing Custom Algorithms
 
 You can easily implement custom algorithms by following the three construction rules:
 
-**Example: Simple Custom Algorithm**::
+**Example: Simple Custom Algorithm**:
+
+.. code-block:: python
 
     import numpy as np
     from DDMTOLab.utils import Results
@@ -379,6 +405,5 @@ You can easily implement custom algorithms by following the three construction r
 See Also
 --------
 
-* :ref:`api_reference` - Complete API documentation
+* :ref:`api` - Complete API documentation
 * :ref:`quickstart` - Getting started guide
-* :ref:`examples` - More algorithm examples

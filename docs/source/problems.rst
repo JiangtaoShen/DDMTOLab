@@ -19,7 +19,9 @@ The MTOP class provides the following key features:
 Initialization
 --------------
 
-Create an MTOP instance with optional unified evaluation mode::
+Create an MTOP instance with optional unified evaluation mode:
+
+.. code-block:: python
 
     from Methods.mtop import MTOP
 
@@ -40,7 +42,9 @@ Adding Tasks
 Using add_task Method
 ~~~~~~~~~~~~~~~~~~~~~
 
-The ``add_task`` method is the primary way to add optimization tasks::
+The ``add_task`` method is the primary way to add optimization tasks:
+
+.. code-block:: python
 
     def add_task(
         objective_func,      # Objective function (required)
@@ -50,7 +54,9 @@ The ``add_task`` method is the primary way to add optimization tasks::
         upper_bound=None     # Upper bounds (optional, default 1)
     ) -> int:               # Returns task index
 
-**Example: 2 Tasks with [1,3] Objectives and [2,0] Constraints**::
+**Example: 2 Tasks with [1,3] Objectives and [2,0] Constraints**:
+
+.. code-block:: python
 
     import numpy as np
     from Methods.mtop import MTOP
@@ -81,7 +87,9 @@ The ``add_task`` method is the primary way to add optimization tasks::
 
     print(problem)
 
-**Output**::
+**Output**:
+
+.. code-block:: python
 
     MTOP with 2 tasks:
       Unified eval mode: False (fill_value=0.0)
@@ -93,7 +101,9 @@ The ``add_task`` method is the primary way to add optimization tasks::
 Batch Adding with Tuples
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Add multiple tasks at once using tuple arguments::
+Add multiple tasks at once using tuple arguments:
+
+.. code-block:: python
 
     indices = problem.add_task(
         objective_func=(obj1, obj2, obj3),
@@ -106,7 +116,9 @@ Add multiple tasks at once using tuple arguments::
 Using add_tasks Method
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Add tasks from configuration dictionaries::
+Add tasks from configuration dictionaries:
+
+.. code-block:: python
 
     tasks_config = [
         {
@@ -133,7 +145,9 @@ Task Evaluation
 Single Task Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Evaluate individual tasks with ``evaluate_task``::
+Evaluate individual tasks with ``evaluate_task``:
+
+.. code-block:: python
 
     # Evaluate task 0
     X0 = np.array([[0.1, 0.2, 0.3],
@@ -152,7 +166,9 @@ Evaluate only specific objectives or constraints. The ``eval_objectives`` and ``
 3. ``int``: Evaluate single objective/constraint at specified index
 4. ``List[int]``: Evaluate multiple objectives/constraints at specified indices
 
-**Example**::
+**Example**:
+
+.. code-block:: python
 
     # Evaluate only objectives
     objs, cons = problem.evaluate_task(0, X, eval_objectives=True,
@@ -169,7 +185,9 @@ Evaluate only specific objectives or constraints. The ``eval_objectives`` and ``
 Multi-Task Evaluation
 ~~~~~~~~~~~~~~~~~~~~~
 
-Evaluate multiple tasks simultaneously with ``evaluate_tasks``::
+Evaluate multiple tasks simultaneously with ``evaluate_tasks``:
+
+.. code-block:: python
 
     # Prepare input data for each task
     X0 = np.random.uniform(-1, 1, (4, 3))   # Task 0: 4 solutions
@@ -188,7 +206,9 @@ Evaluate multiple tasks simultaneously with ``evaluate_tasks``::
 Multi-Task Selective Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Apply different evaluation settings to each task::
+Apply different evaluation settings to each task:
+
+.. code-block:: python
 
     # Unified mode: same settings for all tasks
     objs_list, cons_list = problem.evaluate_tasks(
@@ -209,7 +229,9 @@ Apply different evaluation settings to each task::
 Unified Evaluation Mode
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-When tasks have different numbers of objectives or constraints, unified evaluation mode pads all results to maximum dimensions::
+When tasks have different numbers of objectives or constraints, unified evaluation mode pads all results to maximum dimensions:
+
+.. code-block:: python
 
     # Check current dimensions
     print(f"Max objectives: {problem.n_objs}")
@@ -233,7 +255,9 @@ When tasks have different numbers of objectives or constraints, unified evaluati
 Automatic Vectorization
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-MTOP automatically handles batch evaluation of functions. If a function raises an exception with batch input, it switches to row-by-row evaluation::
+MTOP automatically handles batch evaluation of functions. If a function raises an exception with batch input, it switches to row-by-row evaluation:
+
+.. code-block:: python
 
     # Non-vectorized function: only handles single row
     def sphere_single_row(x):
@@ -251,7 +275,9 @@ MTOP automatically handles batch evaluation of functions. If a function raises a
     obj, _ = problem.evaluate_task(idx, X_batch)
     print(f"Batch evaluation result:\n{obj}")
 
-**Important**: Automatic vectorization relies on functions raising exceptions for incompatible inputs. **It is strongly recommended to write vectorized functions directly**::
+**Important**: Automatic vectorization relies on functions raising exceptions for incompatible inputs. **It is strongly recommended to write vectorized functions directly**:
+
+.. code-block:: python
 
     # Correct vectorized function
     def sphere_vectorized(x):
@@ -264,7 +290,9 @@ Querying Task Information
 Basic Properties
 ~~~~~~~~~~~~~~~~
 
-Query basic problem properties::
+Query basic problem properties:
+
+.. code-block:: python
 
     # Number of tasks
     print(f"Number of tasks: {problem.n_tasks}")
@@ -285,12 +313,16 @@ Query basic problem properties::
 Detailed Task Information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Get complete information for a specific task::
+Get complete information for a specific task:
+
+.. code-block:: python
 
     info = problem.get_task_info(1)
     print(info)
 
-**Output**::
+**Output**:
+
+.. code-block:: python
 
     {'dimension': 4, 'n_objectives': 2, 'n_constraints': 2,
      'lower_bounds': array([[-2., -2., -2., -2.]]),
@@ -301,11 +333,15 @@ Get complete information for a specific task::
 Problem Summary
 ~~~~~~~~~~~~~~~
 
-Print a summary of the entire problem::
+Print a summary of the entire problem:
+
+.. code-block:: python
 
     print(problem)
 
-**Output**::
+**Output**:
+
+.. code-block:: python
 
     MTOP with 3 tasks:
       Unified eval mode: False (fill_value=0.0)
@@ -401,7 +437,9 @@ For maintainability and platform compatibility, optimization problems should be 
 Problem Class Definition
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Example: CEC17MTMO Problem 1::
+Example: CEC17MTMO Problem 1:
+
+.. code-block:: python
 
     import numpy as np
     from Methods.mtop import MTOP
@@ -448,7 +486,9 @@ Example: CEC17MTMO Problem 1::
 Metric Configuration
 ~~~~~~~~~~~~~~~~~~~~
 
-For problems requiring complex metrics (e.g., multi-objective optimization), provide configuration for metric calculation::
+For problems requiring complex metrics (e.g., multi-objective optimization), provide configuration for metric calculation:
+
+.. code-block:: python
 
     def P1_T1_PF(N, M):
         """Generate true Pareto front for Task 1"""
@@ -477,13 +517,12 @@ Implementation Guidelines
 **Problem Class Structure**
 
 1. Class name should clearly reflect problem source (e.g., ``CEC17MTMO``)
-2. ``__init__`` method accepts necessary initialization parameters
-3. Each problem instance method (e.g., ``P1``, ``P2``) returns a configured MTOP object
-4. Task functions support batch computation using ``np.atleast_2d``
+2. Each problem instance method (e.g., ``P1``, ``P2``) returns a configured MTOP object
+3. Task functions support batch computation using ``np.atleast_2d``
 
 **Configuration Dictionary**
 
-1. ``metric``: Performance metric type (**required**), e.g., ``'IGD'``, ``'HV'``, ``'GD'``
+1. ``metric``: Performance metric type (**required**), e.g., ``'IGD'``, ``'HV'``
 2. ``n_pf``: Number of reference front points (optional), recommended: 10000
 3. ``pf_path``: Data file path (optional)
 4. Problem-task mapping: Nested dictionary structure ``{'P#': {'T#': reference_info}}``
@@ -499,5 +538,4 @@ See Also
 --------
 
 * :ref:`algorithms` - Algorithm implementation guide
-* :ref:`api_reference` - Complete API documentation
-* :ref:`examples` - Problem definition examples
+* :ref:`api` - Complete API documentation

@@ -5,8 +5,14 @@ DDMTOLab
    :align: center
    :alt: DDMTOLab Logo
    :width: 200px
+
 |
+
+**DDMTOLab: Data-Driven Multitask Optimization Laboratory**
+
 **DDMTOLab** is a comprehensive Python platform for data-driven multitask optimization, featuring 50+ algorithms, 100+ problems, and powerful experiment tools for algorithm development and performance evaluation.
+
+Whether you're working on expensive black-box optimization, multi-objective optimization, or complex multi-task scenarios, DDMTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
 
 .. image:: https://img.shields.io/github/stars/JiangtaoShen/DDMTOLab?style=social
    :target: https://github.com/JiangtaoShen/DDMTOLab
@@ -18,11 +24,13 @@ DDMTOLab
 Features
 --------
 
-* 🚀 **Comprehensive Algorithms** - Single/multi-task, single/multi-objective optimization
-* 📊 **Rich Problem Suite** - Benchmark functions and real-world applications
-* 🤖 **Data-Driven Optimization** - Surrogate-based methods for expensive problems
-* 🔧 **Flexible Framework** - Simple API and intuitive workflow
-* 🔌 **Fully Extensible** - Custom algorithms, problems, and metrics
+* 🚀 **Comprehensive Algorithms** - Single/multi-task, single/multi-objective optimization algorithms
+* 📊 **Rich Problem Suite** - Extensive benchmark functions and real-world applications
+* 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
+* 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
+* 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
+* 📈 **Powerful Analysis Tools** - Built-in visualization and statistical analysis
+* ⚡ **Parallel Computing** - Multi-core support for batch experiments
 
 Quick Links
 -----------
@@ -51,7 +59,6 @@ Indices and Tables
 
 * :ref:`genindex`
 * :ref:`modindex`
-* :ref:`search`
 
 Citation
 ========

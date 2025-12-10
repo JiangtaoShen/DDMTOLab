@@ -43,13 +43,13 @@ We use Genetic Algorithm (GA) to solve a single-variable optimization problem:
 Demo 2: MTSO Test
 -----------------------------------
 
-In this example, we solve a 2-task optimization problem with different dimensions and evaluation budgets.
+We solve a 2-task optimization problem with different dimensions and evaluation budgets.
 
 **Task 1:** Sphere function (2D, simple convex function)
 
 **Task 2:** Rastrigin function (3D, multiple local minima)
 
-We compare Genetic Algorithm (GA) and Bayesian Optimization (BO):
+We compare Genetic Algorithm (GA) and Bayesian Optimization (BO). For GA, we set population size ``n=[10, 10]`` and maximum evaluations ``max_nfes=[100, 50]`` for both tasks. For BO, we use smaller initial samples ``n_initial=[20, 10]`` with the same evaluation budget.
 
 .. code-block:: python
 
@@ -85,7 +85,6 @@ We compare Genetic Algorithm (GA) and Bayesian Optimization (BO):
     from Methods.test_data_analysis import TestDataAnalyzer
     TestDataAnalyzer().run()
 
-For GA, we set population size ``n=[10, 10]`` and maximum evaluations ``max_nfes=[100, 50]`` for both tasks. For BO, we use smaller initial samples ``n_initial=[20, 10]`` with the same evaluation budget.
 
 Demo 3: Batch Experiments
 --------------------------

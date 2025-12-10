@@ -279,7 +279,7 @@ Real-World Optimization Problems
 PINN Hyperparameter Optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: Problems.RWO.PINN_HPO.pinn_hpo.PINN_HPO
+.. autoclass:: Problems.RWP.PINN_HPO.pinn_hpo.PINN_HPO
    :members: P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12
    :undoc-members:
 
@@ -300,6 +300,15 @@ Data Analysis
 .. automodule:: Methods.data_analysis
    :members:
    :undoc-members:
+   :noindex:
+
+Test Data Analysis
+~~~~~~~~~~~~~~~~~~
+
+.. automodule:: Methods.test_data_analysis
+   :members:
+   :undoc-members:
+   :noindex:
 
 Metrics
 ~~~~~~~
@@ -307,6 +316,7 @@ Metrics
 .. automodule:: Methods.metrics
    :members:
    :undoc-members:
+   :noindex:
 
 MTOP Base Class
 ~~~~~~~~~~~~~~~
@@ -343,6 +353,7 @@ MTOP Class
    :members:
    :undoc-members:
    :show-inheritance:
+   :noindex:
 
 ObjectiveFunctionWrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -366,6 +377,7 @@ Algorithm Utilities
 .. automodule:: Methods.Algo_Methods.algo_utils
    :members:
    :undoc-members:
+   :noindex:
 
 Bayesian Optimization Utilities
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
