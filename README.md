@@ -172,7 +172,7 @@ Results from the batch experiment above:
 - **Multi-Task Single-Objective (MTSO)**: MFEA, EMEA, G-MFEA, MTBO, RA-MTEA, SELF, etc.
 - **Multi-Task Multi-Objective (MTMO)**: MO-MFEA, etc.
 
-### Utilities
+### Methods
 - **Batch Experiments**: Parallel execution framework
 - **Data Analysis**: Statistical testing and visualization
 - **Performance Metrics**: IGD, HV, etc.
