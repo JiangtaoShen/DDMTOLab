@@ -5,8 +5,8 @@ This module implements MTBO for expensive multi-task optimization with knowledge
 
 References
 ----------
-.. [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. "Multi-task bayesian optimization."
-   Advances in neural information processing systems 26 (2013).
+    [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. "Multi-task bayesian optimization."
+        Advances in neural information processing systems 26 (2013).
 
 Notes
 -----
@@ -63,7 +63,7 @@ class MTBO:
         """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./Data', name='mtbo_test',
+    def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData', name='MTBO_test',
                  disable_tqdm=True):
         """
         Initialize Multi-Task Bayesian Optimization algorithm.
@@ -79,9 +79,9 @@ class MTBO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './Data')
+            Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'mtbo_test')
+            Name for the experiment (default: 'MTBO_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

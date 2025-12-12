@@ -9,39 +9,39 @@ Algorithms
 Single-Task Single-Objective (STSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-GA
+AO
 ^^
 
-.. automodule:: Algorithms.STSO.GA
+.. automodule:: Algorithms.STSO.AO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.GA.GA
+.. autoclass:: Algorithms.STSO.AO.AO
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-DE
+BO
 ^^
 
-.. automodule:: Algorithms.STSO.DE
+.. automodule:: Algorithms.STSO.BO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.DE.DE
+.. autoclass:: Algorithms.STSO.BO.BO
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-PSO
-^^^
+CMAES
+^^^^^
 
-.. automodule:: Algorithms.STSO.PSO
+.. automodule:: Algorithms.STSO.CMAES
    :no-members:
 
-.. autoclass:: Algorithms.STSO.PSO.PSO
+.. autoclass:: Algorithms.STSO.CMAES.CMAES
    :members:
    :undoc-members:
    :show-inheritance:
@@ -61,18 +61,97 @@ CSO
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-BO
+DE
 ^^
 
-.. automodule:: Algorithms.STSO.BO
+.. automodule:: Algorithms.STSO.DE
    :no-members:
 
-.. autoclass:: Algorithms.STSO.BO.BO
+.. autoclass:: Algorithms.STSO.DE.DE
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
+
+EO
+^^
+
+.. automodule:: Algorithms.STSO.EO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.EO.EO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+GA
+^^
+
+.. automodule:: Algorithms.STSO.GA
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.GA.GA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+GWO
+^^^
+
+.. automodule:: Algorithms.STSO.GWO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.GWO.GWO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+KLPSO
+^^^^^
+
+.. automodule:: Algorithms.STSO.KLPSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.KLPSO.KLPSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+PSO
+^^^
+
+.. automodule:: Algorithms.STSO.PSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.PSO.PSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+SLPSO
+^^^^^
+
+.. automodule:: Algorithms.STSO.SLPSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.SLPSO.SLPSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 
 Multi-Task Single-Objective (MTSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -236,6 +315,13 @@ DTLZ Test Suite
 ^^^^^^^^^^^^^^^
 
 .. automodule:: Problems.STMO.DTLZ
+   :members:
+   :undoc-members:
+
+ZDT Test Suite
+^^^^^^^^^^^^^^
+
+.. automodule:: Problems.STMO.ZDT
    :members:
    :undoc-members:
 

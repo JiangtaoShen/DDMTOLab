@@ -18,7 +18,7 @@ Whether you're working on expensive black-box optimization, multi-objective opti
    :target: https://github.com/JiangtaoShen/DDMTOLab
    :alt: GitHub Stars
 
-.. image:: https://img.shields.io/badge/Python-3.7+-blue.svg
+.. image:: https://img.shields.io/badge/Python-3.10+-blue.svg
    :alt: Python Version
 
 Features

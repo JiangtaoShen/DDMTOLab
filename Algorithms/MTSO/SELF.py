@@ -5,8 +5,8 @@ This module implements SELF using multi-task Gaussian processes and Bayesian opt
 
 References
 ----------
-.. [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask
-   optimization problems." IEEE Transactions on Evolutionary Computation (2024).
+    [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask
+        optimization problems." IEEE Transactions on Evolutionary Computation (2024).
 
 Notes
 -----
@@ -71,8 +71,8 @@ class SELF:
         """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, max_nfes=None, np=10, F=0.5, CR=0.9, ng=50, nl=50, save_data=True, save_path='./Data',
-                 name='self_test', disable_tqdm=True):
+    def __init__(self, problem, max_nfes=None, np=10, F=0.5, CR=0.9, ng=50, nl=50, save_data=True, save_path='./TestData',
+                 name='SELF_test', disable_tqdm=True):
         """
         Initialize SELF algorithm.
 
@@ -95,9 +95,9 @@ class SELF:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './Data')
+            Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'self_test')
+            Name for the experiment (default: 'SELF_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

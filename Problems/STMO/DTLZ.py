@@ -407,7 +407,7 @@ class DTLZ:
         problem.add_task(objective_func=T1, dim=dim, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def DTLZ9(self, M=3, dim=None) -> MTOP:
+    def DTLZ9(self, M=2, dim=None) -> MTOP:
         """
         Generates the **DTLZ9** problem (Constrained).
 
@@ -435,7 +435,7 @@ class DTLZ:
             x = np.atleast_2d(x)
             n_samples = x.shape[0]
             D = x.shape[1]
-            # Decision variables are transformed
+            # Transform decision variables using power of 0.1
             x_transformed = x ** 0.1
             obj = np.zeros((n_samples, M))
             # Calculate objective f_m as the sum of the transformed m-th block
@@ -446,23 +446,17 @@ class DTLZ:
             return obj
 
         def C1(x):
-            x = np.atleast_2d(x)
-            n_samples = x.shape[0]
-            D = x.shape[1]
-            x_transformed = x ** 0.1
-            obj = np.zeros((n_samples, M))
-            for m in range(M):
-                start_idx = m * D // M
-                end_idx = (m + 1) * D // M
-                obj[:, m] = np.sum(x_transformed[:, start_idx:end_idx], axis=1)
+            # Use T1 to compute objectives for consistency
+            obj = T1(x)
             # Constraints c_i (i=1 to M-1) define the parabolic PF shape
+            # c_i = 1 - f_M^2 - f_i^2 >= 0, which implies f_i^2 + f_M^2 <= 1
             cons = 1 - np.tile(obj[:, M - 1:M] ** 2, (1, M - 1)) - obj[:, :M - 1] ** 2
             return cons
 
         lb = np.zeros(dim)
         ub = np.ones(dim)
         problem = MTOP()
-        # DTLZ9 is a constrained problem (C1 is the constraint function)
+        # DTLZ9 is a constrained problem with constraint function C1
         problem.add_task(objective_func=T1, dim=dim, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
@@ -654,35 +648,7 @@ def DTLZ9_PF(N: int, M: int) -> np.ndarray:
 
 
 SETTINGS = {
-    """
-    Configuration settings for DTLZ problem evaluation.
-
-    Attributes
-    ----------
-    metric : str
-        The performance metric used for evaluation (e.g., 'IGD').
-    n_ref : int
-        The number of reference points used to approximate the true Pareto Front.
-    DTLZ1 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ1_PF).
-    DTLZ2 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ2_PF).
-    DTLZ3 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ3_PF).
-    DTLZ4 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ4_PF).
-    DTLZ5 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ5_PF).
-    DTLZ6 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ6_PF).
-    DTLZ7 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ7_PF).
-    DTLZ8 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ8_PF).
-    DTLZ9 : dict
-        Mapping of task names ('T1') to their respective PF functions (DTLZ9_PF).
-    """
-    'metric': 'IGD',
+    'metric': 'FR',
     'n_ref': 10000,
     'DTLZ1': {'T1': DTLZ1_PF},
     'DTLZ2': {'T1': DTLZ2_PF},

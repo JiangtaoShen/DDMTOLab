@@ -5,8 +5,8 @@ This module implements Particle Swarm Optimization for single-objective optimiza
 
 References
 ----------
-.. [1] Kennedy, James, and Russell Eberhart. "Particle swarm optimization." Proceedings of
-   ICNN'95-international conference on neural networks. Vol. 4. IEEE, 1995.
+    [1] Kennedy, James, and Russell Eberhart. "Particle swarm optimization." Proceedings of
+        ICNN'95-international conference on neural networks. Vol. 4. IEEE, 1995.
 
 Notes
 -----

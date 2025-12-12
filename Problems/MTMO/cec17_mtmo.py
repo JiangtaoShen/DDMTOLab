@@ -906,36 +906,6 @@ def P9_T2_PF(N, M=2) -> np.ndarray:
 
 
 SETTINGS = {
-    """
-    Configuration settings for CEC17MTMO problem evaluation.
-
-    Attributes
-    ----------
-    metric : str
-        The performance metric used for evaluation ('IGD').
-    n_pf : int
-        The number of reference points used to approximate the true Pareto Front.
-    pf_path : str
-        Directory path for storing Pareto Front reference data.
-    P1 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 1.
-    P2 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 2.
-    P3 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 3.
-    P4 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 4.
-    P5 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 5.
-    P6 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 6.
-    P7 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 7.
-    P8 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 8.
-    P9 : dict
-        Mapping of task names ('T1', 'T2') to their respective PF functions for Problem 9.
-    """
     'metric': 'IGD',
     'n_pf': 1000,
     'pf_path': './MOReference',

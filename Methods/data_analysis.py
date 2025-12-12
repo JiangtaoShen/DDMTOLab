@@ -34,7 +34,7 @@ from scipy import stats
 from tqdm import tqdm
 
 # Import from project modules
-from Methods.metrics import IGD, HV
+from Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spread, Spacing
 from Methods.Algo_Methods.algo_utils import nd_sort
 
 
@@ -684,16 +684,12 @@ class TableGenerator:
         """
         # Extract problems and determine task count
         problems = sorted(all_best_values[algorithm_order[0]].keys())
-        first_run_data = all_best_values[algorithm_order[0]][problems[0]][1]
-        num_tasks = len(first_run_data)
 
         # Determine optimization direction
         direction = DataUtils.get_metric_direction(metric_name)
 
         # Generate data rows
-        rows, comparison_counts = self._generate_data_rows(
-            all_best_values, algorithm_order, problems, num_tasks, direction
-        )
+        rows, comparison_counts = self._generate_data_rows(all_best_values, algorithm_order, problems, direction)
 
         # Generate and save table
         if self.config.table_format == TableFormat.EXCEL:
@@ -706,7 +702,6 @@ class TableGenerator:
             all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]],
             algorithm_order: List[str],
             problems: List[str],
-            num_tasks: int,
             direction: OptimizationDirection
     ) -> Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts]]:
         """
@@ -720,8 +715,6 @@ class TableGenerator:
             Algorithm display order.
         problems : List[str]
             List of problem names.
-        num_tasks : int
-            Number of tasks per problem.
         direction : OptimizationDirection
             Optimization direction.
 
@@ -735,6 +728,11 @@ class TableGenerator:
         comparison_counts = {algo: ComparisonCounts() for algo in algorithm_order[:-1]}
 
         for prob in problems:
+            # Get the number of tasks of the problem
+            first_algo = algorithm_order[0]
+            first_run = list(all_best_values[first_algo][prob].keys())[0]
+            num_tasks = len(all_best_values[first_algo][prob][first_run])
+
             for task_idx in range(num_tasks):
                 row = {'Problem': prob, 'Task': task_idx + 1}
 
@@ -1797,8 +1795,8 @@ class DataAnalyzer:
                 for run in range(1, scan.runs + 1):
                     pkl_file = f"{algo}_{prob}_{run}.pkl"
                     pkl_path = self.data_path / algo / pkl_file
-                    data = DataUtils.load_pickle(pkl_path)
 
+                    data = DataUtils.load_pickle(pkl_path)
                     metric_values, metric_values_best_bs = self._get_single_run_metric_value(data, prob)
 
                     all_values[algo][prob][run] = metric_values
@@ -1857,6 +1855,7 @@ class DataAnalyzer:
             Each is a list of arrays, one per task.
         """
         all_objs = data['all_objs']
+        all_cons = data.get('all_cons', None)  # 使用 get 方法，默认为 None
         n_tasks = len(all_objs)
         n_gens_per_task = [len(all_objs[t]) for t in range(n_tasks)]
 
@@ -1869,6 +1868,7 @@ class DataAnalyzer:
 
             for gen in range(n_gens_per_task[t]):
                 objs_tgen = all_objs[t][gen]
+                cons_tgen = all_cons[t][gen] if all_cons is not None else None  # 安全获取约束
                 M = objs_tgen.shape[1]
 
                 if M == 1:
@@ -1879,6 +1879,7 @@ class DataAnalyzer:
                         raise ValueError('Multi-objective metric calculation requires settings parameter')
 
                     metric_name = self.settings.get('metric')
+
                     reference = DataUtils.load_reference(self.settings, prob, task_key, M)
 
                     if metric_name == 'IGD':
@@ -1888,6 +1889,38 @@ class DataAnalyzer:
                     elif metric_name == 'HV':
                         metric_instance = HV()
                         metric_value = metric_instance.calculate(objs_tgen, reference)
+                        sign = metric_instance.sign
+                    elif metric_name == 'IGDp':
+                        metric_instance = IGDp()
+                        metric_value = metric_instance.calculate(objs_tgen, reference)
+                        sign = metric_instance.sign
+                    elif metric_name == 'GD':
+                        metric_instance = GD()
+                        metric_value = metric_instance.calculate(objs_tgen, reference)
+                        sign = metric_instance.sign
+                    elif metric_name == 'DeltaP':
+                        metric_instance = DeltaP()
+                        metric_value = metric_instance.calculate(objs_tgen, reference)
+                        sign = metric_instance.sign
+                    elif metric_name == 'Spacing':
+                        metric_instance = Spacing()
+                        metric_value = metric_instance.calculate(objs_tgen)
+                        sign = metric_instance.sign
+                    elif metric_name == 'Spread':
+                        metric_instance = Spread()
+                        metric_value = metric_instance.calculate(objs_tgen, reference)
+                        sign = metric_instance.sign
+                    elif metric_name == 'FR':
+                        if cons_tgen is None:
+                            raise ValueError('FR metric requires constraint data, but all_cons is not available')
+                        metric_instance = FR()
+                        metric_value = metric_instance.calculate(cons_tgen)
+                        sign = metric_instance.sign
+                    elif metric_name == 'CV':
+                        if cons_tgen is None:
+                            raise ValueError('CV metric requires constraint data, but all_cons is not available')
+                        metric_instance = CV()
+                        metric_value = metric_instance.calculate(cons_tgen)
                         sign = metric_instance.sign
                     else:
                         raise ValueError(f'Unsupported metric: {metric_name}')

@@ -5,8 +5,8 @@ This module implements G-MFEA for expensive multi-task optimization with adaptiv
 
 References
 ----------
-.. [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive
-   problems." IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
+    [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive
+        problems." IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
 
 Notes
 -----
@@ -60,7 +60,7 @@ class GMFEA:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, mu=0.4, phi=0.1, theta=0.02, scale_factor=1.25,
-                 save_data=True, save_path='./Data', name='gmfea_test', disable_tqdm=True):
+                 save_data=True, save_path='./TestData', name='G-MFEA_test', disable_tqdm=True):
         """
         Initialize G-MFEA algorithm.
 
@@ -85,9 +85,9 @@ class GMFEA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './Data')
+            Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'gmfea_test')
+            Name for the experiment (default: 'G-MFEA_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

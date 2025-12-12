@@ -5,8 +5,8 @@ This module implements NSGA-II for multi-objective optimization problems.
 
 References
 ----------
-.. [1] Deb, Kalyanmoy, et al. "A fast and elitist multiobjective genetic algorithm: NSGA-II."
-   IEEE transactions on evolutionary computation 6.2 (2002): 182-197.
+    [1] Deb, Kalyanmoy, et al. "A fast and elitist multiobjective genetic algorithm: NSGA-II."
+        IEEE transactions on evolutionary computation 6.2 (2002): 182-197.
 
 Notes
 -----

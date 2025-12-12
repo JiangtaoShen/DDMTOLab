@@ -5,8 +5,8 @@ This module implements RAMTEA for expensive multi-task optimization with surroga
 
 References
 ----------
-.. [1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive
-   multitasking optimization." 2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.
+    [1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive
+        multitasking optimization." 2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.
 
 Notes
 -----
@@ -63,7 +63,7 @@ class RAMTEA:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, pop_size=50, w_max=50, save_data=True,
-                 save_path='./Data', name='ramtea_test', disable_tqdm=True):
+                 save_path='./TestData', name='RA-MTEA_test', disable_tqdm=True):
         """
         Initialize RAMTEA algorithm.
 
@@ -82,9 +82,9 @@ class RAMTEA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './Data')
+            Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'ramtea_test')
+            Name for the experiment (default: 'RA-MTEA_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

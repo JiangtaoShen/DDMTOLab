@@ -5,8 +5,8 @@ This module implements Differential Evolution for single-objective optimization 
 
 References
 ----------
-.. [1] Storn, Rainer, and Kenneth Price. "Differential evolution–a simple and efficient heuristic
-   for global optimization over continuous spaces." Journal of global optimization 11.4 (1997): 341-359.
+    [1] Storn, Rainer, and Kenneth Price. "Differential evolution–a simple and efficient heuristic
+        for global optimization over continuous spaces." Journal of global optimization 11.4 (1997): 341-359.
 
 Notes
 -----

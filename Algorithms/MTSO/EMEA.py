@@ -5,8 +5,8 @@ This module implements EMEA for multi-task optimization with knowledge transfer 
 
 References
 ----------
-.. [1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding."
-   IEEE transactions on cybernetics 49.9 (2018): 3457-3470.
+    [1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding."
+        IEEE transactions on cybernetics 49.9 (2018): 3457-3470.
 
 Notes
 -----

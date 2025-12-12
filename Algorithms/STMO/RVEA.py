@@ -5,8 +5,8 @@ This module implements RVEA for many-objective optimization problems.
 
 References
 ----------
-.. [1] Cheng, Ran, et al. "A reference vector guided evolutionary algorithm for many-objective
-   optimization." IEEE transactions on evolutionary computation 20.5 (2016): 773-791.
+    [1] Cheng, Ran, et al. "A reference vector guided evolutionary algorithm for many-objective
+        optimization." IEEE transactions on evolutionary computation 20.5 (2016): 773-791.
 
 Notes
 -----
@@ -36,7 +36,7 @@ class RVEA:
         'n_tasks': '1-K',
         'dims': 'unequal',
         'n_objs': '2-M/unequal',
-        'n_cons': '1-C/unequal',
+        'n_cons': '0-C/unequal',
         'n': 'unequal',
         'max_nfes': 'unequal',
         'expensive': 'False',

@@ -5,8 +5,8 @@ This module implements Competitive Swarm Optimizer for single-objective optimiza
 
 References
 ----------
-.. [1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization."
-   IEEE Transactions on Cybernetics 45.2 (2015): 191-204.
+    [1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization."
+        IEEE Transactions on Cybernetics 45.2 (2015): 191-204.
 
 Notes
 -----
@@ -58,7 +58,7 @@ class CSO:
         """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, phi=0.1, save_data=True, save_path='./Data', name='cso_test',
+    def __init__(self, problem, n=None, max_nfes=None, phi=0.1, save_data=True, save_path='./TestData', name='CSO_test',
                  disable_tqdm=True):
         """
         Initialize Competitive Swarm Optimizer algorithm.
@@ -76,9 +76,9 @@ class CSO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './Data')
+            Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'cso_test')
+            Name for the experiment (default: 'CSO_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
