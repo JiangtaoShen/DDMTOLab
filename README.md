@@ -173,15 +173,15 @@ Results from the batch experiment above:
 - **Real-World Problems (WRP)**: Engineering and industrial applications
 
 ### Algorithms
-- **Single-Task Single-Objective (STSO)**: GA, DE, PSO, CSO, BO, etc.
-- **Single-Task Multi-Objective (STMO)**: NSGA-II, RVEA, etc.
+- **Single-Task Single-Objective (STSO)**: GA, DE, PSO, SL-PSO, CSO, BO, etc.
+- **Single-Task Multi-Objective (STMO)**: NSGA-II, RVEA, NSGA-III, MOEA/D, etc.
 - **Multi-Task Single-Objective (MTSO)**: MFEA, EMEA, G-MFEA, MTBO, RA-MTEA, SELF, etc.
 - **Multi-Task Multi-Objective (MTMO)**: MO-MFEA, etc.
 
 ### Methods
 - **Batch Experiments**: Parallel execution framework
 - **Data Analysis**: Statistical testing and visualization
-- **Performance Metrics**: IGD, HV, etc.
+- **Performance Metrics**: IGD, HV, FR, CV, Spacing, Spread, etc.
 - **Algorithm Components**: Reusable building blocks
 
 ## 📄 Citation
