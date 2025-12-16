@@ -16,6 +16,7 @@ Date: 2025.10.31
 Version: 1.0
 """
 import time
+import numpy as np
 from tqdm import tqdm
 from Methods.Algo_Methods.algo_utils import *
 
@@ -33,12 +34,14 @@ class CSO:
     algorithm_information = {
         'n_tasks': '1-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
-        'n_cons': '0',
-        'n': 'unequal',
-        'max_nfes': 'unequal',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
-        'knowledge_transfer': 'False'
+        'knowledge_transfer': 'False',
+        'n': 'unequal',
+        'max_nfes': 'unequal'
     }
 
     @classmethod
@@ -106,36 +109,45 @@ class CSO:
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Initialize population and evaluate for each task
+        # Initialize population in [0,1] space and evaluate for each task
         decs = initialization(problem, n_per_task)
-        objs, _ = evaluation(problem, decs)
+        objs, cons = evaluation(problem, decs)
         nfes_per_task = n_per_task.copy()
-        all_decs, all_objs = init_history(decs, objs)
+        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Initialize particle velocities to zero
         vel = [np.zeros_like(d) for d in decs]
 
-        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task), desc=f"{self.name}",
+        total_nfes = sum(max_nfes_per_task)
+        pbar = tqdm(total=total_nfes, initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < sum(max_nfes_per_task):
+        while sum(nfes_per_task) < total_nfes:
             # Skip tasks that have exhausted their evaluation budget
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
 
             for i in active_tasks:
+                # Calculate constraint violations
+                cvs = np.sum(np.maximum(0, cons[i]), axis=1)
+
                 # Randomly pair particles for pairwise competition
                 rnd_idx = np.random.permutation(n_per_task[i])
                 loser_idx = rnd_idx[:n_per_task[i] // 2]
                 winner_idx = rnd_idx[n_per_task[i] // 2:]
 
-                # Determine actual winners and losers by comparing objectives
+                # Determine actual winners and losers by comparing constraint violation first, then objectives
                 loser_objs = objs[i][loser_idx]
                 winner_objs = objs[i][winner_idx]
+                loser_cvs = cvs[loser_idx]
+                winner_cvs = cvs[winner_idx]
 
-                # Swap indices if loser has better (lower) objective value
-                swap_mask = (loser_objs < winner_objs).flatten()
+                # Swap indices if loser is better than winner
+                # Better means: lower constraint violation, or same violation but lower objective
+                swap_mask = (loser_cvs < winner_cvs) | \
+                            ((loser_cvs == winner_cvs) & (loser_objs.flatten() < winner_objs.flatten()))
+
                 temp_idx = loser_idx[swap_mask].copy()
                 loser_idx[swap_mask] = winner_idx[swap_mask]
                 winner_idx[swap_mask] = temp_idx
@@ -156,21 +168,24 @@ class CSO:
                                        r2 * (decs[i][winner_j] - decs[i][loser_j]) +
                                        self.phi * r3 * (winner_mean - decs[i][loser_j]))
 
-                    # Update position and enforce boundary constraints
+                    # Update position and enforce boundary constraints: clip to [0,1] space
                     decs[i][loser_j] = np.clip(decs[i][loser_j] + vel[i][loser_j], 0, 1)
 
                 # Evaluate only updated losers (winners unchanged)
-                objs[i][loser_idx], _ = evaluation_single(problem, decs[i][loser_idx], i)
+                objs[i][loser_idx], cons[i][loser_idx] = evaluation_single(problem, decs[i][loser_idx], i)
 
                 nfes_per_task[i] += n_per_task[i] // 2
                 pbar.update(n_per_task[i] // 2)
 
-                append_history(all_decs[i], decs[i], all_objs[i], objs[i])
+                # Append current population to history
+                append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
 
         pbar.close()
         runtime = time.time() - start_time
 
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task,
-                                     save_path=self.save_path, filename=self.name, save_data=self.save_data)
+        # Save results
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
+                                     filename=self.name, save_data=self.save_data)
 
         return results

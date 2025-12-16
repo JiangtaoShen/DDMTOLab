@@ -6,10 +6,10 @@ This module implements the Genetic Algorithm for single-objective optimization p
 References
 ----------
     [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning.
-   Addison-Wesley, Reading, MA, 1989.
+        Addison-Wesley, Reading, MA, 1989.
     [2] John H. Holland. Adaptation in Natural and Artificial Systems: An Introductory Analysis
-   with Applications to Biology, Control, and Artificial Intelligence. University of Michigan Press,
-   Ann Arbor, MI, 1st edition, 1975. Reprinted by MIT Press in 1992.
+        with Applications to Biology, Control, and Artificial Intelligence. University of Michigan Press,
+        Ann Arbor, MI, 1st edition, 1975. Reprinted by MIT Press in 1992.
 
 Notes
 -----
@@ -20,6 +20,7 @@ Version: 1.0
 """
 from tqdm import tqdm
 import time
+import numpy as np
 from Methods.Algo_Methods.algo_utils import *
 
 
@@ -36,10 +37,10 @@ class GA:
     algorithm_information = {
         'n_tasks': '1-K',
         'dims': 'unequal',
-        'objs': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
         'cons': 'unequal',
-        'n_cons': '0',
+        'n_cons': '0-C',
         'expensive': 'False',
         'knowledge_transfer': 'False',
         'n': 'unequal',
@@ -114,16 +115,17 @@ class GA:
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Initialize population and evaluate for each task
+        # Initialize population in [0,1] space and evaluate for each task
         decs = initialization(problem, n_per_task)
-        objs, _ = evaluation(problem, decs)
+        objs, cons = evaluation(problem, decs)
         nfes_per_task = n_per_task.copy()
-        all_decs, all_objs = init_history(decs, objs)
+        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task),
-                    desc=f"{self.name}", disable=self.disable_tqdm)
+        total_nfes = sum(max_nfes_per_task)
+        pbar = tqdm(total=total_nfes, initial=sum(n_per_task), desc=f"{self.name}",
+                    disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < sum(max_nfes_per_task):
+        while sum(nfes_per_task) < total_nfes:
             # Skip tasks that have exhausted their evaluation budget
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
@@ -132,25 +134,39 @@ class GA:
             for i in active_tasks:
                 # Generate offspring through crossover and mutation
                 off_decs = ga_generation(decs[i], self.muc, self.mum)
-                off_objs, _ = evaluation_single(problem, off_decs, i)
+                off_objs, off_cons = evaluation_single(problem, off_decs, i)
 
                 # Merge parent and offspring populations
-                objs[i], decs[i] = vstack_groups((objs[i], off_objs), (decs[i], off_decs))
+                objs[i], decs[i], cons[i] = vstack_groups(
+                    (objs[i], off_objs),
+                    (decs[i], off_decs),
+                    (cons[i], off_cons)
+                )
 
-                # Elitist selection: keep top n individuals with minimum objective values
-                index = selection_elit(objs[i], n_per_task[i])
-                objs[i], decs[i] = select_by_index(index, objs[i], decs[i])
+                # Calculate constraint violations
+                cvs = np.sum(np.maximum(0, cons[i]), axis=1)
+
+                # Selection based on constraint violation first, then objective
+                # Sort by constraint violation (ascending), then by objective (ascending)
+                sort_indices = np.lexsort((objs[i].flatten(), cvs))
+
+                # Select top n_per_task[i] individuals
+                index = sort_indices[:n_per_task[i]]
+
+                objs[i], decs[i], cons[i] = select_by_index(index,objs[i], decs[i], cons[i])
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])
 
-                append_history(all_decs[i], decs[i], all_objs[i], objs[i])
+                # Append current population to history
+                append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
 
         pbar.close()
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task, save_path=self.save_path,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results

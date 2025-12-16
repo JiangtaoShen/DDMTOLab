@@ -110,12 +110,12 @@ class MFEA:
 
         # Initialize population and evaluate for each task
         decs = initialization(problem, n)
-        objs, _ = evaluation(problem, decs)
+        objs, cons = evaluation(problem, decs)
         nfes = n * nt
-        all_decs, all_objs = init_history(decs, objs)
+        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform populations to unified search space for knowledge transfer
-        pop_decs = space_transfer(problem, decs, type='uni')
+        pop_decs, pop_cons = space_transfer(problem=problem, decs=decs, cons=cons, type='uni')
         pop_objs = objs
 
         # Skill factor indicates which task each individual belongs to
@@ -126,10 +126,11 @@ class MFEA:
         while nfes < max_nfes:
 
             # Merge populations from all tasks into single arrays
-            pop_objs, pop_decs, pop_sfs = vstack_groups(pop_objs, pop_decs, pop_sfs)
+            pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_cons, pop_sfs)
 
             off_decs = np.zeros_like(pop_decs)
             off_objs = np.zeros_like(pop_objs)
+            off_cons = np.zeros_like(pop_cons)
             off_sfs = np.zeros_like(pop_sfs)
 
             # Randomly pair individuals for assortative mating
@@ -163,38 +164,37 @@ class MFEA:
 
                 off_dec1_trimmed = off_decs[i, :dims[task_idx1]]
                 off_dec2_trimmed = off_decs[i + 1, :dims[task_idx2]]
-                off_objs[i, :], _ = evaluation_single(problem, off_dec1_trimmed, task_idx1)
-                off_objs[i + 1, :], _ = evaluation_single(problem, off_dec2_trimmed, task_idx2)
+                off_objs[i, :], off_cons[i, :] = evaluation_single(problem, off_dec1_trimmed, task_idx1)
+                off_objs[i + 1, :], off_cons[i + 1, :] = evaluation_single(problem, off_dec2_trimmed, task_idx2)
 
             # Merge parents and offspring populations
-            pop_decs, pop_objs, pop_sfs = vstack_groups(
-                (pop_decs, off_decs), (pop_objs, off_objs), (pop_sfs, off_sfs)
+            pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(
+                (pop_decs, off_decs), (pop_objs, off_objs), (pop_cons, off_cons), (pop_sfs, off_sfs)
             )
 
             # Environmental selection: keep best n individuals per task
-            pop_decs, pop_objs, pop_sfs = mfea_selection(pop_decs, pop_objs, pop_sfs, n, nt)
+            pop_decs, pop_objs, pop_cons, pop_sfs = mfea_selection(pop_decs, pop_objs, pop_cons, pop_sfs, n, nt)
 
             # Transform back to native search space
-            decs = space_transfer(problem, pop_decs, type='real')
+            decs, cons = space_transfer(problem, decs=pop_decs, cons=pop_cons, type='real')
 
             nfes += n * nt
             pbar.update(n * nt)
 
-            append_history(all_decs, decs, all_objs, pop_objs)
+            append_history(all_decs, decs, all_objs, pop_objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(
-            all_decs, all_objs, runtime, max_nfes_per_task,
-            save_path=self.save_path, filename=self.name, save_data=self.save_data
-        )
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
+                                     filename=self.name, save_data=self.save_data)
 
         return results
 
 
-def mfea_selection(all_decs, all_objs, all_sfs, n, nt):
+def mfea_selection(all_decs, all_objs, all_cons, all_sfs, n, nt):
     """
     Environmental selection for MFEA based on elitist strategy.
 
@@ -228,24 +228,26 @@ def mfea_selection(all_decs, all_objs, all_sfs, n, nt):
     Selection is performed independently for each task by selecting the top-n individuals
     with minimum objective values among those assigned to that task.
     """
-    pop_decs, pop_objs, pop_sfs = [], [], []
+    pop_decs, pop_objs, pop_cons, pop_sfs = [], [], [], []
 
     # Process each task separately
     for i in range(nt):
         # Extract all individuals belonging to task i
         indices = np.where(all_sfs == i)[0]
-        current_decs, current_objs, current_sfs = select_by_index(indices, all_decs, all_objs, all_sfs)
+        current_decs, current_objs, current_cons, current_sfs = select_by_index(indices, all_decs, all_objs,
+                                                                                all_cons, all_sfs)
 
         # Select top-n individuals with minimum objective values
-        indices_select = selection_elit(current_objs, n)
-        selected_decs, selected_objs, selected_sfs = select_by_index(indices_select, current_decs, current_objs,
-                                                                      current_sfs)
+        indices_select = selection_elit(objs=current_objs, n=n, cons=current_cons)
+        selected_decs, selected_objs, selected_cons, selected_sfs = select_by_index(indices_select, current_decs,
+                                                                                    current_objs, current_cons, current_sfs)
 
         # Store selected individuals for this task
-        pop_decs, pop_objs, pop_sfs = append_history(
+        pop_decs, pop_objs, pop_cons, pop_sfs = append_history(
             pop_decs, selected_decs,
             pop_objs, selected_objs,
+            pop_cons, selected_cons,
             pop_sfs, selected_sfs
         )
 
-    return pop_decs, pop_objs, pop_sfs
+    return pop_decs, pop_objs, pop_cons, pop_sfs

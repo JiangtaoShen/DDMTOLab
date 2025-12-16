@@ -40,6 +40,8 @@ class Results:
         Best constraint values for each task (None if unconstrained)
     all_cons : Optional[List[List[np.ndarray]]]
         Constraint values history for all tasks (None if unconstrained)
+    bounds : Optional[List[np.ndarray]]
+        Bounds for each task, where each element is a 2D array with shape (2, dim)
     """
     best_decs: List[np.ndarray]
     best_objs: List[np.ndarray]
@@ -49,6 +51,7 @@ class Results:
     max_nfes: List[int]
     best_cons: Optional[List[np.ndarray]] = None
     all_cons: Optional[List[List[np.ndarray]]] = None
+    bounds: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None
 
 
 def build_save_results(
@@ -57,6 +60,7 @@ def build_save_results(
         runtime: float,
         max_nfes: List[int],
         all_cons: Optional[List[List[np.ndarray]]] = None,
+        bounds: Optional[List[Tuple[np.ndarray, np.ndarray]]] = None,
         save_path: Optional[str] = None,
         filename: Optional[str] = None,
         save_data: bool = True,
@@ -84,6 +88,8 @@ def build_save_results(
         Maximum function evaluations per task
     all_cons : List[List[np.ndarray]], optional
         Constraint values history for all tasks (default: None)
+    bounds : List[Tuple[np.ndarray, np.ndarray]], optional
+        Bounds (lower, upper) for each task (default: None)
     save_path : str, optional
         Directory path where the results will be saved (default: None)
     filename : str, optional
@@ -132,6 +138,7 @@ def build_save_results(
         max_nfes=max_nfes,
         best_cons=best_cons,
         all_cons=all_cons,
+        bounds=bounds,
     )
 
     # Save results to file if path and filename are provided
@@ -285,7 +292,7 @@ def append_history(*pairs: Any) -> Tuple[list, ...]:
     return tuple(results)
 
 
-def select_by_index(index: np.ndarray, *arrays: np.ndarray) -> Union[np.ndarray, List[np.ndarray]]:
+def select_by_index(index: np.ndarray, *arrays: Optional[np.ndarray]) -> Union[np.ndarray, List[Optional[np.ndarray]]]:
     """
     Select rows from arrays by index.
 
@@ -293,18 +300,22 @@ def select_by_index(index: np.ndarray, *arrays: np.ndarray) -> Union[np.ndarray,
     ----------
     index : np.ndarray
         Indices to select, shape (n_selected,)
-    *arrays : np.ndarray
+    *arrays : np.ndarray or None
         Variable number of arrays to select from.
         Each array has shape (n_samples,) or (n_samples, dim).
+        None values are passed through unchanged.
 
     Returns
     -------
-    results : Union[np.ndarray, List[np.ndarray]]
-        Selected array if single input, or list of selected arrays if multiple inputs
+    results : Union[np.ndarray, List[Optional[np.ndarray]]]
+        Selected array if single input, or list of selected arrays if multiple inputs.
+        None inputs return None in the corresponding position.
     """
     results = []
     for arr in arrays:
-        if arr.ndim == 1:
+        if arr is None:  # 这一行必须在 arr.ndim 之前检查
+            results.append(None)
+        elif arr.ndim == 1:
             results.append(arr[index])
         else:
             results.append(arr[index, :])
@@ -828,7 +839,8 @@ def space_transfer(
         decs: List[np.ndarray],
         objs: Optional[List[np.ndarray]] = None,
         cons: Optional[List[np.ndarray]] = None,
-        type: str = 'real'
+        type: str = 'real',
+        padding: str = 'zero'
 ) -> Union[List[np.ndarray],
 tuple[List[np.ndarray], List[np.ndarray]],
 tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
@@ -857,8 +869,13 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
     type : str, optional
         Transfer type (default: 'real'):
 
-        - 'uni': Pad matrices with zeros to the maximum dimension (Unified Space)
+        - 'uni': Pad matrices with zeros or random values to the maximum dimension (Unified Space)
         - 'real': Truncate matrices back to their original dimensions (Real Space)
+    padding : str, optional
+        Padding strategy when type='uni' (default: 'zero'):
+
+        - 'zero': Pad with zeros
+        - 'random': Pad with random values uniformly distributed in [0, 1]
 
     Returns
     -------
@@ -868,6 +885,11 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
         Returned if objs is provided but cons is None
     (new_decs, new_objs, new_cons) : tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]
         Returned if both objs and cons are provided
+
+    Notes
+    -----
+    The padding parameter only affects the 'uni' transfer type. When type='real',
+    padding is ignored as truncation is performed instead.
     """
     # Copy lists to avoid modifying the original input references
     new_decs = [d for d in decs]
@@ -886,8 +908,11 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
             n_samples = new_decs[i].shape[0]
             dif = d_max - dims[i]
             if dif > 0:
-                zeros = np.zeros((n_samples, dif))
-                new_decs[i] = np.hstack([new_decs[i], zeros])
+                if padding == 'random':
+                    pad_values = np.random.rand(n_samples, dif)
+                else:  # padding == 'zero'
+                    pad_values = np.zeros((n_samples, dif))
+                new_decs[i] = np.hstack([new_decs[i], pad_values])
 
         # Handle Objectives (Padding)
         if new_objs is not None:
@@ -896,8 +921,11 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
                 n_samples = new_objs[i].shape[0]
                 dif = m_max - nobjs[i]
                 if dif > 0:
-                    zeros = np.zeros((n_samples, dif))
-                    new_objs[i] = np.hstack([new_objs[i], zeros])
+                    if padding == 'random':
+                        pad_values = np.random.rand(n_samples, dif)
+                    else:  # padding == 'zero'
+                        pad_values = np.zeros((n_samples, dif))
+                    new_objs[i] = np.hstack([new_objs[i], pad_values])
 
         # Handle Constraints (Padding)
         if new_cons is not None:
@@ -907,8 +935,11 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
                     n_samples = new_cons[i].shape[0]
                     dif = c_max - ncons[i]
                     if dif > 0:
-                        zeros = np.zeros((n_samples, dif))
-                        new_cons[i] = np.hstack([new_cons[i], zeros])
+                        if padding == 'random':
+                            pad_values = np.random.rand(n_samples, dif)
+                        else:  # padding == 'zero'
+                            pad_values = np.zeros((n_samples, dif))
+                        new_cons[i] = np.hstack([new_cons[i], pad_values])
 
     elif type == 'real':
         # Handle Decision Variables (Truncation)

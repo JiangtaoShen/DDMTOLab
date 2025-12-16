@@ -1507,8 +1507,8 @@ class PlotGenerator:
             if true_pf is not None and true_pf.shape[1] == 2:
                 sort_idx = np.argsort(true_pf[:, 0])
                 sorted_pf = true_pf[sort_idx]
-                ax.plot(sorted_pf[:, 0], sorted_pf[:, 1],
-                        'k-', linewidth=2, label='True PF', alpha=0.3, zorder=1)
+                ax.scatter(sorted_pf[:, 0], sorted_pf[:, 1],
+                           c='gray', s=2, linewidth=0.1, label='True PF', zorder=1)
 
             ax.scatter(nd_solutions[:, 0], nd_solutions[:, 1],
                        c='dodgerblue', s=60, alpha=0.8, edgecolors='black',
@@ -1532,6 +1532,7 @@ class PlotGenerator:
             ax.set_xlabel('$f_1$', fontsize=12)
             ax.set_ylabel('$f_2$', fontsize=12)
             ax.set_zlabel('$f_3$', fontsize=12)
+
             ax.view_init(elev=20, azim=60)
 
         else:

@@ -149,7 +149,8 @@ class MTBO:
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task, save_path=self.save_path,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results

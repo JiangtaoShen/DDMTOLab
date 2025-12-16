@@ -16,6 +16,7 @@ Date: 2025.10.24
 Version: 1.0
 """
 import time
+import numpy as np
 from tqdm import tqdm
 from Methods.Algo_Methods.algo_utils import *
 
@@ -33,12 +34,14 @@ class DE:
     algorithm_information = {
         'n_tasks': '1-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
-        'n_cons': '0',
-        'n': 'unequal',
-        'max_nfes': 'unequal',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
-        'knowledge_transfer': 'False'
+        'knowledge_transfer': 'False',
+        'n': 'unequal',
+        'max_nfes': 'unequal'
     }
 
     @classmethod
@@ -109,16 +112,17 @@ class DE:
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Initialize population and evaluate for each task
+        # Initialize population in [0,1] space and evaluate for each task
         decs = initialization(problem, n_per_task)
-        objs, _ = evaluation(problem, decs)
+        objs, cons = evaluation(problem, decs)
         nfes_per_task = n_per_task.copy()
-        all_decs, all_objs = init_history(decs, objs)
+        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task),
+        total_nfes = sum(max_nfes_per_task)
+        pbar = tqdm(total=total_nfes, initial=sum(n_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < sum(max_nfes_per_task):
+        while sum(nfes_per_task) < total_nfes:
             # Skip tasks that have exhausted their evaluation budget
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
@@ -127,23 +131,33 @@ class DE:
             for i in active_tasks:
                 # Generate trial vectors through DE mutation and crossover
                 off_decs = de_generation(decs[i], self.F, self.CR)
-                off_objs, _ = evaluation_single(problem, off_decs, i)
+                off_objs, off_cons = evaluation_single(problem, off_decs, i)
+
+                # Calculate constraint violations
+                off_cvs = np.sum(np.maximum(0, off_cons), axis=1)
+                parent_cvs = np.sum(np.maximum(0, cons[i]), axis=1)
 
                 # Greedy selection: replace parent if offspring is better
-                improved = (off_objs < objs[i]).flatten()
+                # Better means: lower constraint violation, or same violation but lower objective
+                improved = (off_cvs < parent_cvs) | \
+                           ((off_cvs == parent_cvs) & (off_objs.flatten() < objs[i].flatten()))
+
                 decs[i][improved] = off_decs[improved, :]
                 objs[i][improved] = off_objs[improved, :]
+                cons[i][improved] = off_cons[improved, :]
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])
 
-                append_history(all_decs[i], decs[i], all_objs[i], objs[i])
+                # Append current population to history
+                append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
 
         pbar.close()
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task, save_path=self.save_path,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results

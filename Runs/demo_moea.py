@@ -1,35 +1,47 @@
 from Methods.batch_experiment import BatchExperiment
 from Algorithms.STMO.NSGAII import NSGAII
-from Algorithms.STMO.RVEA import RVEA
+from Algorithms.STMO.TwoArch2 import TwoArch2
+from Algorithms.STMO.IBEA import IBEA
+from Algorithms.STMO.MOEAD import MOEAD
+from Algorithms.STMO.NSGAIISDR import NSGAIISDR
 from Algorithms.MTMO.MOMFEA import MOMFEA
-from Problems.STMO.ZDT import ZDT, SETTINGS
+from Algorithms.MTMO.MOMFEAII import MOMFEAII
+from Problems.MTMO.cec17_mtmo import CEC17MTMO, SETTINGS
 from Methods.data_analysis import DataAnalyzer
 
 
 if __name__ == '__main__':
     batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
 
-    zdt = ZDT()
+    prob = CEC17MTMO()
 
-    batch_exp.add_problem(zdt.ZDT5, 'ZDT5')
+    batch_exp.add_problem(prob.P1, 'P1')
+    batch_exp.add_problem(prob.P2, 'P2')
+    batch_exp.add_problem(prob.P3, 'P3')
+    batch_exp.add_problem(prob.P8, 'P8')
+
 
 
 
     n = 100
     max_nfes = 10000
     batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=n, max_nfes=max_nfes)
-    batch_exp.add_algorithm(RVEA, 'RVEA', n=n, max_nfes=max_nfes)
-    # batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(NSGAIISDR, 'NSGA-II-SDR', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(TwoArch2, 'TwoArch2', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(IBEA, 'IBEA', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(MOEAD, 'MOEAD', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(MOMFEAII, 'MO-MFEA-II', n=n, max_nfes=max_nfes)
 
     batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',
         settings=SETTINGS,
-        algorithm_order=['NSGA-II', 'RVEA'],
+        algorithm_order=None,
         save_path='./Results',
-        table_format='latex',
-        figure_format='pdf',
+        table_format='excel',
+        figure_format='png',
         statistic_type='mean',
         significance_level=0.05,
         rank_sum_test=True,

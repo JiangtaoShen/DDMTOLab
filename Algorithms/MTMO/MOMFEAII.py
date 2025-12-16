@@ -1,29 +1,31 @@
 """
-Multiobjective Multifactorial Evolutionary Algorithm (MOMFEA)
+Multiobjective Multifactorial Evolutionary Algorithm With Online Transfer Parameter Estimation (MO-MFEA-II)
 
 This module implements MOMFEA for multi-objective multi-task optimization with knowledge transfer.
 
 References
 ----------
-    [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward
-        Evolutionary Multitasking." IEEE Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
+    [1] Bali, Kavitesh Kumar, et al. "Cognizant multitasking in multiobjective multifactorial evolution: MO-MFEA-II."
+        IEEE transactions on cybernetics 51.4 (2020): 1784-1796.
 
 Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.11.27
+Date: 2025.12.16
 Version: 1.0
 """
 import time
 from tqdm import tqdm
+from scipy.stats import norm
+from scipy.optimize import minimize_scalar
 from Algorithms.STMO.NSGAII import nsga2_sort
 from Methods.Algo_Methods.algo_utils import *
 
 
-class MOMFEA:
+class MOMFEAII:
     """
-    Multiobjective Multifactorial Evolutionary Algorithm for multi-objective multi-task optimization.
+    Multiobjective Multifactorial Evolutionary Algorithm With Online Transfer Parameter Estimation.
 
     Attributes
     ----------
@@ -59,10 +61,10 @@ class MOMFEA:
         """
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./Data',
-                 name='momfea_test', disable_tqdm=True):
+    def __init__(self, problem, n=None, max_nfes=None, save_data=True, save_path='./TestData',
+                 name='momfea2_test', disable_tqdm=True):
         """
-        Initialize MOMFEA algorithm.
+        Initialize MO-MFEA-II.
 
         Parameters
         ----------
@@ -72,8 +74,6 @@ class MOMFEA:
             Population size per task (default: 100)
         max_nfes : int, optional
             Maximum number of function evaluations per task (default: 10000)
-        rmp : float, optional
-            Random mating probability for inter-task crossover (default: 0.3)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -86,7 +86,6 @@ class MOMFEA:
         self.problem = problem
         self.n = n if n is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
-        self.rmp = rmp
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -94,7 +93,7 @@ class MOMFEA:
 
     def optimize(self):
         """
-        Execute the MOMFEA algorithm.
+        Execute the MO-MFEA-II algorithm.
 
         Returns
         -------
@@ -142,6 +141,9 @@ class MOMFEA:
             # Transform populations to unified search space for knowledge transfer
             pop_decs, pop_objs, pop_cons = space_transfer(problem, pop_decs, pop_objs, pop_cons, type='uni')
 
+            # Learn RMP matrix online
+            rmpMatrix = learnRMP(pop_decs, dims)
+
             # Merge populations from all tasks into single arrays
             pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_cons, pop_sfs)
 
@@ -158,22 +160,32 @@ class MOMFEA:
                 p2 = shuffled_index[i + 1]
                 sf1 = pop_sfs[p1].item()
                 sf2 = pop_sfs[p2].item()
+                rmp_value = rmpMatrix[sf1, sf2]
 
                 # Cross-task transfer: crossover if same task or rmp condition met
-                if sf1 == sf2 or np.random.rand() < self.rmp:
+                if sf1 == sf2 or np.random.rand() < rmp_value:
                     off_dec1, off_dec2 = crossover(pop_decs[p1, :], pop_decs[p2, :], mu=2)
                     off_decs[i, :] = off_dec1
                     off_decs[i + 1, :] = off_dec2
                     off_sfs[i] = np.random.choice([sf1, sf2])
                     off_sfs[i + 1] = sf1 if off_sfs[i] == sf2 else sf2
                 else:
-                    # No transfer: mutate within own task
-                    off_dec1 = mutation(pop_decs[p1, :], mu=5)
-                    off_dec2 = mutation(pop_decs[p2, :], mu=5)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = sf1
-                    off_sfs[i + 1] = sf2
+                    # No transfer: randomly pick individuals from same task for crossover
+                    for x, p in enumerate([p1, p2]):
+                        sf = pop_sfs[p].item()
+                        # Find all individuals with the same skill factor
+                        same_sf_indices = np.where(pop_sfs.flatten() == sf)[0]
+                        # Remove current individual from candidates
+                        same_sf_indices = same_sf_indices[same_sf_indices != p]
+                        # Randomly select another individual from the same task
+                        idx = np.random.choice(same_sf_indices)
+
+                        # Crossover with the selected individual
+                        off_dec_curr, _ = crossover(pop_decs[p, :], pop_decs[idx, :], mu=2)
+                        off_dec_curr = mutation(off_dec_curr, mu=5)
+                        off_decs[i + x, :] = off_dec_curr
+                        # Inherit skill factor from parent
+                        off_sfs[i + x] = sf
 
                 # Trim to task dimensionality and evaluate offspring
                 task_idx1 = off_sfs[i].item()
@@ -279,3 +291,158 @@ def momfea_selection(all_decs, all_objs, all_cons, all_sfs, n, nt):
         )
 
     return pop_decs, pop_objs, pop_cons, pop_sfs
+
+
+def learnRMP(subpops, vars):
+    """
+    Learn the relationship matrix (RMP) between multiple tasks.
+
+    Parameters
+    ----------
+    subpops : list
+        List of subpopulations, either as numpy arrays or dicts with 'data' key.
+        Each subpopulation contains solution variables for one task.
+    vars : list or array-like
+        Dimensionality (number of variables) for each task.
+
+    Returns
+    -------
+    rmpMatrix : np.ndarray
+        Symmetric relationship matrix of shape (numtasks, numtasks).
+        rmpMatrix[i,j] indicates the similarity between task i and task j.
+        Diagonal elements are 1.0, off-diagonal values are in [0, 1].
+
+    Notes
+    -----
+    The RMP (Relationship Matrix of Problems) quantifies inter-task similarities
+    by computing probabilistic overlap between learned Gaussian models.
+    Higher RMP values indicate stronger task relationships, enabling better
+    knowledge transfer in multi-task optimization.
+    """
+    # Convert to dict format if needed
+    if isinstance(subpops, list) and isinstance(subpops[0], np.ndarray):
+        subpops = [{'data': pop} for pop in subpops]
+
+    numtasks = len(subpops)
+    maxDim = max(vars)
+    rmpMatrix = np.eye(numtasks)
+
+    # Add noise and build probabilistic models
+    probmodel = []
+    for i in range(numtasks):
+        model = {}
+        model['nsamples'] = subpops[i]['data'].shape[0]
+        nrandsamples = int(np.floor(0.1 * model['nsamples']))
+
+        # Create random samples with maxDim columns
+        randMat = np.random.rand(nrandsamples, maxDim)
+
+        # Pad subpops data to maxDim with ZEROS (to match MATLAB behavior)
+        current_data = subpops[i]['data']
+        padded_data = current_data
+
+        # Combine original data with random samples
+        combined_data = np.vstack([padded_data, randMat])
+        model['mean'] = np.mean(combined_data, axis=0)
+        model['stdev'] = np.std(combined_data, axis=0, ddof=1)
+
+        probmodel.append(model)
+
+    # Compute pairwise similarities
+    for i in range(numtasks):
+        for j in range(i + 1, numtasks):
+            popdata = [
+                {'probmatrix': np.ones((probmodel[i]['nsamples'], 2))},
+                {'probmatrix': np.ones((probmodel[j]['nsamples'], 2))}
+            ]
+
+            Dim = min(vars[i], vars[j])
+
+            # Compute probabilities for population i
+            for k in range(probmodel[i]['nsamples']):
+                for l in range(Dim):
+                    popdata[0]['probmatrix'][k, 0] *= norm.pdf(
+                        subpops[i]['data'][k, l],
+                        probmodel[i]['mean'][l],
+                        probmodel[i]['stdev'][l]
+                    )
+                    popdata[0]['probmatrix'][k, 1] *= norm.pdf(
+                        subpops[i]['data'][k, l],
+                        probmodel[j]['mean'][l],
+                        probmodel[j]['stdev'][l]
+                    )
+
+            # Compute probabilities for population j
+            for k in range(probmodel[j]['nsamples']):
+                for l in range(Dim):
+                    popdata[1]['probmatrix'][k, 0] *= norm.pdf(
+                        subpops[j]['data'][k, l],
+                        probmodel[i]['mean'][l],
+                        probmodel[i]['stdev'][l]
+                    )
+                    popdata[1]['probmatrix'][k, 1] *= norm.pdf(
+                        subpops[j]['data'][k, l],
+                        probmodel[j]['mean'][l],
+                        probmodel[j]['stdev'][l]
+                    )
+
+            # Optimize to find RMP value
+            result = minimize_scalar(
+                lambda x: loglik(x, popdata, numtasks),
+                bounds=(0, 1),
+                method='bounded'
+            )
+
+            rmp_value = max(0, result.x + np.random.normal(0, 0.01))
+            rmp_value = min(rmp_value, 1)
+
+            rmpMatrix[i, j] = rmp_value
+            rmpMatrix[j, i] = rmp_value
+
+    return rmpMatrix
+
+
+def loglik(rmp, popdata, ntasks):
+    """
+    Compute the negative log-likelihood for a given RMP value.
+
+    Parameters
+    ----------
+    rmp : float
+        Relationship matrix parameter value in [0, 1] to evaluate.
+        Represents the strength of inter-task relationship.
+    popdata : list
+        List of dicts, each containing 'probmatrix' of shape (nsamples, 2).
+        probmatrix[:, 0] are probabilities under own task model,
+        probmatrix[:, 1] are probabilities under other task model.
+    ntasks : int
+        Total number of tasks in the multi-task problem.
+
+    Returns
+    -------
+    f : float
+        Negative log-likelihood value. Lower values indicate better fit
+        of the RMP parameter to the observed probability distributions.
+
+    Notes
+    -----
+    This function is used as the objective in optimization to find the optimal
+    RMP value that maximizes the likelihood of observing the population data
+    under a mixture model with inter-task knowledge transfer.
+    """
+    f = 0
+
+    # Make a copy to avoid modifying the original
+    popdata_copy = [{'probmatrix': pop['probmatrix'].copy()} for pop in popdata]
+
+    for i in range(2):
+        for j in range(2):
+            if i == j:
+                popdata_copy[i]['probmatrix'][:, j] *= (1 - (0.5 * (ntasks - 1) * rmp / ntasks))
+            else:
+                popdata_copy[i]['probmatrix'][:, j] *= 0.5 * (ntasks - 1) * rmp / ntasks
+
+        # Compute negative log-likelihood
+        f += np.sum(-np.log(np.sum(popdata_copy[i]['probmatrix'], axis=1)))
+
+    return f

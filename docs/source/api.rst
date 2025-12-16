@@ -113,8 +113,8 @@ GWO
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-KLPSO
-^^^^^
+KL-PSO
+^^^^^^
 
 .. automodule:: Algorithms.STSO.KLPSO
    :no-members:
@@ -139,8 +139,8 @@ PSO
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-SLPSO
-^^^^^
+SL-PSO
+^^^^^^
 
 .. automodule:: Algorithms.STSO.SLPSO
    :no-members:
@@ -170,6 +170,19 @@ MFEA
    :exclude-members: algorithm_information, get_algorithm_information
 
 .. autofunction:: Algorithms.MTSO.MFEA.mfea_selection
+
+MFEA-II
+^^^^^^^
+
+.. automodule:: Algorithms.MTSO.MFEAII
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MFEAII.MFEAII
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 EMEA
 ^^^^
@@ -264,6 +277,45 @@ NSGA-II
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+SPEA2
+^^^^^
+
+.. automodule:: Algorithms.STMO.SPEA2
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.SPEA2.SPEA2
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MOEA/D
+^^^^^^
+
+.. automodule:: Algorithms.STMO.MOEAD
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MOEAD.MOEAD
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+IBEA
+^^^^
+
+.. automodule:: Algorithms.STMO.IBEA
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.IBEA.IBEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 RVEA
 ^^^^
 
@@ -271,6 +323,71 @@ RVEA
    :no-members:
 
 .. autoclass:: Algorithms.STMO.RVEA.RVEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+NSGA-III
+^^^^^^^^
+
+.. automodule:: Algorithms.STMO.NSGAIII
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.NSGAIII.NSGAIII
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+CCMO
+^^^^
+
+.. automodule:: Algorithms.STMO.CCMO
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.CCMO.CCMO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MSEA
+^^^^
+
+.. automodule:: Algorithms.STMO.MSEA
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MSEA.MSEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+NSGA-II-SDR
+^^^^^^^^^^^
+
+.. automodule:: Algorithms.STMO.NSGAIISDR
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.NSGAIISDR.NSGAIISDR
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+Two_Arch2
+^^^^^^^^^^^
+
+.. automodule:: Algorithms.STMO.TwoArch2
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.TwoArch2.TwoArch2
    :members:
    :undoc-members:
    :show-inheritance:
@@ -294,6 +411,19 @@ MO-MFEA
    :exclude-members: algorithm_information, get_algorithm_information
 
 .. autofunction:: Algorithms.MTMO.MOMFEA.momfea_selection
+
+MO-MFEA-II
+^^^^^^^^^^
+
+.. automodule:: Algorithms.MTMO.MOMFEAII
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MOMFEAII.MOMFEAII
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 Problems
 --------
@@ -322,6 +452,13 @@ ZDT Test Suite
 ^^^^^^^^^^^^^^
 
 .. automodule:: Problems.STMO.ZDT
+   :members:
+   :undoc-members:
+
+UF Test Suite
+^^^^^^^^^^^^^^
+
+.. automodule:: Problems.STMO.UF
    :members:
    :undoc-members:
 

@@ -34,10 +34,10 @@ class GWO:
     algorithm_information = {
         'n_tasks': '1-K',
         'dims': 'unequal',
-        'objs': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
         'cons': 'unequal',
-        'n_cons': '0',
+        'n_cons': '0-C',
         'expensive': 'False',
         'knowledge_transfer': 'False',
         'n': 'unequal',
@@ -227,8 +227,8 @@ class GWO:
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task,
-                                     all_cons=all_cons, save_path=self.save_path,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results

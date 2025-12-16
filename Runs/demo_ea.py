@@ -2,9 +2,12 @@ from Methods.batch_experiment import BatchExperiment
 from Methods.data_analysis import DataAnalyzer
 from Algorithms.STSO.GA import GA
 from Algorithms.STSO.PSO import PSO
+from Algorithms.STSO.CSO import CSO
 from Algorithms.STSO.DE import DE
 from Algorithms.MTSO.EMEA import EMEA
 from Algorithms.MTSO.MFEA import MFEA
+from Algorithms.MTSO.MFEAII import MFEAII
+from Algorithms.MTSO.GMFEA import GMFEA
 from Algorithms.STSO.CMAES import CMAES
 from Algorithms.STSO.GWO import GWO
 from Algorithms.STSO.EO import EO
@@ -23,13 +26,16 @@ if __name__ == '__main__':
     batch_exp.add_problem(cec17mtso.P3, 'P3')
     batch_exp.add_problem(cec17mtso.P4, 'P4')
     batch_exp.add_problem(cec17mtso.P5, 'P5')
+    batch_exp.add_problem(cec17mtso.P6, 'P6')
 
-    batch_exp.add_algorithm(PSO, 'PSO', n=100, max_nfes=10000)
+
+    batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=10000)
+    # batch_exp.add_algorithm(MFEAII, 'MFEA-II', n=100, max_nfes=10000)
+    batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=10000)
+    batch_exp.add_algorithm(GMFEA, 'G-MFEA', n=100, max_nfes=10000)
     batch_exp.add_algorithm(CMAES, 'CMA-ES', n=100, max_nfes=10000)
-    batch_exp.add_algorithm(KLPSO, 'KL-PSO', n=100, max_nfes=10000)
-    batch_exp.add_algorithm(SLPSO, 'SL-PSO', n=100, max_nfes=10000)
 
-    batch_exp.run(n_runs=2, verbose=True, max_workers=8)
+    batch_exp.run(n_runs=3, verbose=True, max_workers=6)
 
     analyzer = DataAnalyzer(
         data_path='./Data',

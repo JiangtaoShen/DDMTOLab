@@ -196,7 +196,7 @@ class GMFEA:
                                                         (pop_sfs, off_sfs))
 
             # Environmental selection: keep best n individuals per task
-            pop_decs, pop_objs, pop_sfs = mfea_selection(pop_decs, pop_objs, pop_sfs, n, nt)
+            pop_decs, pop_objs, pop_sfs = gmfea_selection(pop_decs, pop_objs, pop_sfs, n, nt)
 
             # Transform back to native search space
             decs = space_transfer(problem, pop_decs, type='real')
@@ -212,7 +212,8 @@ class GMFEA:
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs, all_objs, runtime, max_nfes_per_task, save_path=self.save_path,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
+                                     bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results
@@ -448,3 +449,60 @@ def convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1
         off_dec2 = np.pad(off_dec2, (0, max_dim - len(off_dec2)), mode='constant', constant_values=0)
 
     return off_dec1, off_dec2
+
+
+def gmfea_selection(all_decs, all_objs, all_sfs, n, nt):
+    """
+    Environmental selection for G-MFEA based on elitist strategy.
+
+    Parameters
+    ----------
+    all_decs : np.ndarray
+        Decision variable matrix of the combined population of shape (n_total, d_max).
+        Contains solutions from all tasks in unified search space
+    all_objs : np.ndarray
+        Objective value matrix corresponding to all_decs of shape (n_total, 1).
+        Each individual has been evaluated on its assigned task
+    all_sfs : np.ndarray
+        Skill factor array indicating task assignment for each individual of shape (n_total,).
+        Values range from 0 to nt-1
+    n : int
+        Number of individuals to select per task (population size per task)
+    nt : int
+        Number of tasks in the multi-task optimization problem
+
+    Returns
+    -------
+    pop_decs : List[np.ndarray]
+        Selected decision variable matrices for each task, length nt, each of shape (n, d_max)
+    pop_objs : List[np.ndarray]
+        Selected objective value matrices for each task, length nt, each of shape (n, 1)
+    pop_sfs : List[np.ndarray]
+        Selected skill factor arrays for each task, length nt, each of shape (n,)
+
+    Notes
+    -----
+    Selection is performed independently for each task by selecting the top-n individuals
+    with minimum objective values among those assigned to that task.
+    """
+    pop_decs, pop_objs, pop_sfs = [], [], []
+
+    # Process each task separately
+    for i in range(nt):
+        # Extract all individuals belonging to task i
+        indices = np.where(all_sfs == i)[0]
+        current_decs, current_objs, current_sfs = select_by_index(indices, all_decs, all_objs, all_sfs)
+
+        # Select top-n individuals with minimum objective values
+        indices_select = selection_elit(objs=current_objs, n=n)
+        selected_decs, selected_objs, selected_sfs = select_by_index(indices_select, current_decs,
+                                                                      current_objs, current_sfs)
+
+        # Store selected individuals for this task
+        pop_decs, pop_objs, pop_sfs = append_history(
+            pop_decs, selected_decs,
+            pop_objs, selected_objs,
+            pop_sfs, selected_sfs
+        )
+
+    return pop_decs, pop_objs, pop_sfs

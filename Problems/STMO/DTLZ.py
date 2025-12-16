@@ -648,7 +648,7 @@ def DTLZ9_PF(N: int, M: int) -> np.ndarray:
 
 
 SETTINGS = {
-    'metric': 'FR',
+    'metric': 'IGD',
     'n_ref': 10000,
     'DTLZ1': {'T1': DTLZ1_PF},
     'DTLZ2': {'T1': DTLZ2_PF},

@@ -39,9 +39,9 @@ class BO:
     algorithm_information = {
         'n_tasks': '1-K',
         'dims': 'unequal',
-        'objs': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
-        'cons': 'unequal',
+        'cons': 'equal',
         'n_cons': '0',
         'expensive': 'True',
         'knowledge_transfer': 'False',
@@ -149,7 +149,8 @@ class BO:
         pbar.close()
         runtime = time.time() - start_time
 
-        results = build_save_results(all_decs, all_objs, runtime, nfes_per_task,
-                                     save_path=self.save_path, filename=self.name, save_data=self.save_data)
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     bounds=problem.bounds, save_path=self.save_path,
+                                     filename=self.name, save_data=self.save_data)
 
         return results
