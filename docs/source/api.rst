@@ -74,6 +74,19 @@ DE
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+EEI-BO
+^^^^^^
+
+.. automodule:: Algorithms.STSO.EEIBO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.EEIBO.EEIBO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 EO
 ^^
 
@@ -259,6 +272,19 @@ SELF
 
 .. autofunction:: Algorithms.MTSO.SELF.de_generation_with_core
 .. autofunction:: Algorithms.MTSO.SELF.bo_next_point_de
+
+EEI-BO+
+^^^^^^^
+
+.. automodule:: Algorithms.MTSO.EEIBOplus
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.EEIBOplus.EEIBOplus
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 
 Single-Task Multi-Objective (STMO)

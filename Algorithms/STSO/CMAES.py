@@ -255,12 +255,27 @@ class CMAES:
         pbar.close()
         runtime = time.time() - start_time
 
+        cmaes_params = []
+        for i in range(nt):
+            p = params[i]
+            cmaes_params.append({
+                'm_dec': p['m_dec'].copy(),
+                'sigma': p['sigma'],
+                'C': p['C'].copy(),
+                'B': p['B'].copy(),
+                'D': p['D'].copy(),
+                'ps': p['ps'].copy(),
+                'pc': p['pc'].copy(),
+                'mueff': p['mueff'],
+                'weights': p['weights'].copy(),
+            })
+
         # Save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
-        return results
+        return results, cmaes_params
 
 
 def cmaes_generation(m_dec: np.ndarray, sigma: float, B: np.ndarray, D: np.ndarray, lam: int = None) -> np.ndarray:

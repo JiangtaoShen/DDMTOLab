@@ -6,8 +6,8 @@ This module implements NSGA-III for many-objective optimization problems.
 References
 ----------
     [1] Deb, Kalyanmoy, and Himanshu Jain. "An evolutionary many-objective optimization algorithm using
-        reference-point-based nondominated sorting approach, part I: Solving problems with box constraints."
-        IEEE Transactions on Evolutionary Computation 18.4 (2014): 577-601.
+    reference-point-based nondominated sorting approach, part I: Solving problems with box constraints."
+    IEEE Transactions on Evolutionary Computation 18.4 (2014): 577-601.
 
 Notes
 -----

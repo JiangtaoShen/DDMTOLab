@@ -108,7 +108,7 @@ class MOEAD:
 
     def optimize(self):
         """
-        Execute the MOEA/D algorithm.
+        Execute the MOEA/D.
 
         Returns
         -------
