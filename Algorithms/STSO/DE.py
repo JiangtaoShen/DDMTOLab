@@ -5,7 +5,7 @@ This module implements Differential Evolution for single-objective optimization 
 
 References
 ----------
-    [1] Storn, Rainer, and Kenneth Price. "Differential evolution–a simple and efficient heuristic
+    [1] Storn, Rainer, and Kenneth Price. "Differential evolution–a simple and efficient heuristic \
         for global optimization over continuous spaces." Journal of global optimization 11.4 (1997): 341-359.
 
 Notes
@@ -46,19 +46,6 @@ class DE:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, F=0.5, CR=0.9, save_data=True, save_path='./TestData',

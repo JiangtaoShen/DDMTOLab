@@ -5,7 +5,7 @@ This module implements NSGA-II for multi-objective optimization problems.
 
 References
 ----------
-    [1] Deb, Kalyanmoy, et al. "A fast and elitist multiobjective genetic algorithm: NSGA-II."
+    [1] Deb, Kalyanmoy, et al. "A fast and elitist multiobjective genetic algorithm: NSGA-II." \
         IEEE transactions on evolutionary computation 6.2 (2002): 182-197.
 
 Notes
@@ -45,19 +45,6 @@ class NSGAII:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./TestData',

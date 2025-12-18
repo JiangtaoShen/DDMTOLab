@@ -5,7 +5,7 @@ This module implements RAMTEA for expensive multi-task optimization with surroga
 
 References
 ----------
-    [1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive
+    [1] Shen, Jiangtao, et al. "Surrogate-assisted adaptive knowledge transfer for expensive \
         multitasking optimization." 2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.
 
 Notes
@@ -37,29 +37,18 @@ class RAMTEA:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
+        'cons': 'equal',
         'n_cons': '0',
-        'n_initial': 'unequal',
-        'max_nfes': 'unequal',
         'expensive': 'True',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n_initial': 'unequal',
+        'max_nfes': 'unequal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, pop_size=50, w_max=50, save_data=True,

@@ -5,7 +5,7 @@ This module implements Competitive Swarm Optimizer for single-objective optimiza
 
 References
 ----------
-    [1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization."
+    [1] Cheng, Ran, and Yaochu Jin. "A competitive swarm optimizer for large scale optimization." \
         IEEE Transactions on Cybernetics 45.2 (2015): 191-204.
 
 Notes
@@ -46,19 +46,6 @@ class CSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, phi=0.1, save_data=True, save_path='./TestData', name='CSO_test',

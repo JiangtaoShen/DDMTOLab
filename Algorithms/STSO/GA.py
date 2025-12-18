@@ -5,10 +5,11 @@ This module implements the Genetic Algorithm for single-objective optimization p
 
 References
 ----------
-    [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning.
+    [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning. \
         Addison-Wesley, Reading, MA, 1989.
-    [2] John H. Holland. Adaptation in Natural and Artificial Systems: An Introductory Analysis
-        with Applications to Biology, Control, and Artificial Intelligence. University of Michigan Press,
+
+    [2] John H. Holland. Adaptation in Natural and Artificial Systems: An Introductory Analysis \
+        with Applications to Biology, Control, and Artificial Intelligence. University of Michigan Press, \
         Ann Arbor, MI, 1st edition, 1975. Reprinted by MIT Press in 1992.
 
 Notes
@@ -49,19 +50,6 @@ class GA:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=2.0, mum=5.0, save_data=True, save_path='./TestData',

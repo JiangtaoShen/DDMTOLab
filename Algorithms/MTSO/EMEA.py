@@ -5,7 +5,7 @@ This module implements EMEA for multi-task optimization with knowledge transfer 
 
 References
 ----------
-    [1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding."
+    [1] Feng, Liang, et al. "Evolutionary multitasking via explicit autoencoding." \
         IEEE transactions on cybernetics 49.9 (2018): 3457-3470.
 
 Notes
@@ -33,29 +33,18 @@ class EMEA:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
-        'n_cons': '1-C',
-        'n': 'unequal',
-        'max_nfes': 'unequal',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n': 'unequal',
+        'max_nfes': 'unequal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, SNum=10, TGap=10, muc=2, mum=5, F=0.5, CR=0.6, save_data=True,

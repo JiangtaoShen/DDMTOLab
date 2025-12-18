@@ -5,9 +5,9 @@ This module implements NSGA-II-SDR for multi-objective optimization problems.
 
 References
 ----------
-    [1] Y. Tian, R. Cheng, X. Zhang, Y. Su, and Y. Jin. A strengthened dominance
-        relation considering convergence and diversity for evolutionary many-
-        objective optimization. IEEE Transactions on Evolutionary Computation,
+    [1] Y. Tian, R. Cheng, X. Zhang, Y. Su, and Y. Jin. A strengthened dominance \
+        relation considering convergence and diversity for evolutionary many- \
+        objective optimization. IEEE Transactions on Evolutionary Computation, \
         2019, 23(2): 331-345.
 
 Notes
@@ -48,19 +48,6 @@ class NSGAIISDR:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./TestData',

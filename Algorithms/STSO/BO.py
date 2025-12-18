@@ -5,8 +5,8 @@ This module implements Bayesian Optimization for expensive single-objective opti
 
 References
 ----------
-    [1] Jones, Donald R., Matthias Schonlau, and William J. Welch.
-        "Efficient global optimization of expensive black-box functions."
+    [1] Jones, Donald R., Matthias Schonlau, and William J. Welch. \
+        "Efficient global optimization of expensive black-box functions." \
         Journal of Global optimization 13.4 (1998): 455-492.
 
 Notes
@@ -50,19 +50,6 @@ class BO:
     }
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData',

@@ -5,8 +5,8 @@ This module implements the Equilibrium Optimizer for single-objective optimizati
 
 References
 ----------
-    [1] Faramarzi, A., Heidarinejad, M., Stephens, B., & Mirjalili, S. (2020).
-        Equilibrium optimizer: A novel optimization algorithm.
+    [1] Faramarzi, A., Heidarinejad, M., Stephens, B., & Mirjalili, S. (2020). \
+        Equilibrium optimizer: A novel optimization algorithm. \
         Knowledge-Based Systems, 191, 105190.
 
 Notes
@@ -47,19 +47,6 @@ class EO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, a1=2, a2=1, v=1, gp=0.5,

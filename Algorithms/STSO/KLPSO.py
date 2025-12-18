@@ -5,9 +5,9 @@ This module implements the Knowledge Learning PSO for single-objective optimizat
 
 References
 ----------
-    [1] Jiang, Y., Zhan, Z. H., Tan, K. C., & Zhang, J. (2023).
-        Knowledge Learning for Evolutionary Computation.
-        IEEE Transactions on Evolutionary Computation.
+    [1] Jiang, Y., Zhan, Z. H., Tan, K. C., & Zhang, J. (2023). \
+        Knowledge Learning for Evolutionary Computation. \
+        IEEE Transactions on Evolutionary Computation. \
         DOI: 10.1109/TEVC.2023.3278132
 
 Notes
@@ -49,19 +49,6 @@ class KLPSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, lr=0.2, epochs=10,

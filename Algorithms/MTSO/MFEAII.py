@@ -5,7 +5,7 @@ This module implements MFEA-II for multi-task optimization with knowledge transf
 
 References
 ----------
-    [1] Bali, Kavitesh Kumar, et al. "Multifactorial evolutionary algorithm with online transfer parameter
+    [1] Bali, Kavitesh Kumar, et al. "Multifactorial evolutionary algorithm with online transfer parameter \
         estimation: MFEA-II." IEEE Transactions on Evolutionary Computation 24.1 (2019): 69-83.
 
 Notes
@@ -38,29 +38,16 @@ class MFEAII:
         'dims': 'unequal',
         'objs': 'equal',
         'n_objs': '1',
-        'cons': 'equal',
-        'n_cons': '0',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
         'knowledge_transfer': 'True',
-        'n': 'unequal',
-        'max_nfes': 'unequal'
+        'n': 'equal',
+        'max_nfes': 'equal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, save_data=True, save_path='./TestData',

@@ -5,8 +5,8 @@ This module implements NSGA-III for many-objective optimization problems.
 
 References
 ----------
-    [1] Deb, Kalyanmoy, and Himanshu Jain. "An evolutionary many-objective optimization algorithm using
-    reference-point-based nondominated sorting approach, part I: Solving problems with box constraints."
+    [1] Deb, Kalyanmoy, and Himanshu Jain. "An evolutionary many-objective optimization algorithm using \
+    reference-point-based nondominated sorting approach, part I: Solving problems with box constraints." \
     IEEE Transactions on Evolutionary Computation 18.4 (2014): 577-601.
 
 Notes
@@ -49,19 +49,6 @@ class NSGAIII:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./TestData',

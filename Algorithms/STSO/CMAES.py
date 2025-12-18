@@ -5,8 +5,8 @@ This module implements the CMA-ES algorithm for single-objective optimization pr
 
 References
 ----------
-    [1] Hansen, N., & Ostermeier, A. (2001). Completely Derandomized Self-Adaptation
-        in Evolution Strategies. Evolutionary Computation, 9(2), 159-195.
+    [1] Hansen, N., & Ostermeier, A. (2001). Completely Derandomized Self-Adaptation \
+        in Evolution Strategies. Evolutionary Computation, 9(2), 159-195. \
         DOI: 10.1162/106365601750190398
 
 Notes
@@ -47,19 +47,6 @@ class CMAES:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, sigma0=0.3, use_n=True,

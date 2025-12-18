@@ -5,8 +5,8 @@ This module implements CCMO for constrained multi-objective optimization problem
 
 References
 ----------
-    [1] Tian, Ye, et al. "A Coevolutionary Framework for Constrained Multiobjective
-        Optimization Problems." IEEE Transactions on Evolutionary Computation 25.1
+    [1] Tian, Ye, et al. "A Coevolutionary Framework for Constrained Multiobjective \
+        Optimization Problems." IEEE Transactions on Evolutionary Computation 25.1 \
         (2021): 102-116.
 
 Notes
@@ -43,7 +43,7 @@ class CCMO:
         'objs': 'unequal',
         'n_objs': '2-M',
         'cons': 'unequal',
-        'n_cons': '1-C',  # CCMO requires constraints
+        'n_cons': '0-C',
         'expensive': 'False',
         'knowledge_transfer': 'False',
         'n': 'unequal',
@@ -52,19 +52,6 @@ class CCMO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0,

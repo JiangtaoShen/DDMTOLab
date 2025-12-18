@@ -6,7 +6,7 @@ using an evolutionary approach to optimize the Expected Improvement acquisition 
 
 References
 ----------
-    [1] Liu, Jiao, et al. "Solving highly expensive optimization problems via evolutionary expected improvement."
+    [1] Liu, Jiao, et al. "Solving highly expensive optimization problems via evolutionary expected improvement." \
         IEEE Transactions on Systems, Man, and Cybernetics: Systems 53.8 (2023): 4843-4855.
 
 Notes
@@ -59,19 +59,6 @@ class EEIBOplus:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, switch_interval=6, n1=50, max_nfes1=500, n2=30,

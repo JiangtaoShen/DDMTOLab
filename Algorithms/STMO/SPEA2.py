@@ -5,8 +5,8 @@ This module implements SPEA2 for multi-objective optimization problems.
 
 References
 ----------
-    [1] Zitzler, E., Laumanns, M., & Thiele, L. (2001). SPEA2: Improving the Strength Pareto
-        Evolutionary Algorithm For Multiobjective Optimization. In Evolutionary Methods for Design,
+    [1] Zitzler, E., Laumanns, M., & Thiele, L. (2001). SPEA2: Improving the Strength Pareto \
+        Evolutionary Algorithm For Multiobjective Optimization. In Evolutionary Methods for Design, \
         Optimization and Control with Applications to Industrial Problems. Proceedings of the EUROGEN'2001.
 
 Notes
@@ -48,19 +48,6 @@ class SPEA2:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, epsilon=0, save_data=True,

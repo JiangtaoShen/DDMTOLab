@@ -5,7 +5,7 @@ This module implements the Grey Wolf Optimizer for single-objective optimization
 
 References
 ----------
-    [1] Mirjalili, S., Mirjalili, S. M., & Lewis, A. (2014). Grey wolf optimizer.
+    [1] Mirjalili, S., Mirjalili, S. M., & Lewis, A. (2014). Grey wolf optimizer. \
         Advances in engineering software, 69, 46-61.
 
 Notes
@@ -46,19 +46,6 @@ class GWO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, save_data=True,

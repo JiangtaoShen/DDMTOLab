@@ -1,11 +1,12 @@
 """
 Multi-Task Bayesian Optimization (MTBO)
 
-This module implements MTBO for expensive multi-task optimization with knowledge transfer via multi-task Gaussian processes.
+This module implements MTBO for expensive multi-task optimization with knowledge transfer via multi-task Gaussian
+processes.
 
 References
 ----------
-    [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. "Multi-task bayesian optimization."
+    [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. "Multi-task bayesian optimization." \
         Advances in neural information processing systems 26 (2013).
 
 Notes
@@ -38,29 +39,18 @@ class MTBO:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
+        'cons': 'equal',
         'n_cons': '0',
-        'n_initial': 'unequal',
-        'max_nfes': 'unequal',
         'expensive': 'True',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n_initial': 'unequal',
+        'max_nfes': 'unequal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData', name='MTBO_test',

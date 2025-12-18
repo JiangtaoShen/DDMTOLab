@@ -1,11 +1,12 @@
 """
 A Surrogate-Assisted Evolutionary Framework for Expensive Multitask Optimization Problems (SELF)
 
-This module implements SELF using multi-task Gaussian processes and Bayesian optimization for expensive multi-task optimization.
+This module implements SELF using multi-task Gaussian processes and Bayesian optimization for expensive multi-task
+optimization.
 
 References
 ----------
-    [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask
+    [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask \
         optimization problems." IEEE Transactions on Evolutionary Computation (2024).
 
 Notes
@@ -46,29 +47,18 @@ class SELF:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
+        'cons': 'equal',
         'n_cons': '0',
-        'n_initial': 'equal',
-        'max_nfes': 'unequal, controlled by SELF',
         'expensive': 'True',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n_initial': 'equal',
+        'max_nfes': 'unequal, controlled by SELF'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, max_nfes=None, np=10, F=0.5, CR=0.9, ng=50, nl=50, save_data=True, save_path='./TestData',

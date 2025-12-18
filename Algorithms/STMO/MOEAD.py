@@ -5,7 +5,7 @@ This module implements MOEA/D for multi-objective optimization problems.
 
 References
 ----------
-    [1] Zhang, Qingfu, and Hui Li. "MOEA/D: A multiobjective evolutionary algorithm based on decomposition."
+    [1] Zhang, Qingfu, and Hui Li. "MOEA/D: A multiobjective evolutionary algorithm based on decomposition." \
         IEEE Transactions on Evolutionary Computation 11.6 (2007): 712-731.
 
 Notes
@@ -48,19 +48,6 @@ class MOEAD:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, decomp_type=1, muc=20.0, mum=15.0, save_data=True,

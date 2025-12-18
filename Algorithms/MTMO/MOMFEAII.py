@@ -5,7 +5,7 @@ This module implements MOMFEA for multi-objective multi-task optimization with k
 
 References
 ----------
-    [1] Bali, Kavitesh Kumar, et al. "Cognizant multitasking in multiobjective multifactorial evolution: MO-MFEA-II."
+    [1] Bali, Kavitesh Kumar, et al. "Cognizant multitasking in multiobjective multifactorial evolution: MO-MFEA-II." \
         IEEE transactions on cybernetics 51.4 (2020): 1784-1796.
 
 Notes
@@ -36,29 +36,18 @@ class MOMFEAII:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
-        'n_objs': '2-M/unequal',
-        'n_cons': '1-C/unequal',
-        'n': 'equal',
-        'max_nfes': 'equal',
+        'objs': 'unequal',
+        'n_objs': '2-M',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n': 'equal',
+        'max_nfes': 'equal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, save_data=True, save_path='./TestData',

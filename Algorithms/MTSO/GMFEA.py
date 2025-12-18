@@ -5,7 +5,7 @@ This module implements G-MFEA for expensive multi-task optimization with adaptiv
 
 References
 ----------
-    [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive
+    [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive \
         problems." IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
 
 Notes
@@ -34,29 +34,18 @@ class GMFEA:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
+        'objs': 'equal',
         'n_objs': '1',
+        'cons': 'equal',
         'n_cons': '0',
-        'n': 'equal',
-        'max_nfes': 'equal',
         'expensive': 'False',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n': 'equal',
+        'max_nfes': 'equal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, mu=0.4, phi=0.1, theta=0.02, scale_factor=1.25,

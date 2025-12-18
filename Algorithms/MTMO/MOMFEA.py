@@ -5,7 +5,7 @@ This module implements MOMFEA for multi-objective multi-task optimization with k
 
 References
 ----------
-    [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward
+    [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward \
         Evolutionary Multitasking." IEEE Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
 
 Notes
@@ -34,29 +34,18 @@ class MOMFEA:
     algorithm_information = {
         'n_tasks': '2-K',
         'dims': 'unequal',
-        'n_objs': '2-M/unequal',
-        'n_cons': '1-C/unequal',
-        'n': 'equal',
-        'max_nfes': 'equal',
+        'objs': 'unequal',
+        'n_objs': '2-M',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
-        'knowledge_transfer': 'True'
+        'knowledge_transfer': 'True',
+        'n': 'equal',
+        'max_nfes': 'equal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./Data',

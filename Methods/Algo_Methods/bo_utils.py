@@ -400,3 +400,67 @@ def mtbo_next_point(
     candidate_np = candidate[:, :dims[task_id]].detach().cpu().numpy()
 
     return candidate_np
+
+
+def mtbo_next_point(
+    mtgp: MultiTaskGP,
+    task_id: int,
+    objs: list[np.ndarray],
+    dims: list[int],
+    nt: int,
+    data_type: torch.dtype = torch.float
+) -> np.ndarray:
+    """
+    Get the next sampling point using Multi-Task Bayesian Optimization.
+
+    Parameters
+    ----------
+    mtgp : MultiTaskGP
+        Trained Multi-Task Gaussian Process model
+    task_id : int
+        Task index for which to find the next point
+    objs : list[np.ndarray]
+        List of objective value matrices for each task
+    dims : list[int]
+        List of dimensionalities for each task
+    nt : int
+        Total number of tasks
+    data_type : torch.dtype, optional
+        Data type for tensors (default: torch.float)
+
+    Returns
+    -------
+    candidate_np : np.ndarray
+        Next sampling point, shape: (1, dims[task_id])
+    """
+    # Define search bounds [0, 1]^max_dim with fixed task index
+    max_dim = max(dims)
+    lower_bound = torch.zeros(max_dim + 1, dtype=data_type)
+    upper_bound = torch.ones(max_dim + 1, dtype=data_type)
+    task_range = torch.linspace(0, 1, nt)
+    lower_bound[-1] = task_range[task_id].item()
+    upper_bound[-1] = task_range[task_id].item()
+    bounds = torch.stack([lower_bound, upper_bound], dim=0)
+
+    # Compute the best observed value for the current task
+    best_f = torch.tensor(-objs[task_id], dtype=data_type).squeeze().max()
+
+    # Build Log Expected Improvement acquisition function
+    posterior_transform = ScalarizedPosteriorTransform(weights=torch.tensor([1.0], dtype=data_type))
+    logEI = LogExpectedImprovement(
+        model=mtgp,
+        best_f=best_f,
+        posterior_transform=posterior_transform
+    )
+
+    # Optimize acquisition function and extract decision variables
+    candidate, _ = optimize_acqf(
+        logEI,
+        bounds=bounds,
+        q=1,
+        num_restarts=5,
+        raw_samples=20
+    )
+    candidate_np = candidate[:, :dims[task_id]].detach().cpu().numpy()
+
+    return candidate_np

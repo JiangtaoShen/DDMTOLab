@@ -5,7 +5,7 @@ This module implements Particle Swarm Optimization for single-objective optimiza
 
 References
 ----------
-    [1] Kennedy, James, and Russell Eberhart. "Particle swarm optimization." Proceedings of
+    [1] Kennedy, James, and Russell Eberhart. "Particle swarm optimization." Proceedings of \
         ICNN'95-international conference on neural networks. Vol. 4. IEEE, 1995.
 
 Notes
@@ -47,19 +47,6 @@ class PSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, min_w=0.4, max_w=0.9, c1=0.2, c2=0.2, save_data=True,

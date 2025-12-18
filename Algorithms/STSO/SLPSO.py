@@ -5,7 +5,7 @@ This module implements the Social Learning PSO for single-objective optimization
 
 References
 ----------
-    [1] Cheng, R., & Jin, Y. (2014). A social learning particle swarm optimization
+    [1] Cheng, R., & Jin, Y. (2014). A social learning particle swarm optimization \
         algorithm for scalable optimization. Information Sciences, 291, 43-60.
 
 Notes
@@ -46,19 +46,6 @@ class SLPSO:
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, save_data=True,

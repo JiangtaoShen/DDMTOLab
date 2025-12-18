@@ -286,6 +286,19 @@ EEI-BO+
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+MUMBO
+^^^^^
+
+.. automodule:: Algorithms.MTSO.MUMBO
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MUMBO.MUMBO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 
 Single-Task Multi-Objective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -362,6 +375,19 @@ NSGA-III
    :no-members:
 
 .. autoclass:: Algorithms.STMO.NSGAIII.NSGAIII
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MOEA/DD
+^^^^^^^
+
+.. automodule:: Algorithms.STMO.MOEADD
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MOEADD.MOEADD
    :members:
    :undoc-members:
    :show-inheritance:
