@@ -7,28 +7,27 @@ from Algorithms.STMO.MOEADD import MOEADD
 from Algorithms.STMO.NSGAIISDR import NSGAIISDR
 from Algorithms.MTMO.MOMFEA import MOMFEA
 from Algorithms.MTMO.MOMFEAII import MOMFEAII
-from Problems.STMO.UF import UF, SETTINGS
+from Problems.RWP.SOPM_MTMO.sopm import SOPM, SETTINGS
 from Methods.data_analysis import DataAnalyzer
 
 
 if __name__ == '__main__':
     batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
 
-    prob = UF()
+    prob = SOPM()
 
-    batch_exp.add_problem(prob.UF1, 'UF1')
-    batch_exp.add_problem(prob.UF2, 'UF2')
-    batch_exp.add_problem(prob.UF3, 'UF3')
+    batch_exp.add_problem(prob.P1, 'P1')
+    batch_exp.add_problem(prob.P2, 'P2')
 
     n = 100
-    max_nfes = 20000
-    batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=n, max_nfes=max_nfes)
-    batch_exp.add_algorithm(MOEADD, 'MOEADD', n=n, max_nfes=max_nfes)
+    max_nfes = 50000
+    batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=n, max_nfes=max_nfes, disable_tqdm=False)
+    # batch_exp.add_algorithm(MOEADD, 'MOEADD', n=n, max_nfes=max_nfes)
     # batch_exp.add_algorithm(NSGAIISDR, 'NSGA-II-SDR', n=n, max_nfes=max_nfes)
     # batch_exp.add_algorithm(TwoArch2, 'TwoArch2', n=n, max_nfes=max_nfes)
     # batch_exp.add_algorithm(IBEA, 'IBEA', n=n, max_nfes=max_nfes)
     # batch_exp.add_algorithm(MOEAD, 'MOEAD', n=n, max_nfes=max_nfes)
-    # batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=n, max_nfes=max_nfes)
+    batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=n, max_nfes=max_nfes)
     # batch_exp.add_algorithm(MOMFEAII, 'MO-MFEA-II', n=n, max_nfes=max_nfes)
 
     batch_exp.run(n_runs=1, verbose=True, max_workers=8)

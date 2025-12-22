@@ -299,6 +299,19 @@ MUMBO
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+LCB-EMT
+^^^^^^^
+
+.. automodule:: Algorithms.MTSO.LCBEMT
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.LCBEMT.LCBEMT
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 
 Single-Task Multi-Objective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

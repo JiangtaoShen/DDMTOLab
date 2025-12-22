@@ -971,6 +971,7 @@ class PINN_HPO:
             )
 
             error = result.get('final_l2_re_error', float('inf'))
+            error = min(error, 3.0)
             results.append(error)
 
         return np.array(results).reshape(-1, 1)
@@ -1025,6 +1026,7 @@ class PINN_HPO:
             )
 
             error = result.get('final_l2_re_error', float('inf'))
+            error = min(error, 3.0)
             results.append(error)
 
         return np.array(results).reshape(-1, 1)
@@ -1082,6 +1084,7 @@ class PINN_HPO:
             )
 
             error = result.get('final_l2_re_error', float('inf'))
+            error = min(error, 3.0)
             results.append(error)
 
         return np.array(results).reshape(-1, 1)
@@ -1136,6 +1139,7 @@ class PINN_HPO:
             )
 
             error = result.get('final_l2_re_error', float('inf'))
+            error = min(error, 3.0)
             results.append(error)
 
         return np.array(results).reshape(-1, 1)

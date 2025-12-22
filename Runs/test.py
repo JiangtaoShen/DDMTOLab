@@ -1,378 +1,100 @@
-"""
-Multi-fidelity Upper-confidence-bound Multi-armed Bandit Optimization (MUMBO)
-
-This module implements MUMBO for expensive multi-task optimization with knowledge transfer via multi-task Gaussian processes.
-
-References
-----------
-    [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. "Multi-task bayesian optimization."
-        Advances in neural information processing systems 26 (2013).
-
-Notes
------
-Author: Jiangtao Shen
-Email: j.shen5@exeter.ac.uk
-Date: 2025.12.18
-Version: 1.0
-"""
-from tqdm import tqdm
-import torch
-import time
 import numpy as np
-from botorch.optim import optimize_acqf
-from torch.distributions import Normal
-from Methods.Algo_Methods.algo_utils import *
-from Methods.Algo_Methods.bo_utils import mtgp_build
-import warnings
+from Problems.RWP.SOPM_MTMO.sopm import SOPMMTMO
 
-warnings.filterwarnings("ignore")
+# 创建问题实例
+sopm = SOPMMTMO()
+problem = sopm.P2()
 
+# 5个固定测试点（每个任务30维，范围[0, 90]）
+np.random.seed(123)  # 固定随机种子以便复现
 
-def get_mumbo_samples(objs_normalized, n_samples=10, data_type=torch.double):
-    """
-    Sample potential global optimum values using Gumbel distribution.
+# 测试点1: 均匀分布在[0, 90]
+X1 = np.linspace(90, 0, 30).reshape(1, -1)  # 从90递减到0
 
-    Parameters
-    ----------
-    objs_normalized : list of ndarray
-        Normalized objective values for all tasks
-    n_samples : int, optional
-        Number of samples to generate (default: 10)
-    data_type : torch.dtype, optional
-        Data type for tensors (default: torch.double)
+# 测试点2: 随机点
+X2 = np.array([[87.5, 85.2, 82.8, 80.5, 78.1, 75.8, 73.4, 71.1, 68.7, 66.4,
+                64.0, 61.7, 59.3, 57.0, 54.6, 52.3, 49.9, 47.6, 45.2, 42.9,
+                40.5, 38.2, 35.8, 33.5, 31.1, 28.8, 26.4, 24.1, 21.7, 19.4]])
 
-    Returns
-    -------
-    torch.Tensor
-        Sampled potential global optimum values, shape (n_samples,)
-    """
-    with torch.no_grad():
-        # Convert all observations to negative values (for maximization)
-        all_neg_objs = torch.cat([-torch.as_tensor(o, dtype=data_type) for o in objs_normalized])
-        y_max = all_neg_objs.max()
+# 测试点3: 另一组随机点
+X3 = np.array([[89.0, 86.8, 84.5, 82.3, 80.0, 77.8, 75.5, 73.3, 71.0, 68.8,
+                66.5, 64.3, 62.0, 59.8, 57.5, 55.3, 53.0, 50.8, 48.5, 46.3,
+                44.0, 41.8, 39.5, 37.3, 35.0, 32.8, 30.5, 28.3, 26.0, 23.8]])
 
-        # Sample from Gumbel distribution
-        sampler = torch.distributions.Gumbel(loc=0, scale=0.01)
-        samples = y_max + sampler.sample((n_samples,)).abs().to(data_type)
-        return samples
+# 测试点4: 小角度范围
+X4 = np.array([[48.0, 46.5, 45.0, 43.5, 42.0, 40.5, 39.0, 37.5, 36.0, 34.5,
+                33.0, 31.5, 30.0, 28.5, 27.0, 25.5, 24.0, 22.5, 21.0, 19.5,
+                18.0, 16.5, 15.0, 13.5, 12.0, 10.5, 9.0, 7.5, 6.0, 4.5]])
 
+# 测试点5: 大角度范围
+X5 = np.array([[90.0, 88.0, 86.0, 84.0, 82.0, 80.0, 78.0, 76.0, 74.0, 72.0,
+                70.0, 68.0, 66.0, 64.0, 62.0, 60.0, 58.0, 56.0, 54.0, 52.0,
+                50.0, 48.0, 46.0, 44.0, 42.0, 40.0, 38.0, 36.0, 34.0, 32.0]])
 
-def mumbo_utility_func(X, mtgp, costs, g_samples, active_tasks, nt):
-    """
-    Compute MUMBO utility (information gain per unit cost).
+# 合并所有测试点
+X_test = np.vstack([X1, X2, X3, X4, X5])
 
-    Parameters
-    ----------
-    X : torch.Tensor
-        Candidate points with task indices, shape (..., d+1)
-    mtgp : MultiTaskGP
-        Multi-task Gaussian process model
-    costs : list
-        Cost vector for each task
-    g_samples : torch.Tensor
-        Sampled potential global optimum values
-    active_tasks : list
-        List of active task indices
-    nt : int
-        Number of tasks
+print("=" * 80)
+print("SOPM_MTMO P2 测试 - Python实现")
+print("=" * 80)
+print(f"\n测试点数量: {X_test.shape[0]}")
+print(f"决策变量维度: {X_test.shape[1]}")
+print(f"问题任务数: {len(problem.tasks)}")
 
-    Returns
-    -------
-    torch.Tensor
-        MUMBO utility values, shape (...)
-    """
-    # Get posterior predictions
-    posterior = mtgp.posterior(X)
-    mu = posterior.mean.squeeze(-1)  # Shape: (...)
-    sigma = torch.sqrt(posterior.variance.squeeze(-1)).clamp(min=1e-6)  # Shape: (...)
+# 使用 evaluate_tasks 方法同时评估3个任务
+print(f"\n{'=' * 80}")
+print("使用 evaluate_tasks 方法同时评估所有任务")
+print(f"{'=' * 80}")
 
-    # Extract and map task indices
-    task_indices_raw = X[..., -1]
-    task_id = torch.round(task_indices_raw * (nt - 1)).long()
+# 为每个任务准备输入数据（3个任务使用相同的测试点）
+X_list = [X_test, X_test, X_test]
+task_indices = [0, 1, 2]
 
-    # Compute information gain
-    total_info_gain = torch.zeros_like(mu)
-    for g_star in g_samples:
-        gamma = (g_star - mu) / sigma
-        normal = Normal(torch.tensor(0.0, dtype=mu.dtype, device=mu.device),
-                        torch.tensor(1.0, dtype=mu.dtype, device=mu.device))
-        pdf_g = torch.exp(normal.log_prob(gamma))
-        cdf_g = normal.cdf(gamma).clamp(min=1e-8)
+# 同时评估3个任务
+objs_list, cons_list = problem.evaluate_tasks(task_indices=task_indices, X_list=X_list)
 
-        # Core entropy reduction term (Formula 5)
-        info_gain = (gamma * pdf_g) / (2 * cdf_g) - torch.log(cdf_g)
-        total_info_gain += info_gain
+# 显示每个任务的结果
+task_names = ['9-level', '11-level', '13-level']
+for task_idx, (objs, cons) in enumerate(zip(objs_list, cons_list)):
+    print(f"\n{'=' * 80}")
+    print(f"任务 {task_idx + 1} ({task_names[task_idx]} Inverter)")
+    print(f"{'=' * 80}")
+    print(f"objs shape: {objs.shape}, cons shape: {cons.shape}")
 
-    avg_info_gain = total_info_gain / len(g_samples)
+    print(f"\n目标函数值:")
+    print("  Point | Obj1 (THD)      | Obj2 (Fund Dev)")
+    print("  " + "-" * 50)
+    for i in range(objs.shape[0]):
+        print(f"  {i + 1:5d} | {objs[i, 0]:15.10f} | {objs[i, 1]:15.10f}")
 
-    # Apply cost normalization
-    costs_tensor = torch.as_tensor(costs, dtype=mu.dtype, device=mu.device)
-    current_costs = costs_tensor[task_id]
+    print(f"\n约束违反值:")
+    print(f"  总约束数: {cons.shape[1]}")
 
-    # Create mask for active tasks
-    mask = torch.zeros_like(avg_info_gain)
-    for t in active_tasks:
-        mask[task_id == t] = 1.0
+    # 统计约束违反情况
+    for i in range(cons.shape[0]):
+        num_violations = np.sum(cons[i, :] > 0)
+        max_violation = np.max(cons[i, :])
+        sum_violations = np.sum(cons[i, :])
+        print(f"  Point {i + 1}: violations={num_violations:2d}, max={max_violation:.6f}, sum={sum_violations:.6f}")
 
-    # Return utility: information gain per unit cost, masked by active tasks
-    utility = (avg_info_gain * mask) / current_costs
+# 汇总统计
+print(f"\n{'=' * 80}")
+print("汇总统计")
+print(f"{'=' * 80}")
+for i, (objs, cons) in enumerate(zip(objs_list, cons_list)):
+    print(f"\n任务{i + 1} ({task_names[i]} Inverter):")
+    print(f"  目标函数 shape: {objs.shape}")
+    print(f"  约束函数 shape: {cons.shape}")
+    print(f"  Obj1 (THD) 范围: [{np.min(objs[:, 0]):.6f}, {np.max(objs[:, 0]):.6f}]")
+    print(f"  Obj2 (Fund) 范围: [{np.min(objs[:, 1]):.6f}, {np.max(objs[:, 1]):.6f}]")
 
-    # Ensure output is properly shaped for optimize_acqf
-    return utility.view(-1)
+    num_feasible = np.sum(np.all(cons <= 0, axis=1))
+    print(f"  可行解数量: {num_feasible}/{cons.shape[0]}")
 
+print("\n" + "=" * 80)
+print("测试完成")
+print("=" * 80)
 
-def mumbo_next_point(mtgp, costs, objs_normalized, dims, nt, active_tasks, data_type=torch.double):
-    """
-    Select next evaluation point and task using MUMBO acquisition function.
-
-    Parameters
-    ----------
-    mtgp : MultiTaskGP
-        Multi-task Gaussian process model
-    costs : list
-        Cost vector for each task
-    objs_normalized : list of ndarray
-        Normalized objective values for all tasks
-    dims : list
-        Dimensionality of each task
-    nt : int
-        Number of tasks
-    active_tasks : list
-        List of active task indices
-    data_type : torch.dtype, optional
-        Data type for tensors (default: torch.double)
-
-    Returns
-    -------
-    candidate_x : ndarray
-        Selected decision variables, shape (1, dim_chosen_task)
-    chosen_task : int
-        Selected task index
-    """
-    # 1. Generate g_samples
-    g_samples = get_mumbo_samples(objs_normalized, n_samples=10, data_type=data_type)
-
-    # 2. Define search bounds: [0, 1]^(max_dim + 1)
-    max_dim = max(dims)
-    bounds = torch.stack([
-        torch.zeros(max_dim + 1, dtype=data_type),
-        torch.ones(max_dim + 1, dtype=data_type)
-    ])
-
-    # 3. Define acquisition function wrapper
-    def acq_wrapper(X):
-        return mumbo_utility_func(X, mtgp, costs, g_samples, active_tasks, nt)
-
-    # 4. Optimize acquisition function
-    try:
-        candidate_full, _ = optimize_acqf(
-            acq_function=acq_wrapper,
-            bounds=bounds,
-            q=1,
-            num_restarts=10,
-            raw_samples=256,
-        )
-    except Exception as e:
-        print(f"Warning: optimize_acqf failed with error: {e}")
-        # Fallback: random selection from active tasks
-        chosen_task = np.random.choice(active_tasks)
-        candidate_x = np.random.rand(1, dims[chosen_task])
-        return candidate_x, chosen_task
-
-    # 5. Parse results
-    res = candidate_full.detach().cpu().numpy().squeeze()
-    z_val = res[-1]
-    chosen_task = int(np.round(z_val * (nt - 1)))
-
-    # Handle out-of-bounds task selection
-    if chosen_task not in active_tasks:
-        # Select active task with minimum cost
-        chosen_task = active_tasks[np.argmin([costs[t] for t in active_tasks])]
-
-    # Extract decision variables for chosen task
-    candidate_x = res[:dims[chosen_task]].reshape(1, -1)
-
-    return candidate_x, chosen_task
-
-
-class MUMBO:
-    """
-    Multi-fidelity Upper-confidence-bound Multi-armed Bandit Optimization for
-    expensive multi-task optimization problems.
-
-    Attributes
-    ----------
-    algorithm_information : dict
-        Dictionary containing algorithm capabilities and requirements
-    """
-
-    algorithm_information = {
-        'n_tasks': '2-K',
-        'dims': 'unequal',
-        'n_objs': '1',
-        'n_cons': '0',
-        'n_initial': 'unequal',
-        'max_nfes': 'unequal',
-        'expensive': 'True',
-        'knowledge_transfer': 'True',
-        'cost_aware': 'True'
-    }
-
-    @classmethod
-    def get_algorithm_information(cls, print_info=True):
-        """
-        Get algorithm information.
-
-        Parameters
-        ----------
-        print_info : bool, optional
-            Whether to print information (default: True)
-
-        Returns
-        -------
-        dict
-            Algorithm information dictionary
-        """
-        return get_algorithm_information(cls, print_info)
-
-    def __init__(self, problem, costs=None, n_initial=None, max_nfes=None, save_data=True,
-                 save_path='./TestData', name='MUMBO_test', disable_tqdm=True):
-        """
-        Initialize Multi-fidelity Upper-confidence-bound Multi-armed Bandit Optimization algorithm.
-
-        Parameters
-        ----------
-        problem : MTOP
-            Multi-task optimization problem instance
-        costs : list or np.ndarray, optional
-            Cost vector for each task/fidelity level (default: all ones)
-        n_initial : int or List[int], optional
-            Number of initial samples per task (default: 50)
-        max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 100)
-        save_data : bool, optional
-            Whether to save optimization data (default: True)
-        save_path : str, optional
-            Path to save results (default: './TestData')
-        name : str, optional
-            Name for the experiment (default: 'MUMBO_test')
-        disable_tqdm : bool, optional
-            Whether to disable progress bar (default: True)
-        """
-        self.problem = problem
-        self.n_initial = n_initial if n_initial is not None else 50
-        self.max_nfes = max_nfes if max_nfes is not None else 100
-        self.save_data = save_data
-        self.save_path = save_path
-        self.name = name
-        self.disable_tqdm = disable_tqdm
-
-        # Initialize costs: default to all ones if not provided
-        if costs is None:
-            self.costs = [1.0] * problem.n_tasks
-        else:
-            self.costs = list(costs)
-            if len(self.costs) != problem.n_tasks:
-                raise ValueError(f"Length of costs ({len(self.costs)}) must match "
-                                 f"number of tasks ({problem.n_tasks})")
-
-    def optimize(self):
-        """
-        Execute the Multi-fidelity Upper-confidence-bound Multi-armed Bandit Optimization algorithm.
-
-        Returns
-        -------
-        Results
-            Optimization results containing decision variables, objectives, and runtime
-        """
-        data_type = torch.double
-        start_time = time.time()
-        problem = self.problem
-        nt = problem.n_tasks
-        dims = problem.dims
-        n_initial_per_task = par_list(self.n_initial, nt)
-        max_nfes_per_task = par_list(self.max_nfes, nt)
-
-        # Initialize samples using Latin Hypercube Sampling
-        decs = initialization(problem, self.n_initial, method='lhs')
-        objs, _ = evaluation(problem, decs)
-        nfes_per_task = n_initial_per_task.copy()
-        nfes = sum(n_initial_per_task)
-
-        all_decs = reorganize_initial_data(decs, nt, n_initial_per_task)
-        all_objs = reorganize_initial_data(objs, nt, n_initial_per_task)
-
-        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
-                    desc=f"{self.name}", disable=self.disable_tqdm)
-
-        while nfes < sum(max_nfes_per_task):
-            # Identify active tasks
-            active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
-            if not active_tasks:
-                break
-
-            # Normalize objectives and build multi-task GP
-            objs_normalized, _, _ = normalize(objs, axis=0, method='minmax')
-            mtgp = mtgp_build(decs, objs_normalized, dims, data_type=data_type)
-
-            # Select next point and task using MUMBO
-            candidate_np, chosen_task = mumbo_next_point(
-                mtgp=mtgp,
-                costs=self.costs,
-                objs_normalized=objs_normalized,
-                dims=dims,
-                nt=nt,
-                active_tasks=active_tasks,
-                data_type=data_type
-            )
-
-            # Evaluate on chosen task
-            obj, _ = evaluation_single(problem, candidate_np, chosen_task)
-
-            # Update data
-            decs[chosen_task], objs[chosen_task] = vstack_groups(
-                (decs[chosen_task], candidate_np),
-                (objs[chosen_task], obj)
-            )
-            append_history(all_decs[chosen_task], decs[chosen_task],
-                           all_objs[chosen_task], objs[chosen_task])
-
-            nfes_per_task[chosen_task] += 1
-            nfes += 1
-            pbar.update(1)
-
-        pbar.close()
-        runtime = time.time() - start_time
-
-        # Save results
-        results = build_save_results(
-            all_decs=all_decs,
-            all_objs=all_objs,
-            runtime=runtime,
-            max_nfes=nfes_per_task,
-            bounds=problem.bounds,
-            save_path=self.save_path,
-            filename=self.name,
-            save_data=self.save_data
-        )
-
-        return results
-
-
-# Test code
-if __name__ == "__main__":
-    from Problems.MTSO.cec17_mtso_10d import CEC17MTSO_10D
-
-    problem = CEC17MTSO_10D().P1()
-    costs = [1.0, 2.5]  # Task 2 is 2.5x more expensive than Task 1
-
-    results = MUMBO(
-        problem,
-        costs=costs,
-        n_initial=10,
-        max_nfes=50,
-        disable_tqdm=False
-    ).optimize()
-
-    print("Optimization completed!")
-    print(f"Runtime: {results.runtime:.2f} seconds")
+# 保存测试数据供MATLAB验证
+np.savetxt('test_points_sopm_p2.txt', X_test, fmt='%.10f', delimiter=',')
+print("\n测试点已保存到: test_points_sopm_p2.txt")

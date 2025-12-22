@@ -842,8 +842,8 @@ def space_transfer(
         type: str = 'real',
         padding: str = 'zero'
 ) -> Union[List[np.ndarray],
-tuple[List[np.ndarray], List[np.ndarray]],
-tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
+Tuple[List[np.ndarray], List[np.ndarray]],
+Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
     """
     Transfer decision variables, objectives, and constraints between unified and real spaces.
 
@@ -890,11 +890,14 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
     -----
     The padding parameter only affects the 'uni' transfer type. When type='real',
     padding is ignored as truncation is performed instead.
+
+    Fix (2025.12.22): Properly handles cases where some tasks have constraints and others don't.
+    When ncons[i] = 0, ensures consistent shape (n, c_max) in unified space.
     """
     # Copy lists to avoid modifying the original input references
-    new_decs = [d for d in decs]
-    new_objs = [o for o in objs] if objs is not None else None
-    new_cons = [c for c in cons] if cons is not None else None
+    new_decs = [d.copy() for d in decs]
+    new_objs = [o.copy() for o in objs] if objs is not None else None
+    new_cons = [c.copy() for c in cons] if cons is not None else None
 
     n_tasks = problem.n_tasks
     dims = problem.dims
@@ -927,19 +930,32 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
                         pad_values = np.zeros((n_samples, dif))
                     new_objs[i] = np.hstack([new_objs[i], pad_values])
 
-        # Handle Constraints (Padding)
+        # Handle Constraints (Padding) - FIXED VERSION
         if new_cons is not None:
             c_max = np.max(ncons)
-            if c_max > 0:
+            if c_max > 0:  # Only process if at least one task has constraints
                 for i in range(n_tasks):
                     n_samples = new_cons[i].shape[0]
-                    dif = c_max - ncons[i]
-                    if dif > 0:
-                        if padding == 'random':
-                            pad_values = np.random.rand(n_samples, dif)
-                        else:  # padding == 'zero'
-                            pad_values = np.zeros((n_samples, dif))
-                        new_cons[i] = np.hstack([new_cons[i], pad_values])
+                    current_ncons = ncons[i]
+
+                    # Get current constraint shape
+                    if current_ncons == 0:
+                        # Task has no constraints: create matrix with c_max columns filled with zeros
+                        new_cons[i] = np.zeros((n_samples, c_max))
+                    else:
+                        # Task has constraints: pad if necessary
+                        dif = c_max - current_ncons
+                        if dif > 0:
+                            if padding == 'random':
+                                pad_values = np.random.rand(n_samples, dif)
+                            else:  # padding == 'zero'
+                                pad_values = np.zeros((n_samples, dif))
+                            new_cons[i] = np.hstack([new_cons[i], pad_values])
+            else:
+                # No task has constraints: ensure all constraint matrices are empty with same shape
+                for i in range(n_tasks):
+                    n_samples = new_cons[i].shape[0]
+                    new_cons[i] = np.zeros((n_samples, 0))
 
     elif type == 'real':
         # Handle Decision Variables (Truncation)
@@ -951,10 +967,17 @@ tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
             for i in range(n_tasks):
                 new_objs[i] = new_objs[i][:, :nobjs[i]]
 
-        # Handle Constraints (Truncation)
+        # Handle Constraints (Truncation) - FIXED VERSION
         if new_cons is not None:
             for i in range(n_tasks):
-                new_cons[i] = new_cons[i][:, :ncons[i]]
+                target_ncons = ncons[i]
+                if target_ncons == 0:
+                    # Task should have no constraints: return empty constraint matrix
+                    n_samples = new_cons[i].shape[0]
+                    new_cons[i] = np.zeros((n_samples, 0))
+                else:
+                    # Task has constraints: truncate to original size
+                    new_cons[i] = new_cons[i][:, :target_ncons]
 
     # Construct return values based on provided arguments
     if objs is None and cons is None:

@@ -319,6 +319,9 @@ class DataUtils:
         1. Callable: Function that returns reference data
         2. String: File path to .npy or .csv reference file
         3. Array-like: Direct reference data (list, tuple, np.ndarray)
+
+        If 'all_tasks' key is present instead of individual task keys, the same
+        reference data will be used for all tasks.
         """
         # Convert task index to task name if necessary
         task_name = f"T{task_identifier + 1}" if isinstance(task_identifier, int) else task_identifier
@@ -331,11 +334,14 @@ class DataUtils:
         problem_settings = settings[problem]
 
         # Check if task exists for this problem
-        if task_name not in problem_settings:
-            print(f"Warning: Task '{task_name}' not found for problem '{problem}'")
+        if task_name in problem_settings:
+            ref_definition = problem_settings[task_name]
+        elif 'all_tasks' in problem_settings:
+            # Use the same reference for all tasks
+            ref_definition = problem_settings['all_tasks']
+        else:
+            print(f"Warning: Task '{task_name}' and 'all_tasks' not found for problem '{problem}'")
             return None
-
-        ref_definition = problem_settings[task_name]
 
         # Case 1: Callable function
         if callable(ref_definition):
@@ -424,28 +430,40 @@ class DataUtils:
     @staticmethod
     def get_metric_direction(metric_name: Optional[str]) -> OptimizationDirection:
         """
-        Determine optimization direction based on metric type.
+        Determine optimization direction based on metric type (Version 2 - More maintainable).
 
         Parameters
         ----------
         metric_name : Optional[str]
-            Name of the metric ('IGD', 'HV', or None for single-objective).
+            Name of the metric or None for single-objective.
 
         Returns
         -------
         OptimizationDirection
-            MINIMIZE for IGD and single-objective, MAXIMIZE for HV.
+            MINIMIZE or MAXIMIZE based on the metric's sign attribute.
         """
         if metric_name is None:
             return OptimizationDirection.MINIMIZE
 
-        # Get metric instance to check sign
-        if metric_name == 'IGD':
-            return OptimizationDirection.MINIMIZE
-        elif metric_name == 'HV':
-            return OptimizationDirection.MAXIMIZE
-        else:
-            return OptimizationDirection.MINIMIZE
+        # Metric sign mapping (based on your code)
+        # sign = -1 means minimize, sign = 1 means maximize
+        metric_signs = {
+            'IGD': -1,  # Inverted Generational Distance (minimize)
+            'HV': 1,  # Hypervolume (maximize)
+            'IGDp': -1,  # IGD+ (minimize)
+            'GD': -1,  # Generational Distance (minimize)
+            'DeltaP': -1,  # Delta_p (minimize)
+            'Spacing': -1,  # Spacing (minimize)
+            'Spread': -1,  # Spread (minimize)
+            'FR': 1,  # Feasibility Rate (maximize)
+            'CV': -1,  # Constraint Violation (minimize)
+        }
+
+        if metric_name not in metric_signs:
+            raise ValueError(f'Unsupported metric: {metric_name}')
+
+        sign = metric_signs[metric_name]
+        return OptimizationDirection.MAXIMIZE if sign == 1 else OptimizationDirection.MINIMIZE
 
 
 # =============================================================================

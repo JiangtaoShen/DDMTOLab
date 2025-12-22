@@ -1,6 +1,9 @@
 import torch
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.stats import norm
+from Algorithms.STSO.DE import DE
+from Methods.mtop import MTOP
 
 
 # ----------------------------------------------------
@@ -871,6 +874,177 @@ class GPRegression:
         plt.show()
 
 
+class ExpectedImprovement:
+    """
+    Expected Improvement (EI) acquisition function for Bayesian Optimization.
+
+    The EI function balances exploration and exploitation by measuring the
+    expected amount of improvement over the current best observation.
+
+    Parameters
+    ----------
+    gp_model : GPRegression
+        Trained Gaussian Process regression model.
+    xi : float, optional (default=0.01)
+        Exploration-exploitation trade-off parameter. Larger values encourage
+        more exploration.
+
+    Attributes
+    ----------
+    f_best : float or None
+        Current best observed function value.
+
+    References
+    ----------
+    Mockus, J., Tiesis, V., & Zilinskas, A. (1978). The application of
+    Bayesian methods for seeking the extremum. Towards Global Optimization, 2, 117-129.
+    """
+
+    def __init__(self, gp_model, xi=0.01):
+        self.gp_model = gp_model
+        self.xi = xi
+        self.f_best = None
+
+    def compute(self, X, y_best=None):
+        """
+        Compute Expected Improvement values for candidate points.
+
+        The EI is calculated as:
+            EI(x) = (mu(x) - f_best - xi) * Phi(Z) + sigma(x) * phi(Z)
+        where:
+            Z = (mu(x) - f_best - xi) / sigma(x)
+            Phi is the standard normal CDF
+            phi is the standard normal PDF
+
+        Parameters
+        ----------
+        X : torch.Tensor, shape (n_points, n_dims)
+            Candidate points at which to evaluate EI.
+        y_best : float or None, optional (default=None)
+            Current best observed value. If None, uses the maximum value
+            from the training data.
+
+        Returns
+        -------
+        ei_values : torch.Tensor, shape (n_points,)
+            Expected Improvement values for each candidate point.
+        """
+        # Get predictive mean and covariance matrix
+        with torch.no_grad():
+            mu, cov = self.gp_model.predict(X)
+            # Extract standard deviation from diagonal of covariance matrix
+            sigma = torch.sqrt(torch.diag(cov))
+
+        # If best value not specified, use maximum from training data
+        if y_best is None:
+            if self.f_best is None:
+                # Extract best value from training targets
+                y_train = self.gp_model.y
+                self.f_best = torch.min(y_train).item()  # min for minimization
+            y_best = self.f_best
+        else:
+            self.f_best = y_best
+
+        # Convert to numpy for computation
+        mu_np = mu.cpu().numpy()
+        sigma_np = sigma.cpu().numpy()
+
+        # Compute improvement (for minimization, want mu < y_best)
+        improvement = y_best - mu_np - self.xi
+
+        # Avoid division by zero
+        sigma_np = np.maximum(sigma_np, 1e-9)
+
+        # Standardized improvement
+        Z = improvement / sigma_np
+
+        # Calculate EI using standard normal CDF and PDF
+        ei = improvement * norm.cdf(Z) + sigma_np * norm.pdf(Z)
+
+        # Set negative values to zero
+        ei = np.maximum(ei, 0.0)
+
+        return torch.tensor(ei, dtype=torch.float32)
+
+
+def bo_next_point_ei(decs, objs, dim, gp_model, xi=0.01, data_type=torch.float):
+    """
+    Generate next sampling point using Bayesian Optimization with Expected Improvement.
+
+    Parameters
+    ----------
+    decs : np.ndarray
+        Decision variables (training data) of shape (n_samples, dim)
+    objs : np.ndarray
+        Objective values (training data) of shape (n_samples, 1) or (n_samples,)
+    dim : int
+        Dimension of the problem
+    gp_model : GPRegression
+        Your custom Gaussian Process regression model
+    xi : float, optional
+        Exploration-exploitation trade-off parameter (default: 0.01)
+    data_type : torch.dtype, optional
+        Data type for torch tensors (default: torch.float)
+
+    Returns
+    -------
+    candidate_np : np.ndarray
+        Next sampling point of shape (1, dim)
+    """
+    # Prepare training data for Gaussian Process
+    train_X = torch.tensor(decs, dtype=data_type)
+    train_Y = torch.tensor(objs.flatten(), dtype=data_type)
+
+    # Train Gaussian Process model
+    gp_model.train(train_X, train_Y, n_restarts=3, verbose=False)
+
+    # Create Expected Improvement acquisition function
+    ei = ExpectedImprovement(gp_model, xi=xi)
+
+    # Get current best value (minimum for minimization)
+    best_f = train_Y.min().item()
+
+    # Wrap EI as numpy function for DE optimizer
+    def ei_func(x):
+        """
+        Negative EI function for minimization.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Candidate point(s) of shape (n_points, dim)
+
+        Returns
+        -------
+        neg_ei : np.ndarray
+            Negative EI value(s), shape (n_points, 1)
+        """
+        # Ensure x is 2D
+        if x.ndim == 1:
+            x = x.reshape(1, -1)
+
+        x_torch = torch.tensor(x, dtype=data_type)
+        with torch.no_grad():
+            ei_value = ei.compute(x_torch, y_best=best_f)
+
+        ei_np = ei_value.detach().cpu().numpy()
+
+        # Reshape to (n_points, 1) for MTOP compatibility
+        if ei_np.ndim == 1:
+            ei_np = ei_np.reshape(-1, 1)
+
+        # Return negative EI for minimization (we want to maximize EI)
+        return ei_np
+
+    # Optimize EI using Differential Evolution
+    problem = MTOP()
+    problem.add_task(ei_func, dim=dim)
+    de = DE(problem, n=50, max_nfes=1000, F=0.5, CR=0.9, save_data=False, disable_tqdm=True)
+    result = de.optimize()
+
+    return result.best_decs
+
+
 # ============================================================
 # Example Usage
 # ============================================================
@@ -878,7 +1052,7 @@ if __name__ == "__main__":
     print("Example 1: 1D Function (Simplified API)")
 
     # 1. Generate synthetic data
-    X = torch.linspace(0, 3, 10).unsqueeze(-1)
+    X = torch.linspace(0, 1, 7).unsqueeze(-1)
 
 
     def true_func(x):
@@ -892,7 +1066,7 @@ if __name__ == "__main__":
     gp_model.train(X, y, n_restarts=3, verbose=False)
 
     # 3. Visualize prediction results
-    gp_model.plot_prediction(x_range=(0, 3), n_points=200, true_function=true_func)
+    gp_model.plot_prediction(x_range=(0, 1), n_points=200, true_function=true_func)
 
     print("Example 2: 3D Function (Simplified API)")
 
