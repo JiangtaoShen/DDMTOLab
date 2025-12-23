@@ -165,35 +165,32 @@ Results from the batch experiment above:
 
 ## 🎯 Key Components
 
-### Problems
-DDMTOLab provides **132+ benchmark problems** across five categories:
+### 🧬 Algorithms
+**40+ state-of-the-art optimization algorithms** across four categories:
 
-#### **Single-Task Single-Objective (STSO)**
-- Classical Functions (9), CEC10-CSO (18)
+| Category | Algorithms |
+|----------|-----------|
+| **Single-Task SO** | GA, DE, PSO, SL-PSO, KL-PSO, CSO, CMA-ES, AO, GWO, EO, BO, EEI-BO |
+| **Single-Task MO** | NSGA-II, NSGA-III, NSGA-II-SDR, SPEA2, MOEA/D, MOEA/DD, RVEA, IBEA, Two_Arch2, MSEA, CCMO |
+| **Multi-Task SO** | MFEA, MFEA-II, EMEA, G-MFEA, MTBO, RAMTEA, SELF, EEI-BO+, MUMBO, LCB-EMT |
+| **Multi-Task MO** | MO-MFEA, MO-MFEA-II |
 
-#### **Single-Task Multi-Objective (STMO)**
-- ZDT (6), UF (10), DTLZ (9)
+### 📊 Problems
+**132+ benchmark problems** across five categories:
 
-#### **Multi-Task Single-Objective (MTSO)**
-- CEC17-MTSO (9), CEC17-MTSO-10D (9), CEC19-MaTSO (6)
+| Category | Problem Suites |
+|----------|---------------|
+| **Single-Task SO** | Classical Functions (9), CEC10-CSO (18) |
+| **Single-Task MO** | ZDT (6), UF (10), DTLZ (9) |
+| **Multi-Task SO** | CEC17-MTSO (9), CEC17-MTSO-10D (9), CEC19-MaTSO (6) |
+| **Multi-Task MO** | CEC17-MTMO (9), CEC19-MTMO (10), CEC19-MaTMO (6), CEC21-MTMO (10), MTMO-Instance (2) |
+| **Real-World** | PEPVM (1), PINN-HPO (12), SOPM (2), SCP (1), MO-SCP (2), PKACP (1) |
 
-#### **Multi-Task Multi-Objective (MTMO)**
-- CEC17-MTMO (9), CEC19-MTMO (10), CEC19-MaTMO (6), CEC21-MTMO (10), MTMO-Instance (2)
-
-#### **Real-World Applications (RWP)**
-- PEPVM (1), PINN-HPO (12), SOPM (2), SCP (1), MO-SCP (2), PKACP (1)
-
-### Algorithms
-- **Single-Task Single-Objective (STSO)**: GA, DE, PSO, SL-PSO, CSO, BO, etc.
-- **Single-Task Multi-Objective (STMO)**: NSGA-II, RVEA, NSGA-III, MOEA/D, etc.
-- **Multi-Task Single-Objective (MTSO)**: MFEA, EMEA, G-MFEA, MTBO, RA-MTEA, SELF, etc.
-- **Multi-Task Multi-Objective (MTMO)**: MO-MFEA, etc.
-
-### Methods
-- **Batch Experiments**: Parallel execution framework
-- **Data Analysis**: Statistical testing and visualization
-- **Performance Metrics**: IGD, HV, FR, CV, Spacing, Spread, etc.
-- **Algorithm Components**: Reusable building blocks
+### 🛠️ Utilities
+- **⚡ Batch Experiments**: Parallel execution framework for large-scale testing
+- **📈 Data Analysis**: Statistical testing (Wilcoxon, Friedman) and visualization tools
+- **📏 Performance Metrics**: IGD, HV, Spacing, Spread, FR, CV, and more
+- **🧩 Algorithm Components**: Reusable building blocks for rapid development
 
 ## 📄 Citation
 
