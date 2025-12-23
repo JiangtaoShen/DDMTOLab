@@ -68,15 +68,16 @@ class PEPVM:
             T = 273.15 + 33.0
             V_t = k * T / q
 
-            I_ph = x[:, 0:1]  # shape (n, 1)
+            I_ph = x[:, 0:1]
             I_sd = x[:, 1:2]
             R_s = x[:, 2:3]
             R_sh = x[:, 3:4]
             a = x[:, 4:5]
 
-            # 防止除零
+            # 防止除零和过小值
             a = np.maximum(a, 1e-10)
             R_sh = np.maximum(R_sh, 1e-10)
+            I_sd = np.maximum(I_sd, 1e-50)
 
             # Experimental I-V data
             V_L = np.array([-0.2057, -0.1291, -0.0588, 0.0057, 0.0646, 0.1185,
@@ -93,16 +94,21 @@ class PEPVM:
             # Calculate RMSE for each solution
             summ = np.zeros((n, 1))
             for i in range(len(V_L)):
-                # 计算指数项的参数，并限制范围避免溢出
                 exp_arg = (V_L[i] + I_L[i] * R_s) / (a * V_t)
-                # 限制指数参数范围 (exp(700) 已经是一个巨大的数)
                 exp_arg = np.clip(exp_arg, -700, 700)
 
-                y1 = (I_ph - I_sd * (np.exp(exp_arg) - 1)
+                exp_term = np.exp(exp_arg) - 1
+                # 限制exp_term避免后续计算溢出
+                exp_term = np.clip(exp_term, -1e10, 1e10)
+
+                y1 = (I_ph - I_sd * exp_term
                       - (V_L[i] + I_L[i] * R_s) / R_sh - I_L[i])
+
+                # 限制y1的范围避免平方时溢出
+                y1 = np.clip(y1, -1e10, 1e10)
                 summ += y1 ** 2
 
-            obj = np.sqrt(summ / len(V_L))  # shape (n, 1)
+            obj = np.sqrt(summ / len(V_L))
             return obj
 
         # Task 2: Double Diode Model
@@ -119,7 +125,7 @@ class PEPVM:
             T = 273.15 + 33.0
             V_t = k * T / q
 
-            I_ph = x[:, 0:1]  # shape (n, 1)
+            I_ph = x[:, 0:1]
             I_sd1 = x[:, 1:2]
             R_s = x[:, 2:3]
             R_sh = x[:, 3:4]
@@ -127,12 +133,14 @@ class PEPVM:
             I_sd2 = x[:, 5:6]
             a2 = x[:, 6:7]
 
-            # 防止除零
+            # 防止除零和过小值
             a1 = np.maximum(a1, 1e-10)
             a2 = np.maximum(a2, 1e-10)
             R_sh = np.maximum(R_sh, 1e-10)
+            I_sd1 = np.maximum(I_sd1, 1e-50)
+            I_sd2 = np.maximum(I_sd2, 1e-50)
 
-            # Experimental I-V data (same as Task 1)
+            # Experimental I-V data
             V_L = np.array([-0.2057, -0.1291, -0.0588, 0.0057, 0.0646, 0.1185,
                             0.1678, 0.2132, 0.2545, 0.2924, 0.3269, 0.3585,
                             0.3873, 0.4137, 0.4373, 0.4590, 0.4784, 0.4960,
@@ -147,19 +155,27 @@ class PEPVM:
             # Calculate RMSE for each solution
             summ = np.zeros((n, 1))
             for i in range(len(V_L)):
-                # 计算两个二极管的指数项参数，并限制范围避免溢出
                 exp_arg1 = (V_L[i] + I_L[i] * R_s) / (a1 * V_t)
                 exp_arg2 = (V_L[i] + I_L[i] * R_s) / (a2 * V_t)
                 exp_arg1 = np.clip(exp_arg1, -700, 700)
                 exp_arg2 = np.clip(exp_arg2, -700, 700)
 
+                exp_term1 = np.exp(exp_arg1) - 1
+                exp_term2 = np.exp(exp_arg2) - 1
+                # 限制exp_term避免后续计算溢出
+                exp_term1 = np.clip(exp_term1, -1e10, 1e10)
+                exp_term2 = np.clip(exp_term2, -1e10, 1e10)
+
                 y1 = (I_ph
-                      - I_sd1 * (np.exp(exp_arg1) - 1)
-                      - I_sd2 * (np.exp(exp_arg2) - 1)
+                      - I_sd1 * exp_term1
+                      - I_sd2 * exp_term2
                       - (V_L[i] + I_L[i] * R_s) / R_sh - I_L[i])
+
+                # 限制y1的范围避免平方时溢出
+                y1 = np.clip(y1, -1e10, 1e10)
                 summ += y1 ** 2
 
-            obj = np.sqrt(summ / len(V_L))  # shape (n, 1)
+            obj = np.sqrt(summ / len(V_L))
             return obj
 
         # Task 3: PV Module Model
@@ -176,18 +192,19 @@ class PEPVM:
             T = 273.15 + 45.0
             V_t = k * T / q
 
-            I_ph = x[:, 0:1]  # shape (n, 1)
+            I_ph = x[:, 0:1]
             I_sd = x[:, 1:2]
             R_s = x[:, 2:3]
             R_sh = x[:, 3:4]
             a = x[:, 4:5]
             Ns = 1
 
-            # 防止除零
+            # 防止除零和过小值
             a = np.maximum(a, 1e-10)
             R_sh = np.maximum(R_sh, 1e-10)
+            I_sd = np.maximum(I_sd, 1e-50)
 
-            # Experimental I-V data for PV module
+            # Experimental I-V data
             V_L = np.array([0.1248, 1.8093, 3.3511, 4.7622, 6.0538, 7.2364,
                             8.3189, 9.3097, 10.2163, 11.0449, 11.8018, 12.4929,
                             13.1231, 13.6983, 14.2221, 14.6995, 15.1346, 15.5311,
@@ -202,15 +219,21 @@ class PEPVM:
             # Calculate RMSE for each solution
             summ = np.zeros((n, 1))
             for i in range(len(V_L)):
-                # 计算指数项的参数，并限制范围避免溢出
                 exp_arg = (V_L[i] + I_L[i] * R_s) / (a * Ns * V_t)
                 exp_arg = np.clip(exp_arg, -700, 700)
 
-                y1 = (I_ph - I_sd * (np.exp(exp_arg) - 1)
+                exp_term = np.exp(exp_arg) - 1
+                # 限制exp_term避免后续计算溢出
+                exp_term = np.clip(exp_term, -1e10, 1e10)
+
+                y1 = (I_ph - I_sd * exp_term
                       - (V_L[i] + I_L[i] * R_s) / R_sh - I_L[i])
+
+                # 限制y1的范围避免平方时溢出
+                y1 = np.clip(y1, -1e10, 1e10)
                 summ += y1 ** 2
 
-            obj = np.sqrt(summ / len(V_L))  # shape (n, 1)
+            obj = np.sqrt(summ / len(V_L))
             return obj
 
         # Define bounds for each task

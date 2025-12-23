@@ -701,7 +701,9 @@ class TableGenerator:
             DataFrame for Excel format, LaTeX string for LaTeX format.
         """
         # Extract problems and determine task count
-        problems = sorted(all_best_values[algorithm_order[0]].keys())
+        # problems = sorted(all_best_values[algorithm_order[0]].keys())
+        problems = sorted(all_best_values[algorithm_order[0]].keys(),
+                          key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
 
         # Determine optimization direction
         direction = DataUtils.get_metric_direction(metric_name)
@@ -1354,7 +1356,8 @@ class PlotGenerator:
         None
             Saves figure to disk.
         """
-        problems = sorted(runtime[algorithm_order[0]].keys())
+        problems = sorted(runtime[algorithm_order[0]].keys(),
+                          key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
         save_dir = Path(self.config.save_path)
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1372,7 +1375,12 @@ class PlotGenerator:
             for prob in problems:
                 runtimes = [runtime[algo][prob][run] for run in runtime[algo][prob].keys()]
                 means.append(np.mean(runtimes))
-                stds.append(np.std(runtimes, ddof=1))
+
+                # Only calculate std if there are at least 2 data points
+                if len(runtimes) > 1:
+                    stds.append(np.std(runtimes, ddof=1))
+                else:
+                    stds.append(0.0)  # No error bar for single data point
 
             x_offset = x_groups + (idx - n_algorithms / 2 + 0.5) * bar_width
 
@@ -1751,7 +1759,8 @@ class DataAnalyzer:
                         problems.append(prob)
 
         algorithms.sort()
-        problems.sort()
+        problems.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
+        # problems.sort()
 
         first_algo = algorithms[0]
         first_prob = problems[0]

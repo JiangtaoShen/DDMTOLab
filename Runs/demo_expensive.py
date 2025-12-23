@@ -40,7 +40,7 @@ if __name__ == '__main__':
         figure_format='png',
         statistic_type='mean',
         significance_level=0.05,
-        rank_sum_test=True,
+        rank_sum_test=False,
         log_scale=True,
         show_pf=True,
         show_nd=True,
