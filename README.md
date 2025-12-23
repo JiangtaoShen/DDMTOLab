@@ -166,11 +166,22 @@ Results from the batch experiment above:
 ## 🎯 Key Components
 
 ### Problems
-- **Single-Task Single-Objective (STSO)**: Classic benchmark functions
-- **Single-Task Multi-Objective (STMO)**: ZDT, DTLZ, WFG test suites
-- **Multi-Task Single-Objective (MTSO)**: CEC17 MTSO, CEC19 MaTSO
-- **Multi-Task Multi-Objective (MTMO)**: CEC17 MTMO
-- **Real-World Problems (WRP)**: Engineering and industrial applications
+DDMTOLab provides **132+ benchmark problems** across five categories:
+
+#### **Single-Task Single-Objective (STSO)**
+- Classical Functions (9), CEC10-CSO (18)
+
+#### **Single-Task Multi-Objective (STMO)**
+- ZDT (6), UF (10), DTLZ (9)
+
+#### **Multi-Task Single-Objective (MTSO)**
+- CEC17-MTSO (9), CEC17-MTSO-10D (9), CEC19-MaTSO (6)
+
+#### **Multi-Task Multi-Objective (MTMO)**
+- CEC17-MTMO (9), CEC19-MTMO (10), CEC19-MaTMO (6), CEC21-MTMO (10), MTMO-Instance (2)
+
+#### **Real-World Applications (RWP)**
+- PEPVM (1), PINN-HPO (12), SOPM (2), SCP (1), MO-SCP (2), PKACP (1)
 
 ### Algorithms
 - **Single-Task Single-Objective (STSO)**: GA, DE, PSO, SL-PSO, CSO, BO, etc.
