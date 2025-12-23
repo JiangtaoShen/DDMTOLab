@@ -49,7 +49,7 @@ Whether you're working on expensive black-box optimization, multi-objective opti
 DDMTOLab requires:
 
 * Python 3.10+
-* PyTorch 2.5+ with CUDA 12.1 support (for GPU acceleration)
+* PyTorch 2.5+ with CUDA 12.1 support (optional, for GPU-accelerated Gaussian Process modeling)
 * BoTorch 0.16+
 * GPyTorch 1.14+
 * NumPy 2.0+
