@@ -125,29 +125,10 @@ if __name__ == '__main__':
     batch_exp.add_algorithm(EMEA, 'EMEA', n=100, max_nfes=20000)
 
     # Step 4: Run batch experiments
-    batch_exp.run(
-        n_runs=20,          # Run each algorithm-problem combination 20 times
-        verbose=True,       # Show progress information
-        max_workers=8       # Use 8 parallel processes
-    )
+    batch_exp.run(n_runs=20, verbose=True, max_workers=8)
 
     # Step 5: Configure data analyzer
-    analyzer = DataAnalyzer(
-        data_path='./Data',                                      # Experiment data path
-        settings=None,                                           # No SETTINGS needed (single-objective)
-        algorithm_order=['GA', 'DE', 'PSO', 'EMEA', 'MFEA'],   # Algorithm display order
-        save_path='./Results',                                   # Results save path
-        table_format='latex',                                    # Table format
-        figure_format='pdf',                                     # Figure format
-        statistic_type='mean',                                   # Statistic type
-        significance_level=0.05,                                 # Significance level
-        rank_sum_test=True,                                      # Perform rank-sum test
-        log_scale=True,                                          # Logarithmic scale
-        show_pf=True,                                            # Show Pareto front
-        show_nd=True,                                            # Show non-dominated solutions
-        best_so_far=True,                                        # Use best-so-far values
-        clear_results=True                                       # Clear old results
-    )
+    analyzer = DataAnalyzer(algorithm_order=['GA', 'DE', 'PSO', 'EMEA', 'MFEA'])
 
     # Step 6: Run data analysis
     results = analyzer.run()
