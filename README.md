@@ -165,7 +165,7 @@ Results from the batch experiment above:
 
 ## 🎯 Key Components
 
-### 🧬 Algorithms
+### Algorithms
 **40+ state-of-the-art optimization algorithms** across four categories:
 
 | Category | Algorithms |
@@ -175,7 +175,7 @@ Results from the batch experiment above:
 | **Multi-Task SO** | MFEA, MFEA-II, EMEA, G-MFEA, MTBO, RAMTEA, SELF, EEI-BO+, MUMBO, LCB-EMT |
 | **Multi-Task MO** | MO-MFEA, MO-MFEA-II |
 
-### 📊 Problems
+### Problems
 **132+ benchmark problems** across five categories:
 
 | Category | Problem Suites |
@@ -186,11 +186,11 @@ Results from the batch experiment above:
 | **Multi-Task MO** | CEC17-MTMO (9), CEC19-MTMO (10), CEC19-MaTMO (6), CEC21-MTMO (10), MTMO-Instance (2) |
 | **Real-World** | PEPVM (1), PINN-HPO (12), SOPM (2), SCP (1), MO-SCP (2), PKACP (1) |
 
-### 🛠️ Utilities
-- **⚡ Batch Experiments**: Parallel execution framework for large-scale testing
-- **📈 Data Analysis**: Statistical testing (Wilcoxon, Friedman) and visualization tools
-- **📏 Performance Metrics**: IGD, HV, Spacing, Spread, FR, CV, and more
-- **🧩 Algorithm Components**: Reusable building blocks for rapid development
+### Methods
+- **Batch Experiments**: Parallel execution framework for large-scale testing
+- **Data Analysis**: Statistical testing (Wilcoxon, Friedman) and visualization tools
+- **Performance Metrics**: IGD, HV, Spacing, Spread, FR, CV, and more
+- **Algorithm Components**: Reusable building blocks for rapid development
 
 ## 📄 Citation
 
