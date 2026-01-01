@@ -32,20 +32,20 @@ if __name__ == '__main__':
 
     # batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=100000, disable_tqdm=False)
     # batch_exp.add_algorithm(EMEA, 'EMEA', n=100, max_nfes=20000)
-    batch_exp.add_algorithm(LCBEMT, 'LCB-EMT', n=100, max_nfes=10000, disable_tqdm=False)
+    # batch_exp.add_algorithm(LCBEMT, 'LCB-EMT', n=100, max_nfes=10000, disable_tqdm=False)
     # batch_exp.add_algorithm(MFEAII, 'MFEA-II', n=100, max_nfes=10000)
     batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=10000)
     # batch_exp.add_algorithm(GMFEA, 'G-MFEA', n=100, max_nfes=10000)
-    # batch_exp.add_algorithm(CMAES, 'CMA-ES', n=100, max_nfes=10000)
+    batch_exp.add_algorithm(CMAES, 'CMA-ES', n=100, max_nfes=10000)
 
-    batch_exp.run(n_runs=1, verbose=True, max_workers=8)
+    batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',
         settings=None,
         algorithm_order=None,
         save_path='./Results',
-        table_format='excel',
+        table_format='latex',
         figure_format='png',
         statistic_type='mean',
         significance_level=0.05,

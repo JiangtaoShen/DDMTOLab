@@ -409,8 +409,3 @@ class MOEADSTM:
         selected_indices = Fp - 1  # Convert back to 0-indexed
 
         return decs[selected_indices], objs[selected_indices]
-
-
-from Problems.STMO.DTLZ import DTLZ
-problem = DTLZ().DTLZ1()
-results = MOEADSTM(problem=problem, n=100, max_nfes=100000, save_data=False, disable_tqdm=False).optimize()

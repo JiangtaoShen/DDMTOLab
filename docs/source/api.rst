@@ -447,7 +447,7 @@ NSGA-II-SDR
    :exclude-members: algorithm_information, get_algorithm_information
 
 Two_Arch2
-^^^^^^^^^^^
+^^^^^^^^^^
 
 .. automodule:: Algorithms.STMO.TwoArch2
    :no-members:
@@ -458,6 +458,46 @@ Two_Arch2
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
+
+C-TAEA
+^^^^^^
+
+.. automodule:: Algorithms.STMO.CTAEA
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.CTAEA.CTAEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MOEA/D-FRRMAB
+^^^^^^^^^^^^^
+
+.. automodule:: Algorithms.STMO.MOEADFRRMAB
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MOEADFRRMAB.MOEADFRRMAB
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MOEA/D-STM
+^^^^^^^^^^^^^
+
+.. automodule:: Algorithms.STMO.MOEADSTM
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MOEADSTM.MOEADSTM
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 
 Multi-Task Multi-Objective (MTMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

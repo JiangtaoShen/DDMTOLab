@@ -34,7 +34,7 @@ class NSGAII:
         'n_tasks': '1-K',
         'dims': 'unequal',
         'objs': 'unequal',
-        'n_objs': '2-M',
+        'n_objs': '2-3',
         'cons': 'unequal',
         'n_cons': '0-C',
         'expensive': 'False',
