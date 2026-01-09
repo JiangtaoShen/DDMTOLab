@@ -9,36 +9,28 @@ from Algorithms.MTMO.MOMFEAII import MOMFEAII
 from Algorithms.STMO.CTAEA import CTAEA
 from Algorithms.STMO.MOEADFRRMAB import MOEADFRRMAB
 from  Algorithms.STMO.MOEADSTM import MOEADSTM
-from Algorithms.STMO.CCMO import CCMO
+from Algorithms.STMO.MCEAD import MCEAD
 from Methods.data_analysis import DataAnalyzer
-from Problems.STMO.UF import UF, SETTINGS
+from Problems.MTMO.cec17_mtmo import CEC17MTMO, SETTINGS
 
 
 if __name__ == '__main__':
     batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
 
-    prob = UF()
+    prob = CEC17MTMO()
 
-    batch_exp.add_problem(prob.UF1, 'UF1')
-    batch_exp.add_problem(prob.UF2, 'UF2')
-    batch_exp.add_problem(prob.UF3, 'UF3')
-    batch_exp.add_problem(prob.UF4, 'UF4')
-    batch_exp.add_problem(prob.UF5, 'UF5')
-    batch_exp.add_problem(prob.UF6, 'UF6')
-    batch_exp.add_problem(prob.UF7, 'UF7')
-    batch_exp.add_problem(prob.UF8, 'UF8')
+    batch_exp.add_problem(prob.P1, 'P1')
+    batch_exp.add_problem(prob.P2, 'P2')
+    batch_exp.add_problem(prob.P3, 'P3')
+    batch_exp.add_problem(prob.P4, 'P4')
 
 
-    n = 100
-    max_nfes = 50000
-    batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=n, max_nfes=max_nfes, disable_tqdm=False)
-    batch_exp.add_algorithm(MOEAD, 'MOEAD', n=n, max_nfes=max_nfes, disable_tqdm=False)
-    batch_exp.add_algorithm(MOEADFRRMAB, 'MOEAD-FRRMAB', n=n, max_nfes=max_nfes, disable_tqdm=False)
-    batch_exp.add_algorithm(MOEADSTM, 'MOEAD-STM', n=n, max_nfes=max_nfes, disable_tqdm=False)
-    # batch_exp.add_algorithm(CCMO, 'CCMO', n=n, max_nfes=max_nfes, disable_tqdm=False)
+    batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=50, max_nfes=500, disable_tqdm=False)
+    batch_exp.add_algorithm(MCEAD, 'MCEA-D', n=50, max_nfes=500, disable_tqdm=False)
 
 
-    batch_exp.run(n_runs=4, verbose=True, max_workers=8)
+
+    batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',

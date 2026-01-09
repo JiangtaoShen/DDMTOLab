@@ -175,9 +175,7 @@ class SPEA2:
             Constraint violation values with shape (pop_size,)
         """
         if cons is not None:
-            # Python: np.sum(np.maximum(0, cons), axis=1)
             cv = np.sum(np.maximum(0, cons), axis=1)
-            # Epsilon constraint
             cv[cv < self.epsilon] = 0
         else:
             cv = np.zeros(cons.shape[0]) if cons is not None else np.array([])
@@ -256,7 +254,6 @@ class SPEA2:
         # Detect dominance relations
         dominate = np.zeros((N, N), dtype=bool)
 
-        # MATLAB中按行操作，这里需要仔细处理
         for i in range(N):
             for j in range(N):
                 if i == j:
@@ -269,7 +266,6 @@ class SPEA2:
                     dominate[j, i] = True
                 else:
                     # Same constraint violation, compare objectives
-                    # MATLAB: any(PopObj(i,:) < PopObj(j,:)) - any(PopObj(i,:) > PopObj(j,:))
                     less = np.any(objs[i, :] < objs[j, :])
                     greater = np.any(objs[i, :] > objs[j, :])
 
@@ -278,9 +274,6 @@ class SPEA2:
                     elif greater and not less:
                         dominate[j, i] = True
 
-        # Calculate S(i): number of solutions that i dominates
-        # MATLAB: S = sum(Dominate, 2) -> 按行求和
-        # Python: np.sum(dominate, axis=1) -> 按行求和
         S = np.sum(dominate, axis=1)
 
         # Calculate R(i): sum of S values of solutions that dominate i
@@ -288,13 +281,11 @@ class SPEA2:
         for i in range(N):
             # Find solutions that dominate i
             dominating_i = dominate[:, i]
-            # MATLAB: R(i) = sum(S(Dominate(:, i)))
-            # Python: R[i] = np.sum(S[dominating_i])
+
             if np.any(dominating_i):
                 R[i] = np.sum(S[dominating_i])
 
         # Calculate D(i): density estimation
-        # Calculate pairwise distances
         distances = cdist(objs, objs, metric='euclidean')
 
         # Set diagonal to infinity
@@ -303,12 +294,8 @@ class SPEA2:
         # Sort distances for each solution
         sorted_distances = np.sort(distances, axis=1)
 
-        # MATLAB: floor(sqrt(N))
         k = int(np.floor(np.sqrt(N)))
 
-        # MATLAB: D = 1 ./ (Distance(:, k) + 2)
-        # Python: 注意MATLAB索引从1开始，所以k需要调整
-        # 确保k不超过数组边界
         if k > 0:
             k_idx = min(k, sorted_distances.shape[1]) - 1  # -1 for 0-based indexing
             D = 1.0 / (sorted_distances[:, k_idx] + 2)
@@ -363,7 +350,6 @@ class SPEA2:
             sorted_distances = np.sort(remaining_distances, axis=1)
 
             # Find solution with smallest distance to its nearest neighbor
-            # Use lexicographic comparison as in MATLAB
             min_idx = 0
             for i in range(1, len(remaining)):
                 # Compare rows element-wise

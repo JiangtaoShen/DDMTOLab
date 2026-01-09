@@ -212,6 +212,19 @@ EMEA
 
 .. autofunction:: Algorithms.MTSO.EMEA.mDA
 
+EBS
+^^^
+
+.. automodule:: Algorithms.MTSO.EBS
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.EBS.EBS
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 G-MFEA
 ^^^^^^
 
@@ -306,6 +319,32 @@ LCB-EMT
    :no-members:
 
 .. autoclass:: Algorithms.MTSO.LCBEMT.LCBEMT
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+BO_LCB_CKT
+^^^^^^^^^^
+
+.. automodule:: Algorithms.MTSO.BO_LCB_CKT
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.BO_LCB_CKT.BO_LCB_CKT
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+BO_LCB_BCKT
+^^^^^^^^^^^
+
+.. automodule:: Algorithms.MTSO.BO_LCB_BCKT
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.BO_LCB_BCKT.BO_LCB_BCKT
    :members:
    :undoc-members:
    :show-inheritance:
@@ -492,6 +531,19 @@ MOEA/D-STM
    :no-members:
 
 .. autoclass:: Algorithms.STMO.MOEADSTM.MOEADSTM
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MCEA/D
+^^^^^^
+
+.. automodule:: Algorithms.STMO.MCEAD
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.MCEAD.MCEAD
    :members:
    :undoc-members:
    :show-inheritance:

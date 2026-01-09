@@ -8,6 +8,8 @@ from botorch.optim import optimize_acqf
 from botorch.models.transforms.outcome import Standardize
 from botorch.acquisition.objective import ScalarizedPosteriorTransform
 from gpytorch.mlls import ExactMarginalLogLikelihood
+from botorch.acquisition import UpperConfidenceBound
+
 
 
 def gp_build(
@@ -152,6 +154,70 @@ def bo_next_point(
     candidate_np = candidate.detach().cpu().numpy()
 
     return candidate_np
+
+
+def bo_next_point_lcb(
+    dim_i: int,
+    decs_i: np.ndarray,
+    objs_i: np.ndarray,
+    data_type: torch.dtype = torch.float,
+    kappa: float = 2.0
+) -> tuple:
+    """
+    Get the next sampling point using Bayesian Optimization with LCB acquisition
+
+    Parameters
+    ----------
+    dim_i : int
+        Dimension of decision variables
+    decs_i : np.ndarray
+        Historical decision variables, shape: (n_samples, dim_i)
+    objs_i : np.ndarray
+        Historical objective function values, shape: (n_samples,) or (n_samples, 1)
+    data_type : torch.dtype, optional
+        Data type, default is torch.float
+    kappa : float, optional
+        Exploration weight for LCB, default is 2.0
+
+    Returns
+    -------
+    candidate_np : np.ndarray
+        Next sampling point, shape: (1, dim_i)
+    gp : SingleTaskGP
+        Fitted Gaussian Process model
+    """
+
+    # Define search bounds [0, 1]^dim_i
+    bounds = torch.stack([
+        torch.zeros(dim_i, dtype=data_type),
+        torch.ones(dim_i, dtype=data_type)
+    ], dim=0)
+
+    # Prepare training data for Gaussian Process
+    train_X = torch.tensor(decs_i, dtype=data_type)
+    train_Y = torch.tensor(-objs_i, dtype=data_type)  # 取负以最大化
+    if train_Y.dim() == 1:
+        train_Y = train_Y.unsqueeze(-1)
+
+    # Build and fit Gaussian Process model
+    gp = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+    mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
+    fit_gpytorch_mll(mll)
+
+    # Optimize Upper Confidence Bound (UCB) acquisition function
+    UCB = UpperConfidenceBound(model=gp, beta=kappa**2)  # beta = kappa^2
+    candidate, _ = optimize_acqf(
+        UCB,
+        bounds=bounds,
+        q=1,
+        num_restarts=5,
+        raw_samples=20
+    )
+
+    # Convert to numpy array and return
+    candidate_np = candidate.detach().cpu().numpy()
+
+    return candidate_np, gp
 
 
 def mtgp_build(

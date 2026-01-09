@@ -18,7 +18,7 @@ Version: 1.0
 """
 from tqdm import tqdm
 import torch
-from Methods.Algo_Methods.bo_utils import bo_next_point
+from Methods.Algo_Methods.bo_utils import bo_next_point, bo_next_point_lcb
 from Methods.Algo_Methods.algo_utils import *
 import warnings
 import time
@@ -48,12 +48,13 @@ class BO:
         'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
+
     @classmethod
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True, save_path='./TestData',
-                 name='BO_test', disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, mode='ei', save_data=True,
+                 save_path='./TestData', name='BO_test', disable_tqdm=True):
         """
         Initialize Bayesian Optimization algorithm.
 
@@ -65,6 +66,9 @@ class BO:
             Number of initial samples per task (default: 50)
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 100)
+        mode : str, optional
+            Acquisition function mode: 'ei' for Expected Improvement or 'lcb' for Lower Confidence Bound
+            (default: 'ei')
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -77,6 +81,9 @@ class BO:
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 100
+        self.mode = mode.lower()
+        if self.mode not in ['ei', 'lcb']:
+            raise ValueError(f"mode must be 'ei' or 'lcb', got '{mode}'")
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -119,7 +126,10 @@ class BO:
 
             for i in active_tasks:
                 # Fit GP surrogate and select next candidate via acquisition function
-                candidate_np = bo_next_point(dims[i], decs[i], objs[i], data_type=data_type)
+                if self.mode == 'ei':
+                    candidate_np = bo_next_point(dims[i], decs[i], objs[i], data_type=data_type)
+                else:  # mode == 'lcb'
+                    candidate_np, _ = bo_next_point_lcb(dims[i], decs[i], objs[i], data_type=data_type)
 
                 # Evaluate the candidate solution
                 obj, _ = evaluation_single(problem, candidate_np, i)

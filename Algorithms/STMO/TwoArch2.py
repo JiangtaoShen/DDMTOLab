@@ -372,7 +372,6 @@ class TwoArch2:
             DA_decs = np.vstack([DA_decs, new_decs])
 
         # Non-dominated sorting using existing nd_sort function
-        # We need to get the first front (non-dominated solutions)
         N = DA_objs.shape[0]
 
         # Use nd_sort to get non-dominated front

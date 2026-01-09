@@ -5,8 +5,7 @@ This module implements BO-LCB-BCKT for expensive multi-task optimization problem
 
 References
 ----------
-    [1] Lu, Yi, et al. "Multi-Task Surrogate-Assisted Search with Bayesian Competitive Knowledge Transfer for Expensive \
-        Optimization." arXiv preprint arXiv:2510.23407 (2025).
+    [1] Lu, Yi, et al. "Multi-Task Surrogate-Assisted Search with Bayesian Competitive Knowledge Transfer for Expensive Optimization." arXiv preprint arXiv:2510.23407 (2025).
 
 Notes
 -----
@@ -482,9 +481,3 @@ def improvement_internal(gp_model, decs, objs, candidate, acquisition='lcb',
     improvement = np.min(acq_db) - acq_cand[0]
 
     return improvement
-
-
-from Problems.MTSO.cec17_mtso_10d import CEC17MTSO_10D
-problem = CEC17MTSO_10D().P1()
-results = BO_LCB_BCKT(problem, n_initial=10, max_nfes=30, gen_gap=2, disable_tqdm=False).optimize()
-print(results.transfer_states)
