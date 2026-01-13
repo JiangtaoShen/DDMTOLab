@@ -185,6 +185,9 @@ class TwoArch2:
                                      bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
+        results.CAs = CAs
+        results.DAs = DAs
+
         return results
 
     def _mating_selection(self, CA_objs, CA_decs, DA_objs, DA_decs, N):

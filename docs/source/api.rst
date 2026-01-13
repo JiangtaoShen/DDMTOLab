@@ -165,6 +165,71 @@ SL-PSO
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+ESAO
+^^^^
+
+.. automodule:: Algorithms.STSO.ESAO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.ESAO.ESAO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+SHPSO
+^^^^^
+
+.. automodule:: Algorithms.STSO.SHPSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.SHPSO.SHPSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+GL-SADE
+^^^^^^^
+
+.. automodule:: Algorithms.STSO.GLSADE
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.GLSADE.GLSADE
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+SA-COSO
+^^^^^^^
+
+.. automodule:: Algorithms.STSO.SACOSO
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.SACOSO.SACOSO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+TLRBF
+^^^^^
+
+.. automodule:: Algorithms.STSO.TLRBF
+   :no-members:
+
+.. autoclass:: Algorithms.STSO.TLRBF.TLRBF
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 
 Multi-Task Single-Objective (MTSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -211,6 +276,19 @@ EMEA
    :exclude-members: algorithm_information, get_algorithm_information
 
 .. autofunction:: Algorithms.MTSO.EMEA.mDA
+
+MTEA-AD
+^^^^^^^
+
+.. automodule:: Algorithms.MTSO.MTEAAD
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MTEAAD.MTEAAD
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 EBS
 ^^^
@@ -544,6 +622,32 @@ MCEA/D
    :no-members:
 
 .. autoclass:: Algorithms.STMO.MCEAD.MCEAD
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+K-RVEA
+^^^^^^
+
+.. automodule:: Algorithms.STMO.KRVEA
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.KRVEA.KRVEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+DSAEA-PS
+^^^^^^^^
+
+.. automodule:: Algorithms.STMO.DSAEAPS
+   :no-members:
+
+.. autoclass:: Algorithms.STMO.DSAEAPS.DSAEAPS
    :members:
    :undoc-members:
    :show-inheritance:

@@ -10,7 +10,7 @@ Key Features:
 
 References
 ----------
-    [1] Xue, Xiaoming, et al. "Surrogate-assisted search with competitive knowledge transfer for expensive optimization. " IEEE Transactions on Evolutionary Computation (2024).
+    [1] Xue, Xiaoming, et al. "Surrogate-assisted search with competitive knowledge transfer for expensive optimization." IEEE Transactions on Evolutionary Computation (2024).
 
 Notes
 -----

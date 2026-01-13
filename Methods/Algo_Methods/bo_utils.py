@@ -93,6 +93,76 @@ def gp_predict(
     return pred_objs, pred_std
 
 
+def mo_gp_build(decs, objs, data_type=torch.float):
+    """
+    Build Gaussian Process models for each objective in multi-objective optimization.
+
+    Parameters
+    ----------
+    decs : np.ndarray
+        Decision variables, shape (N, D) where N is the number of samples
+        and D is the dimension of decision space.
+    objs : np.ndarray
+        Objective values, shape (N, M) where M is the number of objectives.
+    data_type : torch.dtype, optional
+        Data type for GP models (default: torch.float).
+
+    Returns
+    -------
+    models : list
+        List of trained GP models, one for each objective.
+    """
+    M = objs.shape[1]
+    models = []
+    for j in range(M):
+        model = gp_build(decs, objs[:, j:j + 1], data_type)
+        models.append(model)
+    return models
+
+
+def mo_gp_predict(models, x, data_type=torch.float, mse=False):
+    """
+    Predict objectives using trained GP models for multi-objective optimization.
+
+    Parameters
+    ----------
+    models : list
+        List of trained GP models (one per objective), as returned by mo_gp_build.
+    x : np.ndarray
+        Decision variables to predict, shape (N, D) where N is the number of
+        samples and D is the dimension of decision space.
+    data_type : torch.dtype, optional
+        Data type for GP prediction (default: torch.float).
+    mse : bool, optional
+        If True, also return the Mean Squared Error (variance) of predictions.
+        If False, only return predicted objective values (default: False).
+
+    Returns
+    -------
+    pred_objs : np.ndarray
+        Predicted objective values, shape (N, M) where M is the number of objectives.
+    pred_mse : np.ndarray, optional
+        Predicted MSE (variance) for each objective, shape (N, M).
+        Only returned if mse=True.
+    """
+    N = x.shape[0]
+    M = len(models)
+    pred_objs = np.zeros((N, M))
+
+    if mse:
+        pred_mse = np.zeros((N, M))
+        for j in range(M):
+            pred, std = gp_predict(models[j], x, data_type)
+            pred_objs[:, j] = pred.flatten()
+            pred_mse[:, j] = (std ** 2).flatten()
+        return pred_objs, pred_mse
+    else:
+        for j in range(M):
+            pred, _ = gp_predict(models[j], x, data_type)
+            pred_objs[:, j] = pred.flatten()
+        return pred_objs
+
+
 def bo_next_point(
     dim_i: int,
     decs_i: np.ndarray,
@@ -468,65 +538,3 @@ def mtbo_next_point(
     return candidate_np
 
 
-def mtbo_next_point(
-    mtgp: MultiTaskGP,
-    task_id: int,
-    objs: list[np.ndarray],
-    dims: list[int],
-    nt: int,
-    data_type: torch.dtype = torch.float
-) -> np.ndarray:
-    """
-    Get the next sampling point using Multi-Task Bayesian Optimization.
-
-    Parameters
-    ----------
-    mtgp : MultiTaskGP
-        Trained Multi-Task Gaussian Process model
-    task_id : int
-        Task index for which to find the next point
-    objs : list[np.ndarray]
-        List of objective value matrices for each task
-    dims : list[int]
-        List of dimensionalities for each task
-    nt : int
-        Total number of tasks
-    data_type : torch.dtype, optional
-        Data type for tensors (default: torch.float)
-
-    Returns
-    -------
-    candidate_np : np.ndarray
-        Next sampling point, shape: (1, dims[task_id])
-    """
-    # Define search bounds [0, 1]^max_dim with fixed task index
-    max_dim = max(dims)
-    lower_bound = torch.zeros(max_dim + 1, dtype=data_type)
-    upper_bound = torch.ones(max_dim + 1, dtype=data_type)
-    task_range = torch.linspace(0, 1, nt)
-    lower_bound[-1] = task_range[task_id].item()
-    upper_bound[-1] = task_range[task_id].item()
-    bounds = torch.stack([lower_bound, upper_bound], dim=0)
-
-    # Compute the best observed value for the current task
-    best_f = torch.tensor(-objs[task_id], dtype=data_type).squeeze().max()
-
-    # Build Log Expected Improvement acquisition function
-    posterior_transform = ScalarizedPosteriorTransform(weights=torch.tensor([1.0], dtype=data_type))
-    logEI = LogExpectedImprovement(
-        model=mtgp,
-        best_f=best_f,
-        posterior_transform=posterior_transform
-    )
-
-    # Optimize acquisition function and extract decision variables
-    candidate, _ = optimize_acqf(
-        logEI,
-        bounds=bounds,
-        q=1,
-        num_restarts=5,
-        raw_samples=20
-    )
-    candidate_np = candidate[:, :dims[task_id]].detach().cpu().numpy()
-
-    return candidate_np

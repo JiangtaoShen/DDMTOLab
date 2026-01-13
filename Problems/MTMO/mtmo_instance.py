@@ -27,12 +27,12 @@ class MTMOInstances:
 
     def P1(self) -> MTOP:
         """
-        Generates MTMO Instance 1: **T1 (ZDT1-like, Rastrigin) vs T2 (ZDT2-like, Ackley)**.
+        Generates MTMO Instance 1: **T1 (ZDT4_R, Rastrigin) vs T2 (ZDT4_G, Griewank)**.
 
         Both tasks are 2-objective, 10-dimensional.
 
         - T1: Modified ZDT1-like with Rastrigin component in g-function. PF is continuous, convex.
-        - T2: Modified ZDT2-like with Ackley component in g-function. PF is continuous, non-convex.
+        - T2: Modified ZDT2-like with Griewank component in g-function. PF is continuous, non-convex.
         - Relationship: Different g-functions create different landscape difficulties.
 
         Returns
@@ -43,26 +43,30 @@ class MTMOInstances:
         dim = 10
 
         def T1(x):
-            """Task 1: ZDT1-like with Rastrigin component"""
+            """Task 1: ZDT4_R - Rastrigin component"""
             x = np.atleast_2d(x)
-            # Rastrigin-like component in g
-            part = x[:, 1:]
-            q = 1.0 + 10.0 * (dim - 1) + np.sum(part ** 2 - 10.0 * np.cos(2.0 * np.pi * part), axis=1)
+            D = x.shape[1]
+            # M = 1 (identity), y = x[:, 1:]
+            y = x[:, 1:]
+            # Rastrigin-like component in g (使用 4*pi)
+            gx = 1.0 + 10.0 * (D - 1) + np.sum(y ** 2 - 10.0 * np.cos(4.0 * np.pi * y), axis=1)
             f1 = x[:, 0]
-            f2 = q * (1.0 - np.sqrt(x[:, 0] / q))
-            return np.vstack([f1, f2]).T
+            f2 = gx * (1.0 - np.sqrt(x[:, 0] / gx))
+            return np.column_stack([f1, f2])
 
         def T2(x):
+            """Task 2: ZDT4_G - Griewank component"""
             x = np.atleast_2d(x)
             D = x.shape[1]
 
-            # MATLAB: y = M * x(:,2:end)
-            y = x[:, 1:]  # M = 1
+            # M = 1 (identity), y = x[:, 1:]
+            y = x[:, 1:]
 
-            # g(x) 第一部分
+            # g(x) 第一部分: 2 + sum(y^2)/4000
             gx = 2.0 + np.sum(y ** 2, axis=1) / 4000.0
 
-            # g(x) 第二部分（注意：用的是原始 x）
+            # g(x) 第二部分: prod(cos(x_i / sqrt(i))) for i = 2 to D
+            # 注意：MATLAB中使用原始 x，索引从2开始
             gx_2 = np.ones(x.shape[0])
             for i in range(2, D + 1):
                 gx_2 *= np.cos(x[:, i - 1] / np.sqrt(i))
@@ -74,13 +78,13 @@ class MTMOInstances:
 
             return np.column_stack([f1, f2])
 
-        # Task 1 bounds: Rastrigin typically uses [-5, 5]
+        # Task 1 bounds: Rastrigin uses [-5, 5]
         lb1 = np.array([0.0] + [-5.0] * (dim - 1))
         ub1 = np.array([1.0] + [5.0] * (dim - 1))
 
-        # Task 2 bounds: Ackley typically uses [-32, 32]
-        lb2 = np.array([0.0] + [-32.0] * (dim - 1))
-        ub2 = np.array([1.0] + [32.0] * (dim - 1))
+        # Task 2 bounds: Griewank uses [-512, 512]
+        lb2 = np.array([0.0] + [-512.0] * (dim - 1))
+        ub2 = np.array([1.0] + [512.0] * (dim - 1))
 
         problem = MTOP()
         problem.add_task(T1, dim=dim, lower_bound=lb1, upper_bound=ub1)
@@ -89,14 +93,14 @@ class MTMOInstances:
 
     def P2(self) -> MTOP:
         """
-        Generates MTMO Instance 2: **T1 (ZDT1-like, Constrained) vs T2 (ZDT2-like, Griewank)**.
+        Generates MTMO Instance 2: **T1 (ZDT4_RC, Rastrigin + Constraint) vs T2 (ZDT4_A, Ackley)**.
 
         T1 is 2-objective with 1 constraint (10-dimensional).
         T2 is 2-objective without constraints (10-dimensional).
 
         - T1: Modified ZDT1-like with Rastrigin component and a sinusoidal constraint.
               PF is continuous, convex, but partially infeasible.
-        - T2: Modified ZDT2-like with Griewank component in g-function. PF is continuous, non-convex.
+        - T2: Modified ZDT2-like with Ackley component in g-function. PF is continuous, non-convex.
         - Relationship: One task has constraints while the other doesn't, testing constraint handling transfer.
 
         Returns
@@ -107,25 +111,28 @@ class MTMOInstances:
         dim = 10
 
         def T1(x):
-            """Task 1: ZDT1-like with Rastrigin component (constrained)"""
+            """Task 1: ZDT4_RC - Rastrigin component (constrained)"""
             x = np.atleast_2d(x)
-            # Rastrigin-like component in g
-            part = x[:, 1:]
-            q = 1.0 + 10.0 * (dim - 1) + np.sum(part ** 2 - 10.0 * np.cos(4.0 * np.pi * part), axis=1)
+            D = x.shape[1]
+            # M = 1 (identity), y = x[:, 1:]
+            y = x[:, 1:]
+            # Rastrigin-like component in g (使用 4*pi)
+            gx = 1.0 + 10.0 * (D - 1) + np.sum(y ** 2 - 10.0 * np.cos(4.0 * np.pi * y), axis=1)
             f1 = x[:, 0]
-            f2 = q * (1.0 - np.sqrt(x[:, 0] / q))
-            return np.vstack([f1, f2]).T
+            f2 = gx * (1.0 - np.sqrt(x[:, 0] / gx))
+            return np.column_stack([f1, f2])
 
         def T1_constraint(x):
-            """Constraint for Task 1: Sinusoidal constraint"""
+            """Constraint for Task 1: Sinusoidal constraint (ZDT4_RC)"""
             x = np.atleast_2d(x)
-            # Calculate objectives for constraint
-            part = x[:, 1:]
-            q = 1.0 + 10.0 * (dim - 1) + np.sum(part ** 2 - 10.0 * np.cos(4.0 * np.pi * part), axis=1)
+            D = x.shape[1]
+            # 计算目标函数值用于约束计算
+            y = x[:, 1:]
+            gx = 1.0 + 10.0 * (D - 1) + np.sum(y ** 2 - 10.0 * np.cos(4.0 * np.pi * y), axis=1)
             f1 = x[:, 0]
-            f2 = q * (1.0 - np.sqrt(x[:, 0] / q))
+            f2 = gx * (1.0 - np.sqrt(x[:, 0] / gx))
 
-            # Sinusoidal constraint similar to MATLAB version
+            # Sinusoidal constraint (与MATLAB完全一致)
             theta = -0.05 * np.pi
             a, b, c, d, e = 40.0, 5.0, 1.0, 6.0, 0.0
 
@@ -138,28 +145,30 @@ class MTMOInstances:
             return constraint.reshape(-1, 1)
 
         def T2(x):
-            """Task 2: ZDT4-like with Ackley component (no constraint)"""
+            """Task 2: ZDT4_A - Ackley component (no constraint)"""
             x = np.atleast_2d(x)
-            n, dim = x.shape
+            D = x.shape[1]
+
+            # M = 1 (identity), y = x[:, 1:]
+            y = x[:, 1:]
 
             # Ackley-like g function
-            y = x[:, 1:]  # x2~xD
             sum_sq = np.sum(y ** 2, axis=1)
-            sum_cos = np.sum(np.cos(2 * np.pi * y), axis=1)
-            gx = -20 * np.exp(-0.2 * np.sqrt(sum_sq / (dim - 1))) - np.exp(sum_cos / (dim - 1)) + 21 + np.e
+            sum_cos = np.sum(np.cos(2.0 * np.pi * y), axis=1)
+            gx = -20.0 * np.exp(-0.2 * np.sqrt(sum_sq / (D - 1))) - \
+                 np.exp(sum_cos / (D - 1)) + 21.0 + np.e
 
             f1 = x[:, 0]
-            f2 = gx * (1 - np.sqrt(f1 / gx))
-            f = np.vstack([f1, f2]).T
-            return f
+            f2 = gx * (1.0 - np.sqrt(f1 / gx))
+            return np.column_stack([f1, f2])
 
         # Task 1 bounds: Rastrigin uses [-5, 5]
         lb1 = np.array([0.0] + [-5.0] * (dim - 1))
         ub1 = np.array([1.0] + [5.0] * (dim - 1))
 
-        # Task 2 bounds: Griewank uses [-512, 512]
-        lb2 = np.array([0.0] + [-512.0] * (dim - 1))
-        ub2 = np.array([1.0] + [512.0] * (dim - 1))
+        # Task 2 bounds: Ackley uses [-32, 32]
+        lb2 = np.array([0.0] + [-32.0] * (dim - 1))
+        ub2 = np.array([1.0] + [32.0] * (dim - 1))
 
         problem = MTOP()
         problem.add_task(T1, dim=dim, constraint_func=T1_constraint,
@@ -191,6 +200,7 @@ def P1_T1_PF(N, M=2) -> np.ndarray:
     f1 = np.linspace(0, 1, N)
     f2 = 1 - np.sqrt(f1)
     return np.column_stack([f1, f2])
+
 
 P1_T2_PF = P1_T1_PF
 P2_T1_PF = P1_T1_PF

@@ -5,9 +5,7 @@ This module implements CCMO for constrained multi-objective optimization problem
 
 References
 ----------
-    [1] Tian, Ye, et al. "A Coevolutionary Framework for Constrained Multiobjective \
-        Optimization Problems." IEEE Transactions on Evolutionary Computation 25.1 \
-        (2021): 102-116.
+    [1] Tian, Ye, et al. "A Coevolutionary Framework for Constrained Multiobjective Optimization Problems." IEEE Transactions on Evolutionary Computation 25.1 (2021): 102-116.
 
 Notes
 -----

@@ -5,10 +5,7 @@ This module implements NSGA-II-SDR for multi-objective optimization problems.
 
 References
 ----------
-    [1] Y. Tian, R. Cheng, X. Zhang, Y. Su, and Y. Jin. A strengthened dominance \
-        relation considering convergence and diversity for evolutionary many- \
-        objective optimization. IEEE Transactions on Evolutionary Computation, \
-        2019, 23(2): 331-345.
+    [1] Y. Tian, R. Cheng, X. Zhang, Y. Su, and Y. Jin. A strengthened dominance relation considering convergence and diversity for evolutionary many-objective optimization. IEEE Transactions on Evolutionary Computation, 2019, 23(2): 331-345.
 
 Notes
 -----
@@ -202,9 +199,6 @@ def nd_sort_sdr(pop_obj: np.ndarray, n_sort: int) -> Tuple[np.ndarray, int]:
     """
     Do non-dominated sorting by strengthened dominance relation (SDR).
 
-    The SDR enhances the traditional Pareto dominance relation by considering both
-    convergence and diversity, making it more effective for many-objective optimization.
-
     Parameters
     ----------
     pop_obj : np.ndarray
@@ -218,13 +212,6 @@ def nd_sort_sdr(pop_obj: np.ndarray, n_sort: int) -> Tuple[np.ndarray, int]:
         Non-dominated front number for each solution, shape (N,)
     max_fno : int
         Maximum front number assigned
-
-    References
-    ----------
-    Y. Tian, R. Cheng, X. Zhang, Y. Su, and Y. Jin. A strengthened dominance
-    relation considering convergence and diversity for evolutionary many-
-    objective optimization. IEEE Transactions on Evolutionary Computation,
-    2019, 23(2): 331-345.
     """
     N = pop_obj.shape[0]
 

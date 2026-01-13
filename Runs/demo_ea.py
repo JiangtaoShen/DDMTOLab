@@ -10,6 +10,7 @@ from Algorithms.MTSO.MFEA import MFEA
 from Algorithms.MTSO.MFEAII import MFEAII
 from Algorithms.MTSO.GMFEA import GMFEA
 from Algorithms.MTSO.EBS import EBS
+from Algorithms.MTSO.MTEAAD import MTEAAD
 from Algorithms.STSO.CMAES import CMAES
 from Algorithms.STSO.GWO import GWO
 from Algorithms.STSO.EO import EO
@@ -17,32 +18,36 @@ from Algorithms.STSO.KLPSO import KLPSO
 from Algorithms.STSO.SLPSO import SLPSO
 from Problems.MTSO.cec17_mtso import CEC17MTSO
 from Problems.MTSO.cec19_matso import CEC19MaTSO
+from Problems.MTSO.stop import STOP
 
 if __name__ == '__main__':
     batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
 
-    cec17mtso = CEC19MaTSO()
+    prob = STOP()
 
-    batch_exp.add_problem(cec17mtso.P3, 'P3', task_num=10)
+    batch_exp.add_problem(prob.STOP1, 'STOP1', task_num=5)
+    batch_exp.add_problem(prob.STOP2, 'STOP2', task_num=5)
 
 
-    # batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=100000, disable_tqdm=False)
+
+    batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=20000, disable_tqdm=False)
     # batch_exp.add_algorithm(EMEA, 'EMEA', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(MTEAAD, 'MTEA-AD', n=100, max_nfes=20000)
     # batch_exp.add_algorithm(LCBEMT, 'LCB-EMT', n=100, max_nfes=10000, disable_tqdm=False)
     # batch_exp.add_algorithm(MFEAII, 'MFEA-II', n=100, max_nfes=10000)
-    # batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=10000)
+    # batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=20000)
     # batch_exp.add_algorithm(GMFEA, 'G-MFEA', n=100, max_nfes=10000)
-    batch_exp.add_algorithm(CMAES, 'CMA-ES', n=20, max_nfes=10000)
-    batch_exp.add_algorithm(EBS, 'EBS', n=20, max_nfes=10000, gen_init = 0)
+    # batch_exp.add_algorithm(CMAES, 'CMA-ES', n=20, max_nfes=10000)
+    # batch_exp.add_algorithm(EBS, 'EBS', n=20, max_nfes=10000, gen_init = 0)
 
     batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',
         settings=None,
-        algorithm_order=None,
+        algorithm_order=['MFEA', 'MTEA-AD'],
         save_path='./Results',
-        table_format='latex',
+        table_format='excel',
         figure_format='png',
         statistic_type='mean',
         significance_level=0.05,

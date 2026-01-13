@@ -154,53 +154,6 @@ class IBEA:
         return results
 
 
-def ibea_fitness(objs, kappa):
-    """
-    Calculate fitness values for the population using IBEA indicator.
-
-    Parameters
-    ----------
-    objs : ndarray
-        Objective values with shape (N, M), where N is the number of
-        individuals and M is the number of objectives.
-    kappa : float
-        Fitness scaling factor.
-
-    Returns
-    -------
-    fitness : ndarray
-        Fitness values for each individual with shape (N,).
-    I : ndarray
-        Indicator matrix with shape (N, N).
-    C : ndarray
-        Normalization constants with shape (N,).
-    """
-    N = objs.shape[0]
-
-    # Normalize objective values to [0, 1]
-    min_val = np.min(objs, axis=0)
-    max_val = np.max(objs, axis=0)
-
-    range_val = max_val - min_val
-    range_val[range_val == 0] = 1.0
-    objs_norm = (objs - min_val) / range_val
-
-    # Calculate indicator matrix I where I[i,j] is the max difference between individual i and j
-    I = np.zeros((N, N))
-    for i in range(N):
-        for j in range(N):
-            I[i, j] = np.max(objs_norm[i, :] - objs_norm[j, :])
-
-    # Calculate normalization constants (max absolute value in each column)
-    C = np.max(np.abs(I), axis=0)
-
-    # Calculate fitness: sum along columns after scaling by C and kappa
-    C_matrix = np.tile(C, (N, 1))
-    fitness = np.sum(-np.exp(-I / C_matrix / kappa), axis=0) + 1
-
-    return fitness, I, C
-
-
 def ibea_selection(objs, N, kappa):
     """
     Environmental selection for IBEA algorithm.

@@ -267,7 +267,7 @@ class SVM:
         self.model = None
         self.C = 1.0
         self.gamma_matlab = 1.0
-        self.gamma_sklearn = 2 * self.gamma_matlab
+        self.gamma_sklearn = self.gamma_matlab
 
         # Access bounds from MTOP bounds list [(lb, ub), ...]
         self.lower = problem.bounds[task_id][0].flatten()

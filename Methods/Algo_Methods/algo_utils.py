@@ -10,6 +10,8 @@ import numpy as np
 import pickle
 import os
 from dataclasses import asdict
+from scipy.spatial.distance import cdist
+from sklearn.cluster import KMeans
 from dataclasses import dataclass
 import copy
 from typing import Any, List, Tuple, Union, Optional
@@ -352,7 +354,8 @@ def par_list(par: Union[int, List[int]], n_tasks: int) -> List[int]:
 def reorganize_initial_data(
         data: List[np.ndarray],
         nt: int,
-        n_initial_per_task: List[int]
+        n_initial_per_task: List[int],
+        interval: int = 1
 ) -> List[List[np.ndarray]]:
     """
     Reorganize initial data by task and number of initial points.
@@ -365,19 +368,27 @@ def reorganize_initial_data(
         Number of tasks
     n_initial_per_task : List[int]
         List of number of initial points for each task
+    interval : int, optional
+        Interval for selecting points. Default is 1.
+        - interval=1: 1, 2, 3, 4, ... points
+        - interval=2: 2, 4, 6, 8, ... points
+        - interval=k: k, 2k, 3k, 4k, ... (plus remaining points if not divisible)
 
     Returns
     -------
     all_data : List[List[np.ndarray]]
-        Reorganized data, where all_data[i][j] contains the first j+1
-        initial points of task i
+        Reorganized data
     """
     all_data = []
     for i in range(nt):
         task_data = []
-        # Store each initial point as a separate generation
-        for j in range(n_initial_per_task[i]):
-            task_data.append(data[i][:j + 1].copy())
+        n = n_initial_per_task[i]
+        # Store points at each interval
+        for j in range(interval, n + 1, interval):
+            task_data.append(data[i][:j].copy())
+        # Add remaining points if not divisible
+        if n % interval != 0:
+            task_data.append(data[i][:n].copy())
         all_data.append(task_data)
     return all_data
 
@@ -1026,11 +1037,12 @@ def nd_sort(objs: np.ndarray, *args) -> Tuple[np.ndarray, int]:
         n_sort = args[1]
 
         # Handle constraints using constrained domination
-        infeasible = np.any(pop_con > 0, axis=1)
-        if np.any(infeasible):
-            max_obj = np.max(pop_obj, axis=0)
-            constraint_violation = np.sum(np.maximum(0, pop_con[infeasible, :]), axis=1)
-            pop_obj[infeasible, :] = max_obj + constraint_violation[:, np.newaxis]
+        if pop_con is not None:
+            infeasible = np.any(pop_con > 0, axis=1)
+            if np.any(infeasible):
+                max_obj = np.max(pop_obj, axis=0)
+                constraint_violation = np.sum(np.maximum(0, pop_con[infeasible, :]), axis=1)
+                pop_obj[infeasible, :] = max_obj + constraint_violation[:, np.newaxis]
     else:
         raise ValueError("Invalid number of arguments. Use nd_sort(objs, n_sort) or nd_sort(objs, cons, n_sort)")
 
@@ -1565,3 +1577,196 @@ def denormalize(
         return restored[0]
 
     return restored
+
+
+def remove_duplicates(new_decs, existing_decs=None, tol=1e-6):
+    """
+    Remove duplicate solutions from new decision variables.
+
+    Parameters
+    ----------
+    new_decs : np.ndarray
+        New decision variables to be filtered, shape (N, D)
+    existing_decs : np.ndarray, optional
+        Existing decision variables to check against, shape (M, D)
+        If None, only remove duplicates within new_decs
+    tol : float, optional
+        Tolerance for duplicate detection (default: 1e-6)
+
+    Returns
+    -------
+    unique_decs : np.ndarray
+        Unique decision variables, shape (K, D) where K <= N
+    """
+    if new_decs.shape[0] == 0:
+        return np.empty((0, new_decs.shape[1]))
+
+    # Step 1: Remove duplicates within new_decs
+    unique_indices = []
+    seen = set()
+
+    for i, dec in enumerate(new_decs):
+        dec_tuple = tuple(np.round(dec, 8))
+        if dec_tuple not in seen:
+            seen.add(dec_tuple)
+            unique_indices.append(i)
+
+    if len(unique_indices) == 0:
+        return np.empty((0, new_decs.shape[1]))
+
+    unique_decs = new_decs[unique_indices]
+
+    # Step 2: Remove solutions already in existing_decs (if provided)
+    if existing_decs is not None and existing_decs.shape[0] > 0:
+        final_indices = []
+        for i, dec in enumerate(unique_decs):
+            distances = np.min(cdist(dec.reshape(1, -1), existing_decs))
+            if distances > tol:
+                final_indices.append(i)
+
+        if len(final_indices) == 0:
+            return np.empty((0, new_decs.shape[1]))
+
+        unique_decs = unique_decs[final_indices]
+
+    return unique_decs
+
+
+def kmeans_clustering(data, k):
+    """
+    K-means clustering using sklearn.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data points, shape (N, D)
+    k : int
+        Number of clusters
+
+    Returns
+    -------
+    labels : np.ndarray
+        Cluster labels for each point, shape (N,)
+        Labels are integers in range [0, k-1]
+    """
+    N = data.shape[0]
+
+    # If k >= N, assign each point to its own cluster
+    if k >= N:
+        return np.arange(N)
+
+    kmeans = KMeans(n_clusters=k, n_init='auto', random_state=None)
+    labels = kmeans.fit_predict(data)
+
+    return labels
+
+
+def ibea_fitness(objs, kappa):
+    """
+    Calculate fitness values for the population using IBEA indicator.
+
+    Parameters
+    ----------
+    objs : ndarray
+        Objective values with shape (N, M), where N is the number of
+        individuals and M is the number of objectives.
+    kappa : float
+        Fitness scaling factor.
+
+    Returns
+    -------
+    fitness : ndarray
+        Fitness values for each individual with shape (N,).
+    I : ndarray
+        Indicator matrix with shape (N, N).
+    C : ndarray
+        Normalization constants with shape (N,).
+    """
+    # Normalize objective values to [0, 1]
+    min_val = np.min(objs, axis=0)
+    max_val = np.max(objs, axis=0)
+    range_val = max_val - min_val
+    range_val[range_val == 0] = 1.0
+    objs_norm = (objs - min_val) / range_val
+
+    # Calculate indicator matrix (vectorized)
+    I = np.max(objs_norm[:, np.newaxis, :] - objs_norm[np.newaxis, :, :], axis=2)
+
+    # Calculate normalization constants
+    C = np.max(np.abs(I), axis=0)
+    C[C == 0] = 1e-6  # Avoid division by zero
+
+    # Calculate fitness
+    fitness = np.sum(-np.exp(-I / C / kappa), axis=0) + 1
+
+    return fitness, I, C
+
+
+def is_duplicate(x, X, epsilon=1e-10):
+    """
+    Check if position(s) x are duplicates in X or within themselves.
+
+    Parameters
+    ----------
+    x : np.ndarray
+        Position(s) to check, shape (dim,) or (1, dim) or (n_points, dim)
+    X : np.ndarray
+        Existing positions, shape (n_samples, dim)
+    epsilon : float
+        Tolerance for duplicate detection
+
+    Returns
+    -------
+    bool or list of bool
+        - If x is single point: returns bool
+        - If x contains multiple points: returns list of bool for each point
+    """
+    # Ensure x is at least 2D
+    if x.ndim == 1:
+        x = x.reshape(1, -1)
+
+    if x.shape[0] == 1:
+        # Single point case: return bool
+        if len(X) == 0:
+            return False
+
+        dist = cdist(x, X, metric='euclidean')
+        return bool(np.min(dist) < epsilon)
+    else:
+        # Multiple points case: return list of bool
+        n_points = x.shape[0]
+        results = [False] * n_points
+
+        # Track which points in x are unique (not duplicate with any point checked so far)
+        unique_points = []  # List of indices that are still considered unique
+
+        # First pass: check against X
+        if len(X) > 0:
+            dist_to_X = cdist(x, X, metric='euclidean')
+            for i in range(n_points):
+                if np.any(dist_to_X[i] < epsilon):
+                    results[i] = True
+                else:
+                    unique_points.append(i)
+        else:
+            unique_points = list(range(n_points))
+
+        # Second pass: check duplicates among unique x points
+        # We'll build up a list of truly unique points
+        final_unique = []
+
+        for i in unique_points:
+            is_unique = True
+            # Check against previously identified unique points
+            for j in final_unique:
+                dist_ij = np.linalg.norm(x[i] - x[j])
+                if dist_ij < epsilon:
+                    # x[i] is duplicate of x[j]
+                    results[i] = True
+                    is_unique = False
+                    break
+
+            if is_unique:
+                final_unique.append(i)
+
+        return results
