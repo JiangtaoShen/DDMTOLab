@@ -52,7 +52,7 @@ class MCEAD:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem,  n=None, max_nfes=None, delta=0.9, nr=2, r_max=10,
-                 save_data=True, save_path=None, name='MCEAD_test', disable_tqdm=False):
+                 save_data=True, save_path=None, name='MCEAD_test', disable_tqdm=True):
         """
         Initialize MCEAD algorithm.
 

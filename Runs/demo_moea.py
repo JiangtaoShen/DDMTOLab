@@ -1,3 +1,4 @@
+from Algorithms.MTMO.EMTET import EMTET
 from Methods.batch_experiment import BatchExperiment
 from Algorithms.STMO.NSGAII import NSGAII
 from Algorithms.STMO.TwoArch2 import TwoArch2
@@ -16,34 +17,43 @@ from Algorithms.STMO.KRVEA import KRVEA
 from Algorithms.STMO.KTA2 import KTA2
 from Algorithms.STMO.DSAEAPS import DSAEAPS
 from Algorithms.MTMO.MOMFEA import MOMFEA
-from Algorithms.MTMO.MaOMFEA import MaOMFEA
+from Algorithms.MTMO.MOEMEA import MOEMEA
+from Algorithms.MTMO.MTEADDN import MTEADDN
+from Algorithms.MTMO.MTDEMKTA import MTDEMKTA
+from Algorithms.MTMO.EMTET import EMTET
+from Algorithms.MTMO.EMTPD import EMTPD
+from Algorithms.MTMO.MOMTEASaO import MOMTEASaO
 from Methods.data_analysis import DataAnalyzer
-from Problems.STMO.CF import CF, SETTINGS
+# from Problems.STMO.CF import CF, SETTINGS
 # from Problems.MTMO.mtmo_instance import MTMOInstances, SETTINGS
-# from Problems.MTMO.cec17_mtmo import CEC17MTMO, SETTINGS
+from Problems.MTMO.cec17_mtmo import CEC17MTMO, SETTINGS
 # from Problems.STMO.DTLZ import DTLZ, SETTINGS
+# from Problems.STMO.WFG import WFG, SETTINGS
 
 if __name__ == '__main__':
-    batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
+    # batch_exp = BatchExperiment(base_path='./Data', clear_folder=False)
+    #
+    # prob = CEC17MTMO()
+    #
+    # batch_exp.add_problem(prob.P1, 'P1')
+    # batch_exp.add_problem(prob.P2, 'P2')
+    # batch_exp.add_problem(prob.P3, 'P3')
+    # batch_exp.add_problem(prob.P4, 'P4')
 
-    prob = CF()
+    # batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(MTEADDN, 'MTEA-D-DN', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(MTDEMKTA, 'MTDE-MKTA', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(EMTET, 'EMT-ET', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(EMTPD, 'EMT-PD', n=100, max_nfes=20000, disable_tqdm=False)
+    # batch_exp.add_algorithm(MOMTEASaO, 'MO-MTEA-SaO', n=100, max_nfes=20000, disable_tqdm=False)
 
-    batch_exp.add_problem(prob.CF4, 'CF4')
-    batch_exp.add_problem(prob.CF5, 'CF5')
-    batch_exp.add_problem(prob.CF6, 'CF6')
-
-    batch_exp.add_algorithm(NSGAII, 'NSGA-II', n=100, max_nfes=20000, disable_tqdm=False)
-    batch_exp.add_algorithm(CCMO, 'CCMO', n=100, max_nfes=20000, disable_tqdm=False)
-    # batch_exp.add_algorithm(CTAEA, 'C-TAEA', n=100, max_nfes=100000, disable_tqdm=False)
-    # batch_exp.add_algorithm(MOMFEA, 'MO-MFEA', n=100, max_nfes=12500, disable_tqdm=False)
-    # batch_exp.add_algorithm(MaOMFEA, 'MaO-MFEA', n=100, max_nfes=20000, disable_tqdm=False)
-
-    batch_exp.run(n_runs=1, verbose=True, max_workers=8)
+    # batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',
         settings=SETTINGS,
-        algorithm_order=None,
+        algorithm_order=['NSGA-II', 'MO-MFEA', 'MO-MTEA-SaO'],
         save_path='./Results',
         table_format='excel',
         figure_format='png',

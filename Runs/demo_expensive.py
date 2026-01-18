@@ -15,20 +15,20 @@ from Methods.data_analysis import DataAnalyzer
 
 
 if __name__ == '__main__':
-    batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
-
-    cec17mtso = CEC17MTSO_10D()
-
-    batch_exp.add_problem(cec17mtso.P1, 'P1')
-    batch_exp.add_problem(cec17mtso.P2, 'P2')
-    batch_exp.add_problem(cec17mtso.P3, 'P3')
-    batch_exp.add_problem(cec17mtso.P4, 'P4')
-    batch_exp.add_problem(cec17mtso.P5, 'P5')
-    batch_exp.add_problem(cec17mtso.P6, 'P6')
-
-    batch_exp.add_algorithm(BO, 'BO-EI', n_initial=100, max_nfes=300, disable_tqdm=False)
-    batch_exp.add_algorithm(TLRBF, 'TLRBF', n_initial=100, max_nfes=300, disable_tqdm=False)
-    batch_exp.run(n_runs=2, verbose=True, max_workers=8)
+    # batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
+    #
+    # cec17mtso = CEC17MTSO_10D()
+    #
+    # batch_exp.add_problem(cec17mtso.P1, 'P1')
+    # batch_exp.add_problem(cec17mtso.P2, 'P2')
+    # batch_exp.add_problem(cec17mtso.P3, 'P3')
+    # batch_exp.add_problem(cec17mtso.P4, 'P4')
+    # batch_exp.add_problem(cec17mtso.P5, 'P5')
+    # batch_exp.add_problem(cec17mtso.P6, 'P6')
+    #
+    # batch_exp.add_algorithm(BO, 'BO-EI', n_initial=100, max_nfes=300, disable_tqdm=False)
+    # batch_exp.add_algorithm(TLRBF, 'TLRBF', n_initial=100, max_nfes=300, disable_tqdm=False)
+    # batch_exp.run(n_runs=2, verbose=True, max_workers=8)
 
     analyzer = DataAnalyzer(
         data_path='./Data',

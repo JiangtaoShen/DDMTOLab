@@ -316,9 +316,44 @@ G-MFEA
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. autofunction:: Algorithms.MTSO.GMFEA.decs_translation
-.. autofunction:: Algorithms.MTSO.GMFEA.dimension_shuffling
-.. autofunction:: Algorithms.MTSO.GMFEA.convert_to_original_decision_space
+MKTDE
+^^^^^
+
+.. automodule:: Algorithms.MTSO.MKTDE
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MKTDE.MKTDE
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MTEA-SaO
+^^^^^^^^
+
+.. automodule:: Algorithms.MTSO.MTEASaO
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.MTEASaO.MTEASaO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+SREMTO
+^^^^^^
+
+.. automodule:: Algorithms.MTSO.SREMTO
+   :no-members:
+
+.. autoclass:: Algorithms.MTSO.SREMTO.SREMTO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
 
 MTBO
 ^^^^
@@ -680,6 +715,84 @@ MO-MFEA-II
    :no-members:
 
 .. autoclass:: Algorithms.MTMO.MOMFEAII.MOMFEAII
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MO-EMEA
+^^^^^^^
+
+.. automodule:: Algorithms.MTMO.MOEMEA
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MOEMEA.MOEMEA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+EMT-ET
+^^^^^^
+
+.. automodule:: Algorithms.MTMO.EMTET
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.EMTET.EMTET
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+EMT-PD
+^^^^^^
+
+.. automodule:: Algorithms.MTMO.EMTPD
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.EMTPD.EMTPD
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MO-MTEA-SaO
+^^^^^^^^^^^
+
+.. automodule:: Algorithms.MTMO.MOMTEASaO
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MOMTEASaO.MOMTEASaO
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MTDE-MKTA
+^^^^^^^^^
+
+.. automodule:: Algorithms.MTMO.MTDEMKTA
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MTDEMKTA.MTDEMKTA
+   :members:
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+MTEA/D-DN
+^^^^^^^^^
+
+.. automodule:: Algorithms.MTMO.MTEADDN
+   :no-members:
+
+.. autoclass:: Algorithms.MTMO.MTEADDN.MTEADDN
    :members:
    :undoc-members:
    :show-inheritance:

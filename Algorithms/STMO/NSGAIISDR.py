@@ -242,7 +242,7 @@ def nd_sort_sdr(pop_obj: np.ndarray, n_sort: int) -> Tuple[np.ndarray, int]:
         # Get unique sorted minimum angles
         unique_min_angles = np.sort(np.unique(min_angle_per_sol))
         # Select the middle value (or the ceil(N/2)-th smallest unique value)
-        idx = min(np.ceil(N / 2).astype(int), len(unique_min_angles) - 1)
+        idx = min(np.ceil(50*N / 100).astype(int), len(unique_min_angles) - 1)
         minA = unique_min_angles[idx]
     else:
         minA = np.pi / 4  # Default for single solution

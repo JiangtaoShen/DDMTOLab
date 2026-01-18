@@ -1,29 +1,33 @@
 """
 Generalized Multifactorial Evolutionary Algorithm (G-MFEA)
 
-This module implements G-MFEA for expensive multi-task optimization with adaptive knowledge transfer.
+This module implements G-MFEA for multi-task optimization with adaptive knowledge transfer.
 
 References
 ----------
-    [1] Ding, Jinliang, et al. "Generalized multitasking for evolutionary optimization of expensive \
-        problems." IEEE Transactions on Evolutionary Computation 23.1 (2017): 44-58.
+    [1] Ding, Jinliang, et al. "Generalized Multitasking for Evolutionary Optimization of Expensive Problems." IEEE Transactions on Evolutionary Computation 23.1 (2019): 44-58. https://doi.org/10.1109/TEVC.2017.2785351
 
 Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.11.19
+Date: 2025.11.12
 Version: 1.0
 """
 import time
+import copy
 from tqdm import tqdm
-from Algorithms.MTSO.MFEA import mfea_selection
 from Methods.Algo_Methods.algo_utils import *
 
 
 class GMFEA:
     """
-    Generalized Multifactorial Evolutionary Algorithm for expensive multi-task optimization.
+    Generalized Multifactorial Evolutionary Algorithm for multi-task optimization.
+
+    This algorithm features:
+    - Adaptive knowledge transfer via task-pair specific transfer vectors
+    - Dimension shuffling for heterogeneous task alignment
+    - Translation strategy based on population centroids
 
     Attributes
     ----------
@@ -36,8 +40,8 @@ class GMFEA:
         'dims': 'unequal',
         'objs': 'equal',
         'n_objs': '1',
-        'cons': 'equal',
-        'n_cons': '0',
+        'cons': 'unequal',
+        'n_cons': '0-C',
         'expensive': 'False',
         'knowledge_transfer': 'True',
         'n': 'equal',
@@ -48,8 +52,9 @@ class GMFEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, mu=0.4, phi=0.1, theta=0.02, scale_factor=1.25,
-                 save_data=True, save_path='./TestData', name='G-MFEA_test', disable_tqdm=True):
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, muc=2.0, mum=5.0,
+                 phi=0.1, theta=0.02, top=0.4, save_data=True, save_path='./TestData',
+                 name='GMFEA_test', disable_tqdm=True):
         """
         Initialize G-MFEA algorithm.
 
@@ -63,20 +68,22 @@ class GMFEA:
             Maximum number of function evaluations per task (default: 10000)
         rmp : float, optional
             Random mating probability for inter-task crossover (default: 0.3)
-        mu : float, optional
-            Percentage of best solutions to estimate current optimums (default: 0.4)
+        muc : float, optional
+            Distribution index for SBX crossover (default: 2.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (default: 5.0)
         phi : float, optional
-            Threshold value to start decision variable translation strategy (default: 0.1)
+            Threshold ratio to activate translation (default: 0.1)
         theta : float, optional
-            Frequency of calculating translation direction (default: 0.02)
-        scale_factor : float, optional
-            Scale factor for translation of decision variables (default: 1.25)
+            Interval ratio for translation frequency (default: 0.02)
+        top : float, optional
+            Ratio of top individuals to estimate current optimums (default: 0.4)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
             Path to save results (default: './TestData')
         name : str, optional
-            Name for the experiment (default: 'G-MFEA_test')
+            Name for the experiment (default: 'GMFEA_test')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -84,10 +91,11 @@ class GMFEA:
         self.n = n if n is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.rmp = rmp
-        self.mu = mu
+        self.muc = muc
+        self.mum = mum
         self.phi = phi
         self.theta = theta
-        self.scale_factor = scale_factor
+        self.top = top
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -107,391 +115,323 @@ class GMFEA:
         n = self.n
         nt = problem.n_tasks
         dims = problem.dims
+        d_max = max(dims)
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
+        max_gen = max_nfes // (n * nt)
 
-        # Initialize population and evaluate for each task
-        decs = initialization(problem, n)
-        objs, _ = evaluation(problem, decs)
-        nfes = n * nt
-        gen = 1
+        # Center of decision space
+        mid_num = 0.5 * np.ones(d_max)
 
-        # Skill factor indicates which task each individual belongs to
-        pop_sfs = [np.full((n, 1), fill_value=i) for i in range(nt)]
+        # Initialize alpha (adaptive coefficient) and mean vectors
+        alpha = 0.0
+        mean_t = {t: np.zeros(d_max) for t in range(nt)}
 
-        all_decs, all_objs = init_history(decs, objs)
+        # Initialize transfer matrix (task-pair specific)
+        # transfer[t1, t2] is the transfer vector from task t1 to task t2
+        transfer = {}
+        for t1 in range(nt):
+            for t2 in range(nt):
+                if t1 != t2:
+                    transfer[(t1, t2)] = np.zeros(d_max)
 
+        # Initialize dimension shuffling orders (task-pair specific)
+        # inorder[t1, t2] stores the permutation for aligning t1 and t2
+        inorder = {}
+        for t1 in range(nt - 1):
+            for t2 in range(t1 + 1, nt):
+                inorder[(t1, t2)] = np.random.permutation(d_max)
+
+        # Initialize population in unified space
+        pop_decs = np.random.rand(n * nt, d_max)
+        pop_objs = np.full((n * nt, 1), np.inf)
+        pop_cvs = np.full((n * nt, 1), 0.0)
+        pop_sfs = np.zeros((n * nt, 1), dtype=int)  # Skill factors
+
+        # Assign skill factors (n individuals per task)
+        for t in range(nt):
+            pop_sfs[t * n:(t + 1) * n] = t
+
+        # Get per-task populations
+        pop_dec_per_task = {t: pop_decs[pop_sfs.flatten() == t].copy() for t in range(nt)}
+
+        # Initial dimension shuffling: align lower-dim populations with higher-dim ones
+        for t1 in range(nt - 1):
+            for t2 in range(t1 + 1, nt):
+                if dims[t1] > dims[t2]:
+                    p1, p2 = t1, t2  # p1 is higher-dim
+                else:
+                    p1, p2 = t2, t1
+
+                # Borrow genetic material from higher-dim task for lower-dim task
+                indices = np.random.randint(0, n, size=n)
+                int_pop = pop_dec_per_task[p1][indices].copy()
+                int_pop[:, inorder[(t1, t2)][:dims[p2]]] = pop_dec_per_task[p2][:, :dims[p2]]
+                pop_dec_per_task[p2] = int_pop
+
+                # Update unified population
+                pop_decs[pop_sfs.flatten() == p2] = int_pop
+
+        # Evaluate initial population
+        nfes = 0
+        for t in range(nt):
+            task_indices = np.where(pop_sfs.flatten() == t)[0]
+            for idx in task_indices:
+                dec_t = pop_decs[idx, :dims[t]].reshape(1, -1)
+                obj_t, con_t = evaluation_single(problem, dec_t, t)
+                pop_objs[idx] = obj_t[0, 0]
+                cv_t = np.sum(np.maximum(0, con_t[0])) if con_t is not None and con_t.size > 0 else 0
+                pop_cvs[idx] = cv_t
+                nfes += 1
+
+        # Initialize history
+        all_decs = [[] for _ in range(nt)]
+        all_objs = [[] for _ in range(nt)]
+        all_cons = [[] for _ in range(nt)]
+
+        # Store initial population
+        for t in range(nt):
+            task_indices = np.where(pop_sfs.flatten() == t)[0]
+            all_decs[t].append(pop_decs[task_indices, :dims[t]].copy())
+            all_objs[t].append(pop_objs[task_indices].copy())
+            all_cons[t].append(pop_cvs[task_indices].copy())
+
+        # Progress bar
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}", disable=self.disable_tqdm)
 
+        gen = 1
         while nfes < max_nfes:
-            # Translate decision variables toward population center
-            trans_decs, trans_vectors = decs_translation(decs, objs, nfes, max_nfes, dims, n, gen, self.phi,
-                                                         self.theta, self.mu, self.scale_factor)
+            # Generation
+            off_decs, off_sfs = self._generation(pop_decs, pop_sfs, transfer, nt, d_max)
 
-            # Transform populations to unified search space
-            pop_decs = space_transfer(problem, trans_decs, type='uni')
-            pop_objs = objs
+            # Evaluate offspring
+            off_objs = np.full((len(off_decs), 1), np.inf)
+            off_cvs = np.full((len(off_decs), 1), 0.0)
 
-            # Merge populations from all tasks into single arrays
-            pop_decs, pop_objs, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_sfs)
+            for i in range(len(off_decs)):
+                t = off_sfs[i, 0]
+                dec_t = off_decs[i, :dims[t]].reshape(1, -1)
+                obj_t, con_t = evaluation_single(problem, dec_t, t)
+                off_objs[i] = obj_t[0, 0]
+                cv_t = np.sum(np.maximum(0, con_t[0])) if con_t is not None and con_t.size > 0 else 0
+                off_cvs[i] = cv_t
+                nfes += 1
+                pbar.update(1)
 
-            off_decs = np.zeros_like(pop_decs)
-            off_objs = np.zeros_like(pop_objs)
-            off_sfs = np.zeros_like(pop_sfs)
+                if nfes >= max_nfes:
+                    break
 
-            # Randomly pair individuals for assortative mating
-            shuffled_index = np.random.permutation(pop_decs.shape[0])
+            # Selection: merge and select best n per task
+            merged_decs = np.vstack([pop_decs, off_decs[:len(off_objs)]])
+            merged_objs = np.vstack([pop_objs, off_objs])
+            merged_cvs = np.vstack([pop_cvs, off_cvs])
+            merged_sfs = np.vstack([pop_sfs, off_sfs[:len(off_objs)]])
 
-            for i in range(0, len(shuffled_index), 2):
-                p1 = shuffled_index[i]
-                p2 = shuffled_index[i + 1]
-                sf1 = pop_sfs[p1].item()
-                sf2 = pop_sfs[p2].item()
+            pop_decs, pop_objs, pop_cvs, pop_sfs = self._selection(
+                merged_decs, merged_objs, merged_cvs, merged_sfs, n, nt
+            )
 
-                # Shuffle dimensions to align heterogeneous tasks
-                p1_dec, p2_dec, l1, l2 = dimension_shuffling(p1, p2, sf1, sf2, dims, pop_decs, pop_sfs)
+            # Update per-task populations and ranks
+            pop_dec_per_task = {}
+            pop_rank_per_task = {}
+            for t in range(nt):
+                task_indices = np.where(pop_sfs.flatten() == t)[0]
+                pop_dec_per_task[t] = pop_decs[task_indices].copy()
+                # Sort by CV then objective
+                task_objs = pop_objs[task_indices].flatten()
+                task_cvs = pop_cvs[task_indices].flatten()
+                pop_rank_per_task[t] = np.lexsort((task_objs, task_cvs))
 
-                # Cross-task transfer: crossover if same task or rmp condition met
-                if sf1 == sf2 or np.random.rand() < self.rmp:
-                    off_dec1, off_dec2 = crossover(p1_dec, p2_dec, mu=2.0)
-                    off_sfs[i] = np.random.choice([sf1, sf2])
-                    off_sfs[i + 1] = sf1 if off_sfs[i] == sf2 else sf2
-                else:
-                    # No transfer: mutate within own task
-                    off_dec1 = mutation(p1_dec, mu=5.0)
-                    off_dec2 = mutation(p2_dec, mu=5.0)
-                    off_sfs[i] = sf1
-                    off_sfs[i + 1] = sf2
+            # Update alpha and mean vectors at specified intervals
+            if gen >= self.phi * max_gen and gen % max(1, round(self.theta * max_gen)) == 0:
+                alpha = (nfes / max_nfes) ** 2
+                for t in range(nt):
+                    top_num = max(1, round(self.top * n))
+                    top_indices = pop_rank_per_task[t][:top_num]
+                    mean_t[t] = np.mean(pop_dec_per_task[t][top_indices], axis=0)
 
-                # Inverse transformation: restore dimensions and translate back
-                off_sf1 = off_sfs[i]
-                off_sf2 = off_sfs[i + 1]
-                off_dec1, off_dec2 = convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1,
-                                                                        sf2, dims, l1, l2, trans_vectors)
+            # Update dimension shuffling and transfer vectors
+            for t1 in range(nt - 1):
+                for t2 in range(t1 + 1, nt):
+                    # New random permutation
+                    inorder[(t1, t2)] = np.random.permutation(d_max)
 
-                off_decs[i, :] = off_dec1
-                off_decs[i + 1, :] = off_dec2
+                    if dims[t1] > dims[t2]:
+                        p1, p2 = t1, t2  # p1 is higher-dim
+                    else:
+                        p1, p2 = t2, t1
 
-                # Trim to task dimensionality and evaluate offspring
-                task_idx1 = off_sf1.item()
-                task_idx2 = off_sf2.item()
-                off_dec1_trimmed = off_decs[i, :dims[task_idx1]]
-                off_dec2_trimmed = off_decs[i + 1, :dims[task_idx2]]
-                off_objs[i, :], _ = evaluation_single(problem, off_dec1_trimmed, task_idx1)
-                off_objs[i + 1, :], _ = evaluation_single(problem, off_dec2_trimmed, task_idx2)
+                    # Borrow genetic material from higher-dim task
+                    indices = np.random.randint(0, len(pop_dec_per_task[p1]), size=len(pop_dec_per_task[p2]))
+                    int_pop = pop_dec_per_task[p1][indices].copy()
+                    int_pop[:, inorder[(t1, t2)][:dims[p2]]] = pop_dec_per_task[p2][:, :dims[p2]]
 
-            # Merge parents and offspring populations
-            pop_decs, pop_objs, pop_sfs = vstack_groups((pop_decs, off_decs), (pop_objs, off_objs),
-                                                        (pop_sfs, off_sfs))
+                    # Re-evaluate the aligned population
+                    task_indices = np.where(pop_sfs.flatten() == p2)[0]
+                    for i, idx in enumerate(task_indices):
+                        pop_decs[idx] = int_pop[i]
+                        dec_t = int_pop[i, :dims[p2]].reshape(1, -1)
+                        obj_t, con_t = evaluation_single(problem, dec_t, p2)
+                        pop_objs[idx] = obj_t[0, 0]
+                        cv_t = np.sum(np.maximum(0, con_t[0])) if con_t is not None and con_t.size > 0 else 0
+                        pop_cvs[idx] = cv_t
+                        nfes += 1
+                        pbar.update(1)
 
-            # Environmental selection: keep best n individuals per task
-            pop_decs, pop_objs, pop_sfs = gmfea_selection(pop_decs, pop_objs, pop_sfs, n, nt)
+                        if nfes >= max_nfes:
+                            break
 
-            # Transform back to native search space
-            decs = space_transfer(problem, pop_decs, type='real')
-            objs = pop_objs
+                    # Update per-task population
+                    pop_dec_per_task[p2] = int_pop
 
-            nfes += n * nt
-            pbar.update(n * nt)
+                    # Calculate transfer vectors
+                    # int_mean: mean of p2 mapped to p1's space
+                    int_mean = mean_t[p1].copy()
+                    int_mean[inorder[(t1, t2)][:dims[p2]]] = mean_t[p2][:dims[p2]]
+
+                    transfer[(p1, p2)] = alpha * (mid_num - mean_t[p1])
+                    transfer[(p2, p1)] = alpha * (mid_num - int_mean)
+
+                    if nfes >= max_nfes:
+                        break
+                if nfes >= max_nfes:
+                    break
+
+            # Store history
+            for t in range(nt):
+                task_indices = np.where(pop_sfs.flatten() == t)[0]
+                all_decs[t].append(pop_decs[task_indices, :dims[t]].copy())
+                all_objs[t].append(pop_objs[task_indices].copy())
+                all_cons[t].append(pop_cvs[task_indices].copy())
+
             gen += 1
-
-            append_history(all_decs, decs, all_objs, pop_objs)
 
         pbar.close()
         runtime = time.time() - start_time
 
-        # Save results
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
+        # Build and save results
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                     max_nfes=max_nfes_per_task, all_cons=all_cons,
                                      bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results
 
+    def _generation(self, pop_decs, pop_sfs, transfer, nt, d_max):
+        """
+        Generate offspring using assortative mating with transfer.
 
-def decs_translation(decs, objs, nfes, max_nfes, dims, n, gen, phi, theta, mu, scale_factor):
-    """
-    Translate decision variables toward the center of the decision space.
+        Parameters
+        ----------
+        pop_decs : np.ndarray
+            Population decision variables, shape (pop_size, d_max)
+        pop_sfs : np.ndarray
+            Population skill factors, shape (pop_size, 1)
+        transfer : dict
+            Transfer vectors, transfer[(t1, t2)] is vector from t1 to t2
+        nt : int
+            Number of tasks
+        d_max : int
+            Maximum dimension
 
-    Parameters
-    ----------
-    decs : list[np.ndarray]
-        Decision variables for all tasks, length nt, each of shape (n, d_i)
-    objs : list[np.ndarray]
-        Objective values for all tasks, length nt, each of shape (n, n_obj)
-    nfes : int
-        Current number of function evaluations
-    max_nfes : int
-        Maximum number of function evaluations
-    dims : list[int]
-        Dimensions of each task, length nt
-    n : int
-        Population size
-    gen : int
-        Current generation
-    phi : float
-        Threshold ratio to activate translation
-    theta : float
-        Interval ratio for translation frequency
-    mu : float
-        Ratio of top individuals to use for calculating mean
-    scale_factor : float
-        Scaling factor for translation vector
+        Returns
+        -------
+        off_decs : np.ndarray
+            Offspring decision variables, shape (pop_size, d_max)
+        off_sfs : np.ndarray
+            Offspring skill factors, shape (pop_size, 1)
+        """
+        pop_size = len(pop_decs)
+        off_decs = np.zeros((pop_size, d_max))
+        off_sfs = np.zeros((pop_size, 1), dtype=int)
 
-    Returns
-    -------
-    trans_decs : list[np.ndarray]
-        Translated decision variables, length nt, each of shape (n, d_i)
-    trans_vectors : list[np.ndarray]
-        Translation vectors used for each task, length nt, each of shape (d_i,)
+        # Shuffle for random pairing
+        ind_order = np.random.permutation(pop_size)
 
-    Notes
-    -----
-    Translation moves populations toward the center point (0.5) of the normalized decision space.
-    The translation vector is computed as: d_i = scale_factor * α * (cp_i - m_i),
-    where α = (nfes/max_nfes)² is an adaptive coefficient, cp_i is the center point,
-    and m_i is the mean position of top μ% individuals.
-    """
-    nt = len(decs)
+        count = 0
+        for i in range(pop_size // 2):
+            p1 = ind_order[i]
+            p2 = ind_order[i + pop_size // 2]
+            sf1 = pop_sfs[p1, 0]
+            sf2 = pop_sfs[p2, 0]
 
-    # Calculate adaptive coefficient based on evolution progress
-    alpha = (nfes / max_nfes) ** 2
+            if sf1 == sf2:
+                # Same task: direct crossover
+                off_dec1, off_dec2 = crossover(pop_decs[p1], pop_decs[p2], mu=self.muc)
+                # Random imitation
+                off_sfs[count, 0] = np.random.choice([sf1, sf2])
+                off_sfs[count + 1, 0] = np.random.choice([sf1, sf2])
 
-    # Calculate translation interval (how often to apply translation)
-    interval = max(1, round(theta * max_nfes / (n * nt)))
+            elif np.random.rand() < self.rmp:
+                # Different tasks with RMP: crossover with transfer
+                t_dec1 = pop_decs[p1] + transfer[(sf1, sf2)]
+                t_dec2 = pop_decs[p2] + transfer[(sf2, sf1)]
+                off_dec1, off_dec2 = crossover(t_dec1, t_dec2, mu=self.muc)
+                off_dec1 = off_dec1 - transfer[(sf1, sf2)]
+                off_dec2 = off_dec2 - transfer[(sf2, sf1)]
+                # Random imitation
+                off_sfs[count, 0] = np.random.choice([sf1, sf2])
+                off_sfs[count + 1, 0] = np.random.choice([sf1, sf2])
 
-    # Number of top individuals to consider for calculating centroid
-    num = round(n * mu)
+            else:
+                # Different tasks without transfer: mutation only
+                off_dec1 = mutation(pop_decs[p1].copy(), mu=self.mum)
+                off_dec2 = mutation(pop_decs[p2].copy(), mu=self.mum)
+                # Keep original skill factors
+                off_sfs[count, 0] = sf1
+                off_sfs[count + 1, 0] = sf2
 
-    trans_decs, trans_vectors = [], []
+            # Boundary handling
+            off_decs[count] = np.clip(off_dec1, 0, 1)
+            off_decs[count + 1] = np.clip(off_dec2, 0, 1)
+            count += 2
 
-    # Apply translation only after phi * max_nfes evaluations and at specified intervals
-    if nfes >= phi * max_nfes and gen % interval == 0:
-        for i in range(nt):
-            # Select top mu% individuals based on objective values
-            indices = np.argsort(objs[i][:, 0])[:num]
-            top_mu_decs = decs[i][indices]
+        return off_decs[:count], off_sfs[:count]
 
-            # Calculate mean position (centroid) of top individuals
-            m_i = np.mean(top_mu_decs, axis=0)
+    def _selection(self, all_decs, all_objs, all_cvs, all_sfs, n, nt):
+        """
+        Environmental selection: keep best n individuals per task.
 
-            # Center point of decision space (0.5 for normalized [0,1] space)
-            cp_i = np.ones(dims[i]) * 0.5
+        Parameters
+        ----------
+        all_decs : np.ndarray
+            All decision variables, shape (total, d_max)
+        all_objs : np.ndarray
+            All objective values, shape (total, 1)
+        all_cvs : np.ndarray
+            All constraint violations, shape (total, 1)
+        all_sfs : np.ndarray
+            All skill factors, shape (total, 1)
+        n : int
+            Population size per task
+        nt : int
+            Number of tasks
 
-            # Calculate translation vector: move from current centroid toward center
-            d_i = scale_factor * alpha * (cp_i - m_i)
-            trans_vectors.append(d_i)
+        Returns
+        -------
+        pop_decs, pop_objs, pop_cvs, pop_sfs : np.ndarray
+            Selected population arrays
+        """
+        selected_decs = []
+        selected_objs = []
+        selected_cvs = []
+        selected_sfs = []
 
-            # Apply translation and clip to valid bounds [0, 1]
-            trans_decs.append(np.clip(decs[i] + d_i, 0, 1))
-    else:
-        # No translation applied: return original decision variables
-        trans_decs = copy.deepcopy(decs)
-        trans_vectors = [np.zeros(dims[i]) for i in range(nt)]
+        for t in range(nt):
+            task_indices = np.where(all_sfs.flatten() == t)[0]
+            task_decs = all_decs[task_indices]
+            task_objs = all_objs[task_indices]
+            task_cvs = all_cvs[task_indices]
+            task_sfs = all_sfs[task_indices]
 
-    return trans_decs, trans_vectors
+            # Sort by CV first, then objective
+            sort_indices = np.lexsort((task_objs.flatten(), task_cvs.flatten()))
+            top_n = sort_indices[:n]
 
+            selected_decs.append(task_decs[top_n])
+            selected_objs.append(task_objs[top_n])
+            selected_cvs.append(task_cvs[top_n])
+            selected_sfs.append(task_sfs[top_n])
 
-def dimension_shuffling(p1, p2, sf1, sf2, dims, pop_decs, pop_sfs):
-    """
-    Handle dimension mismatch between parents using random dimension shuffling.
-
-    Parameters
-    ----------
-    p1 : int
-        Index of first parent
-    p2 : int
-        Index of second parent
-    sf1 : int
-        Skill factor (task ID) of first parent
-    sf2 : int
-        Skill factor (task ID) of second parent
-    dims : list[int]
-        Dimensions of each task, length nt
-    pop_decs : np.ndarray
-        Population decision variables of shape (pop_size, d_max)
-    pop_sfs : np.ndarray
-        Population skill factors of shape (pop_size, 1)
-
-    Returns
-    -------
-    p1_dec : np.ndarray
-        Processed decision variables of first parent of shape (d_max,)
-    p2_dec : np.ndarray
-        Processed decision variables of second parent of shape (d_max,)
-    l1 : np.ndarray or None
-        Shuffling indices used for p1, None if no shuffling needed
-    l2 : np.ndarray or None
-        Shuffling indices used for p2, None if no shuffling needed
-
-    Notes
-    -----
-    When parents have different dimensionalities, the lower-dimensional parent borrows
-    genetic material from a random individual of the higher-dimensional task. The parent's
-    genes are placed into randomly selected dimensions via shuffling indices.
-    """
-    # Get dimensions of both parent tasks
-    dim_1 = dims[sf1]
-    dim_2 = dims[sf2]
-    dim_max = max(dim_1, dim_2)
-
-    # Extract decision variables for each parent in their native dimensions
-    p1_dec = pop_decs[p1, :dim_1].copy()
-    p2_dec = pop_decs[p2, :dim_2].copy()
-
-    l1, l2 = None, None
-
-    # Case 1: Parent 1 has lower dimension - needs dimension completion
-    if dim_1 < dim_max:
-        # Generate random permutation for dimension shuffling
-        l1 = np.random.permutation(dim_max)
-
-        # Borrow genetic material from a random individual of the higher-dimensional task
-        candidates = np.where(pop_sfs.flatten() == sf2)[0]
-        random_idx = np.random.choice(candidates)
-        p_dec = pop_decs[random_idx, :dim_max].copy()
-
-        # Place p1's genes into randomly selected dimensions
-        p_dec[l1[:dim_1]] = p1_dec
-        p1_dec = p_dec
-
-    # Case 2: Parent 2 has lower dimension - needs dimension completion
-    elif dim_2 < dim_max:
-        # Generate random permutation for dimension shuffling
-        l2 = np.random.permutation(dim_max)
-
-        # Borrow genetic material from a random individual of the higher-dimensional task
-        candidates = np.where(pop_sfs.flatten() == sf1)[0]
-        random_idx = np.random.choice(candidates)
-        p_dec = pop_decs[random_idx, :dim_max].copy()
-
-        # Place p2's genes into randomly selected dimensions
-        p_dec[l2[:dim_2]] = p2_dec
-        p2_dec = p_dec
-
-    return p1_dec, p2_dec, l1, l2
-
-
-def convert_to_original_decision_space(off_dec1, off_dec2, off_sf1, off_sf2, sf1, sf2, dims, l1, l2, trans_vectors):
-    """
-    Convert offspring back to original task space by reversing shuffling and translation.
-
-    Parameters
-    ----------
-    off_dec1 : np.ndarray
-        First offspring decision variables of shape (d,)
-    off_dec2 : np.ndarray
-        Second offspring decision variables of shape (d,)
-    off_sf1 : int
-        Skill factor (task ID) of first offspring
-    off_sf2 : int
-        Skill factor (task ID) of second offspring
-    sf1 : int
-        Skill factor of first parent
-    sf2 : int
-        Skill factor of second parent
-    dims : list[int]
-        Dimensions of each task, length nt
-    l1 : np.ndarray or None
-        Shuffling indices used for parent 1, None if no shuffling
-    l2 : np.ndarray or None
-        Shuffling indices used for parent 2, None if no shuffling
-    trans_vectors : list[np.ndarray]
-        Translation vectors applied to each task, length nt
-
-    Returns
-    -------
-    off_dec1 : np.ndarray
-        First offspring in original space, padded to max dimension of shape (d_max,)
-    off_dec2 : np.ndarray
-        Second offspring in original space, padded to max dimension of shape (d_max,)
-
-    Notes
-    -----
-    This function reverses the dimension shuffling by extracting genes at shuffled positions,
-    subtracts the translation vectors, clips to valid bounds, and pads to maximum dimension.
-    """
-    # Reverse dimension shuffling for parent 1's task if it was applied
-    if l1 is not None:
-        dim_1 = dims[sf1]
-        if off_sf1 == sf1:
-            off_dec1 = off_dec1[l1[:dim_1]] - trans_vectors[sf1]
-        if off_sf2 == sf1:
-            off_dec2 = off_dec2[l1[:dim_1]] - trans_vectors[sf1]
-
-    # Reverse dimension shuffling for parent 2's task if it was applied
-    if l2 is not None:
-        dim_2 = dims[sf2]
-        if off_sf1 == sf2:
-            off_dec1 = off_dec1[l2[:dim_2]] - trans_vectors[sf2]
-        if off_sf2 == sf2:
-            off_dec2 = off_dec2[l2[:dim_2]] - trans_vectors[sf2]
-
-    # Clip values to valid bounds [0, 1]
-    off_dec1 = np.clip(off_dec1, 0, 1)
-    off_dec2 = np.clip(off_dec2, 0, 1)
-
-    # Pad offspring to maximum dimension with zeros if needed
-    max_dim = max(dims)
-    if len(off_dec1) < max_dim:
-        off_dec1 = np.pad(off_dec1, (0, max_dim - len(off_dec1)), mode='constant', constant_values=0)
-    if len(off_dec2) < max_dim:
-        off_dec2 = np.pad(off_dec2, (0, max_dim - len(off_dec2)), mode='constant', constant_values=0)
-
-    return off_dec1, off_dec2
-
-
-def gmfea_selection(all_decs, all_objs, all_sfs, n, nt):
-    """
-    Environmental selection for G-MFEA based on elitist strategy.
-
-    Parameters
-    ----------
-    all_decs : np.ndarray
-        Decision variable matrix of the combined population of shape (n_total, d_max).
-        Contains solutions from all tasks in unified search space
-    all_objs : np.ndarray
-        Objective value matrix corresponding to all_decs of shape (n_total, 1).
-        Each individual has been evaluated on its assigned task
-    all_sfs : np.ndarray
-        Skill factor array indicating task assignment for each individual of shape (n_total,).
-        Values range from 0 to nt-1
-    n : int
-        Number of individuals to select per task (population size per task)
-    nt : int
-        Number of tasks in the multi-task optimization problem
-
-    Returns
-    -------
-    pop_decs : List[np.ndarray]
-        Selected decision variable matrices for each task, length nt, each of shape (n, d_max)
-    pop_objs : List[np.ndarray]
-        Selected objective value matrices for each task, length nt, each of shape (n, 1)
-    pop_sfs : List[np.ndarray]
-        Selected skill factor arrays for each task, length nt, each of shape (n,)
-
-    Notes
-    -----
-    Selection is performed independently for each task by selecting the top-n individuals
-    with minimum objective values among those assigned to that task.
-    """
-    pop_decs, pop_objs, pop_sfs = [], [], []
-
-    # Process each task separately
-    for i in range(nt):
-        # Extract all individuals belonging to task i
-        indices = np.where(all_sfs == i)[0]
-        current_decs, current_objs, current_sfs = select_by_index(indices, all_decs, all_objs, all_sfs)
-
-        # Select top-n individuals with minimum objective values
-        indices_select = selection_elit(objs=current_objs, n=n)
-        selected_decs, selected_objs, selected_sfs = select_by_index(indices_select, current_decs,
-                                                                      current_objs, current_sfs)
-
-        # Store selected individuals for this task
-        pop_decs, pop_objs, pop_sfs = append_history(
-            pop_decs, selected_decs,
-            pop_objs, selected_objs,
-            pop_sfs, selected_sfs
-        )
-
-    return pop_decs, pop_objs, pop_sfs
+        return (np.vstack(selected_decs), np.vstack(selected_objs),
+                np.vstack(selected_cvs), np.vstack(selected_sfs))

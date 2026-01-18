@@ -61,7 +61,7 @@ class EEIBO:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n1=50, max_nfes1=500, n2=30, max_nfes2=6000,
+    def __init__(self, problem, n_initial=None, max_nfes=None, n1=50, max_nfes1=500, n2=30, max_nfes2=600,
                  save_data=True, save_path='./TestData', name='EEIBO_test', disable_tqdm=True):
         """
         Initialize EEI-BO algorithm.

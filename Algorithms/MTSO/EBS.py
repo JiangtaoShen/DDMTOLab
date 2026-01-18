@@ -5,9 +5,7 @@ This module implements the EBS algorithm for evolutionary many-tasking optimizat
 
 References
 ----------
-    [1] Liaw, R. T., & Ting, C. K. (2019). Evolutionary many-tasking based on biocoenosis \
-        through symbiosis: A framework and benchmark problems. In 2019 IEEE Congress on \
-        Evolutionary Computation (CEC) (pp. 2266-2273). IEEE.
+    [1] Liaw, R. T., & Ting, C. K. (2019). Evolutionary many-tasking based on biocoenosis through symbiosis: A framework and benchmark problems. In 2019 IEEE Congress on Evolutionary Computation (CEC) (pp. 2266-2273). IEEE.
 
 Notes
 -----

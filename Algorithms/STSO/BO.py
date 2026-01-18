@@ -5,9 +5,7 @@ This module implements Bayesian Optimization for expensive single-objective opti
 
 References
 ----------
-    [1] Jones, Donald R., Matthias Schonlau, and William J. Welch. \
-        "Efficient global optimization of expensive black-box functions." \
-        Journal of Global optimization 13.4 (1998): 455-492.
+    [1] Jones, Donald R., Matthias Schonlau, and William J. Welch. "Efficient global optimization of expensive black-box functions." Journal of Global optimization 13.4 (1998): 455-492.
 
 Notes
 -----
