@@ -70,8 +70,8 @@ pip install -r requirements.txt
 ### Basic Usage
 ```python
 import numpy as np
-from Methods.mtop import MTOP
-from Algorithms.STSO.GA import GA
+from ddmtolab.Methods.mtop import MTOP
+from ddmtolab.Algorithms.STSO.GA import GA
 
 # Step 1: Define objective function
 def t1(x):
@@ -89,20 +89,20 @@ results = GA(problem).optimize()
 print(results.best_decs, results.best_objs)
 
 # Step 5: Analyze and visualize
-from Methods.test_data_analysis import TestDataAnalyzer
+from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 TestDataAnalyzer().run()
 ```
 
 ### Batch Experiments
 ```python
-from Methods.batch_experiment import BatchExperiment
-from Methods.data_analysis import DataAnalyzer
-from Algorithms.STSO.GA import GA
-from Algorithms.STSO.PSO import PSO
-from Algorithms.STSO.DE import DE
-from Algorithms.MTSO.EMEA import EMEA
-from Algorithms.MTSO.MFEA import MFEA
-from Problems.MTSO.cec17_mtso import CEC17MTSO
+from ddmtolab.Methods.batch_experiment import BatchExperiment
+from ddmtolab.Methods.data_analysis import DataAnalyzer
+from ddmtolab.Algorithms.STSO.GA import GA
+from ddmtolab.Algorithms.STSO.PSO import PSO
+from ddmtolab.Algorithms.STSO.DE import DE
+from ddmtolab.Algorithms.MTSO.EMEA import EMEA
+from ddmtolab.Algorithms.MTSO.MFEA import MFEA
+from ddmtolab.Problems.MTSO.cec17_mtso import CEC17MTSO
 
 if __name__ == '__main__':
     # Step 1: Create batch experiment manager

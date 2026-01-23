@@ -384,6 +384,231 @@ Complete analysis generates the following output files:
         ├── P2-Task1-GA.pdf
         └── ...
 
+Reference Data Loading
+~~~~~~~~~~~~~~~~~~~~~~
+
+The reference data loading system provides a flexible interface for loading Pareto fronts, reference points, or other reference data required for performance metric calculation and visualization.
+
+**Supported Reference Types:**
+
+The system supports three types of reference definitions:
+
+1. **Callable Functions**: Dynamically generate reference data based on problem parameters
+2. **File Paths**: Load pre-computed reference data from .npy or .csv files
+3. **Array Data**: Directly use numpy arrays, lists, or tuples as reference data
+
+**Core Interface:**
+
+.. code-block:: python
+
+   from Methods.data_utils import DataUtils
+
+   reference = DataUtils.load_reference(
+       settings=SETTINGS,
+       problem='DTLZ1',
+       task_identifier='T1',  # or task index: 0
+       M=3,                   # Number of objectives (required)
+       D=10,                  # Number of variables (optional)
+       C=0                    # Number of constraints (optional)
+   )
+
+**Parameters:**
+
+- ``settings``: Dictionary containing problem configurations
+- ``problem``: Problem name (e.g., "DTLZ1", "DTLZ2")
+- ``task_identifier``: Task name (str "T1") or index (int 0)
+- ``M``: Number of objectives (required)
+- ``D``: Number of decision variables (optional)
+- ``C``: Number of constraints (optional, default: 0)
+
+**Returns:** NumPy array with shape (n_points, M), or None if unavailable
+
+**Example 1: Callable Reference Function**
+
+Most common for benchmark problems:
+
+.. code-block:: python
+
+   from Methods.Algo_Methods.uniform_point import uniform_point
+
+   # Define reference generation function
+   def DTLZ1_PF(N, M):
+       W, _ = uniform_point(N, M)
+       return W / 2
+
+   # Configure in settings
+   SETTINGS = {
+       'metric': 'IGD',
+       'n_ref': 2000,
+       'DTLZ1': {
+           'T1': DTLZ1_PF,     # Function reference
+           'T2': DTLZ1_PF,
+       }
+   }
+
+   # Load reference (automatically calls DTLZ1_PF(2000, 3))
+   reference = DataUtils.load_reference(SETTINGS, 'DTLZ1', 'T1', M=3)
+
+**Function Signatures:**
+
+Reference functions can have different signatures based on requirements:
+
+.. code-block:: python
+
+   # Signature 1: Basic (N, M)
+   def basic_ref(N, M):
+       return generate_reference(N, M)
+
+   # Signature 2: With dimension (N, M, D)
+   def dimension_ref(N, M, D):
+       scale = np.sqrt(D)
+       return generate_reference(N, M) * scale
+
+   # Signature 3: Full parameters (N, M, D, C)
+   def full_ref(N, M, D, C):
+       ref = generate_reference(N, M)
+       if C > 0:
+           # Apply constraint-based filtering
+           pass
+       return ref
+
+The system automatically detects the function signature and passes appropriate parameters.
+
+**Example 2: File-Based Reference**
+
+Load pre-computed reference from files:
+
+.. code-block:: python
+
+   SETTINGS = {
+       'ref_path': './MOReference',
+       'MyProblem': {
+           'T1': 'myproblem_t1_pf.npy',        # Relative path
+           'T2': '/abs/path/to/reference.csv',  # Absolute path
+       }
+   }
+
+   reference = DataUtils.load_reference(SETTINGS, 'MyProblem', 'T1', M=3)
+
+Supported file formats: ``.npy`` (NumPy binary) and ``.csv`` (comma-separated)
+
+**Automatic File Search:**
+
+If the specified file is not found, the system searches for:
+
+1. ``{ref_path}/{problem}_{task}_ref.npy``
+2. ``{ref_path}/{problem}_{task}_ref.csv``
+
+**Example 3: Direct Array Reference**
+
+Provide reference data directly:
+
+.. code-block:: python
+
+   # Predefined reference points
+   predefined_pf = np.array([[0.0, 1.0], [0.5, 0.5], [1.0, 0.0]])
+
+   SETTINGS = {
+       'SimpleProblem': {
+           'T1': predefined_pf,              # NumPy array
+           'T2': [[0, 1], [1, 0]],           # List
+           'T3': ([0, 1], [1, 0])            # Tuple
+       }
+   }
+
+   reference = DataUtils.load_reference(SETTINGS, 'SimpleProblem', 'T1', M=2)
+
+**Example 4: Shared Reference for All Tasks**
+
+Use the same reference for all tasks:
+
+.. code-block:: python
+
+   SETTINGS = {
+       'n_ref': 10000,
+       'DTLZ2': {
+           'all_tasks': DTLZ2_PF  # Applied to all tasks
+       }
+   }
+
+   # All tasks automatically use the same reference
+   ref_t1 = DataUtils.load_reference(SETTINGS, 'DTLZ2', 'T1', M=3)
+   ref_t2 = DataUtils.load_reference(SETTINGS, 'DTLZ2', 'T2', M=3)
+
+**Integration with DataAnalyzer**
+
+The reference loading is automatically handled by ``DataAnalyzer`` when settings are provided:
+
+.. code-block:: python
+
+   # Define references in settings
+   SETTINGS = {
+       'metric': 'IGD',
+       'n_ref': 5000,
+       'DTLZ1': {'T1': DTLZ1_PF, 'T2': DTLZ1_PF},
+       'DTLZ2': {'all_tasks': DTLZ2_PF}
+   }
+
+   # DataAnalyzer automatically uses references for:
+   # - Metric calculation (IGD, HV, etc.)
+   # - Pareto front visualization
+   analyzer = DataAnalyzer(data_path='./Data', settings=SETTINGS)
+   results = analyzer.run()
+
+**Best Practices:**
+
+1. **Organize reference files systematically:**
+
+   .. code-block:: text
+
+      MOReference/
+      ├── DTLZ1_T1_ref.npy
+      ├── DTLZ1_T2_ref.npy
+      ├── DTLZ2_T1_ref.csv
+      └── CustomProblem/
+          ├── T1_ref.npy
+          └── T2_ref.npy
+
+2. **Set appropriate n_ref for metrics and visualization:**
+
+   When calculating multi-objective metrics (e.g., IGD), it is recommended to set ``n_ref`` to 1000 (preferably not exceeding 2000). Using too many reference points can result in very large PDF files when visualizing Pareto fronts with the true PF overlay.
+
+   .. code-block:: python
+
+      SETTINGS = {
+          'metric': 'IGD',
+          'n_ref': 1000,  # Recommended: balance accuracy and file size
+          'DTLZ1': {'T1': DTLZ1_PF}
+      }
+
+3. **Always provide M parameter** (number of objectives)
+
+4. **Provide D and C** if your reference function requires them
+
+5. **Use meaningful function signatures:**
+
+   - ``(N, M)`` for simple problems
+   - ``(N, M, D)`` when dimension matters
+   - ``(N, M, D, C)`` for constrained problems
+
+**Error Handling:**
+
+The system provides informative warnings:
+
+.. code-block:: python
+
+   # Problem not found
+   reference = DataUtils.load_reference(SETTINGS, 'NonexistentProblem', 'T1', M=3)
+   # Warning: Problem 'NonexistentProblem' not found in settings
+   # Returns: None
+
+   # File not found
+   # Warning: File not found: './MOReference/missing_file.npy'
+   # Returns: None
+
+   # Missing parameter D (when needed)
+   # Warning: D not provided for Problem_T1, using 0
+
 Test Data Analysis
 ------------------
 
@@ -476,6 +701,580 @@ Comparison with DataAnalyzer
    * - Use Case
      - Development and quick validation
      - Formal experiment analysis
+
+Animation Generator
+-------------------
+
+.. code-block:: python
+
+    from Methods.optimization_animator import OptimizationAnimator, create_optimization_animation
+
+The animation generator module provides comprehensive visualization tools for optimization processes, supporting both single-objective and multi-objective optimization with multiple comparison modes.
+
+Module Features
+~~~~~~~~~~~~~~~
+
+The animation generator offers:
+
+1. **Multiple Visualization Types**: Decision space evolution, convergence curves (SO), and Pareto front evolution (MO)
+2. **Flexible Comparison Modes**: Support for individual animations or merged comparisons across algorithms
+3. **NFEs-based Tracking**: Display convergence in terms of function evaluations for better comparability
+4. **Batch Processing**: Automatically scan and generate animations for all result files
+5. **Customizable Display**: Configure algorithm order, animation quality, frame rate, and format
+6. **Multi-format Output**: Support for GIF and MP4 formats
+7. **Task-specific Configuration**: Different NFEs settings for different optimization tasks
+
+Visualization Components
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+**For Single-Objective Optimization:**
+
+- **Decision Space (Left)**: Parallel coordinate plot showing decision variable evolution
+- **Convergence Curve (Right)**: Best objective value vs. NFEs (Number of Function Evaluations)
+
+**For Multi-Objective Optimization:**
+
+- **Decision Space (Left)**: Parallel coordinate plot showing decision variable evolution
+- **Objective Space (Right)**: Pareto front evolution
+
+  - 2D: Scatter plot (f1 vs. f2)
+  - 3D: 3D scatter plot with rotation view
+  - High-dimensional: Parallel coordinate plot with normalized objectives
+
+Quick Start
+~~~~~~~~~~~
+
+**Single File Animation:**
+
+.. code-block:: python
+
+    from Methods.optimization_animator import create_optimization_animation
+
+    # Generate animation for a single result file
+    create_optimization_animation(
+        pkl_path='./Data/GA/GA_P1_1.pkl',
+        max_nfes=10000,
+        format='gif'
+    )
+
+**Batch Generation:**
+
+.. code-block:: python
+
+    # Automatically scan and generate animations for all .pkl files
+    create_optimization_animation(
+        data_path='./Data',
+        save_path='./Animations',
+        max_nfes=10000,
+        fps=10,
+        dpi=100
+    )
+
+Comparison Modes
+~~~~~~~~~~~~~~~~
+
+The animation generator supports four merge modes for algorithm comparison:
+
+**Mode 0: Individual Animations (No Merge)**
+
+Generate separate animation for each algorithm:
+
+.. code-block:: python
+
+    create_optimization_animation(
+        data_path='./Data',
+        save_path='./Animations',
+        merge=0,  # Default: individual animations
+        max_nfes=10000
+    )
+
+Output structure:
+
+.. code-block:: text
+
+    Animations/
+    ├── GA_P1_1_animation.gif
+    ├── DE_P1_1_animation.gif
+    └── PSO_P1_1_animation.gif
+
+**Mode 1: Full Merge**
+
+All algorithms in the same plots (side-by-side decision and objective spaces):
+
+.. code-block:: python
+
+    create_optimization_animation(
+        pkl_path=['./Data/GA/GA_P1_1.pkl',
+                  './Data/DE/DE_P1_1.pkl',
+                  './Data/PSO/PSO_P1_1.pkl'],
+        merge=1,
+        title='Algorithm Comparison',
+        algorithm_order=['GA', 'DE', 'PSO'],
+        max_nfes=10000
+    )
+
+Layout: ``[Merged Decision Space | Merged Objective Space]``
+
+**Mode 2: Decision Separated, Objective Merged**
+
+Separate decision space for each algorithm, merged objective space:
+
+.. code-block:: python
+
+    create_optimization_animation(
+        pkl_path=['./Data/GA/GA_P1_1.pkl',
+                  './Data/DE/DE_P1_1.pkl',
+                  './Data/PSO/PSO_P1_1.pkl'],
+        merge=2,
+        title='Comparison',
+        algorithm_order=['GA', 'DE', 'PSO'],
+        max_nfes=10000
+    )
+
+Layout: ``[GA Decision | DE Decision | PSO Decision | Merged Objective]``
+
+**Mode 3: All Separated**
+
+Both decision and objective spaces separated for each algorithm:
+
+.. code-block:: python
+
+    create_optimization_animation(
+        pkl_path=['./Data/GA/GA_P1_1.pkl',
+                  './Data/DE/DE_P1_1.pkl'],
+        merge=3,
+        algorithm_order=['GA', 'DE'],
+        max_nfes=10000
+    )
+
+Layout: ``[GA Dec | DE Dec | GA Obj | DE Obj]``
+
+Class Initialization
+~~~~~~~~~~~~~~~~~~~~
+
+For advanced usage, directly instantiate the ``OptimizationAnimator`` class:
+
+.. code-block:: python
+
+    from Methods.optimization_animator import OptimizationAnimator
+
+    animator = OptimizationAnimator(
+        pkl_path='./Data/GA/GA_P1_1.pkl',
+        output_path='./Results/animation.gif',
+        fps=10,
+        dpi=100,
+        merge=0,
+        title='My Optimization',
+        algorithm_order=None,
+        max_nfes=10000
+    )
+
+    # Generate animation
+    animator.create_animation(interval=100)
+
+**Parameters:**
+
+- ``pkl_path``: Path to .pkl file(s), string for single file or list for merge mode
+- ``output_path``: Output file path (optional, auto-generated if None)
+- ``fps``: Frames per second (default: 10)
+- ``dpi``: Resolution, affects file size and quality (default: 100)
+- ``merge``: Comparison mode (0-3, default: 0)
+- ``title``: Custom title for the animation (optional)
+- ``algorithm_order``: List of algorithm names specifying display order (merge mode only)
+- ``max_nfes``: Maximum NFEs, scalar or list for multi-task problems (default: 100)
+
+NFEs Configuration
+~~~~~~~~~~~~~~~~~~
+
+The ``max_nfes`` parameter controls the x-axis scale for convergence curves in single-objective optimization.
+
+**Scalar NFEs (Same for All Tasks):**
+
+.. code-block:: python
+
+    # All tasks use the same NFEs
+    create_optimization_animation(
+        pkl_path='results.pkl',
+        max_nfes=10000  # All tasks: 10000 NFEs
+    )
+
+**List NFEs (Different per Task):**
+
+.. code-block:: python
+
+    # Multi-task problem with different NFEs per task
+    create_optimization_animation(
+        pkl_path='multi_task_results.pkl',
+        max_nfes=[5000, 10000, 15000]  # Task 1: 5000, Task 2: 10000, Task 3: 15000
+    )
+
+**Automatic Compatibility:**
+
+The system automatically handles single-task and multi-task scenarios:
+
+.. code-block:: python
+
+    # Single-task optimization
+    create_optimization_animation('single_task.pkl', max_nfes=1000)
+
+    # Multi-task optimization
+    create_optimization_animation('multi_task.pkl', max_nfes=[1000, 2000])
+
+Algorithm Order
+~~~~~~~~~~~~~~~
+
+Control the display order of algorithms in merge modes:
+
+.. code-block:: python
+
+    # Specify custom order
+    create_optimization_animation(
+        pkl_path=['BO-LCB-BCKT.pkl', 'BO.pkl', 'MTBO.pkl', 'RAMTEA.pkl'],
+        merge=2,
+        algorithm_order=['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT'],
+        max_nfes=10000
+    )
+
+**Behavior:**
+
+- Algorithms are reordered according to ``algorithm_order``
+- Missing algorithms in the list are excluded with a warning
+- Extra files not in ``algorithm_order`` are ignored
+- If ``algorithm_order=None``, uses the original order from ``pkl_path``
+
+Output Formats
+~~~~~~~~~~~~~~
+
+**GIF Format (Default):**
+
+.. code-block:: python
+
+    # Explicit GIF
+    create_optimization_animation('results.pkl', format='gif')
+
+    # Or specify output file
+    create_optimization_animation('results.pkl', output_path='animation.gif')
+
+**MP4 Format (Requires FFmpeg):**
+
+.. code-block:: python
+
+    # Explicit MP4
+    create_optimization_animation('results.pkl', format='mp4')
+
+    # Or specify output file
+    create_optimization_animation('results.pkl', output_path='animation.mp4')
+
+**Note:** MP4 requires FFmpeg installation:
+
+.. code-block:: bash
+
+    pip install ffmpeg-python
+
+If FFmpeg is unavailable, the system automatically falls back to GIF format.
+
+Quality Settings
+~~~~~~~~~~~~~~~~
+
+Adjust animation quality through ``fps`` and ``dpi`` parameters:
+
+.. code-block:: python
+
+    # High quality, larger file
+    create_optimization_animation(
+        'results.pkl',
+        fps=20,      # Smoother animation
+        dpi=150,     # Higher resolution
+        format='mp4'
+    )
+
+    # Fast generation, smaller file
+    create_optimization_animation(
+        'results.pkl',
+        fps=8,       # Fewer frames
+        dpi=70,      # Lower resolution
+        format='gif'
+    )
+
+**Recommended Settings:**
+
+- **Preview/Draft**: ``fps=8, dpi=70``
+- **Standard**: ``fps=10, dpi=100`` (default)
+- **Publication**: ``fps=15, dpi=150``
+
+Batch Processing
+~~~~~~~~~~~~~~~~
+
+**Automatic Scanning:**
+
+.. code-block:: python
+
+    # Scan ./TestData and save to ./TestResults
+    results = create_optimization_animation(
+        data_path='./TestData',
+        save_path='./TestResults',
+        max_nfes=10000,
+        fps=10,
+        dpi=100
+    )
+
+    # Check results
+    print(f"Success: {results['success']}")
+    print(f"Failed: {results['failed']}")
+
+**Batch with Merge Mode:**
+
+.. code-block:: python
+
+    # Automatically scan and merge all files
+    create_optimization_animation(
+        data_path='./Data',
+        save_path='./Animations',
+        merge=1,
+        title='All Algorithms Comparison',
+        algorithm_order=['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT'],
+        max_nfes=[5000, 10000],  # Two tasks
+        format='mp4'
+    )
+
+**Custom File Pattern:**
+
+.. code-block:: python
+
+    # Only process specific files
+    create_optimization_animation(
+        data_path='./Data',
+        pattern='GA_*.pkl',  # Only GA results
+        save_path='./Animations',
+        max_nfes=10000
+    )
+
+Complete Example
+~~~~~~~~~~~~~~~~
+
+**Single-Objective Optimization:**
+
+.. code-block:: python
+
+    from Methods.optimization_animator import create_optimization_animation
+
+    # Individual animations
+    create_optimization_animation(
+        data_path='./Data',
+        save_path='./Animations/Individual',
+        merge=0,
+        max_nfes=10000,
+        fps=10,
+        dpi=100,
+        format='gif'
+    )
+
+    # Merged comparison
+    create_optimization_animation(
+        pkl_path=['./Data/GA/GA_P1_1.pkl',
+                  './Data/DE/DE_P1_1.pkl',
+                  './Data/PSO/PSO_P1_1.pkl'],
+        output_path='./Animations/comparison.mp4',
+        merge=2,
+        title='SO Algorithm Comparison',
+        algorithm_order=['GA', 'DE', 'PSO'],
+        max_nfes=10000,
+        fps=15,
+        dpi=120,
+        format='mp4'
+    )
+
+**Multi-Objective Multi-Task Optimization:**
+
+.. code-block:: python
+
+    # Multi-task with different NFEs
+    create_optimization_animation(
+        pkl_path=['./Data/NSGAII/NSGAII_DTLZ_1.pkl',
+                  './Data/MOEAD/MOEAD_DTLZ_1.pkl',
+                  './Data/MyAlgo/MyAlgo_DTLZ_1.pkl'],
+        output_path='./Animations/MO_comparison.gif',
+        merge=3,
+        title='Multi-Objective Comparison',
+        algorithm_order=['NSGA-II', 'MOEA/D', 'MyAlgo'],
+        max_nfes=[5000, 8000, 10000],  # Different NFEs for 3 tasks
+        fps=12,
+        dpi=100
+    )
+
+Command Line Usage
+~~~~~~~~~~~~~~~~~~
+
+The animation generator can be used from the command line:
+
+.. code-block:: bash
+
+    # Single file
+    python -m Methods.optimization_animator results.pkl output.gif 10 100
+
+    # Auto-scan mode (no arguments)
+    python -m Methods.optimization_animator
+
+**Arguments:**
+
+1. ``pkl_file``: Path to .pkl file
+2. ``output_file``: Output path (optional)
+3. ``fps``: Frames per second (optional, default: 10)
+4. ``dpi``: Resolution (optional, default: 100)
+
+Output Structure
+~~~~~~~~~~~~~~~~
+
+**Individual Mode (merge=0):**
+
+.. code-block:: text
+
+    Animations/
+    ├── GA_P1_1_animation.gif
+    ├── GA_P1_2_animation.gif
+    ├── DE_P1_1_animation.gif
+    └── PSO_P1_1_animation.gif
+
+**Merge Mode (merge>0):**
+
+.. code-block:: text
+
+    Animations/
+    └── test_animation.gif  # Default name if title not specified
+
+**Custom Title:**
+
+.. code-block:: text
+
+    Animations/
+    └── Algorithm_Comparison_animation.gif
+
+Console Output Example
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    ======================================================================
+    Optimization Animation Generator
+    ======================================================================
+    Data path: ./TestData
+    Save path: ./TestResults
+    Found 4 result files
+    Animation params: FPS=10, DPI=100, Interval=100ms, Format=GIF
+    Max NFEs: [5000, 10000]
+    Mode: MERGE (Decision Separated)
+    Algorithm Order: ['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT']
+    ======================================================================
+
+    Creating merged comparison animation...
+    Original algorithms: ['BO-LCB-BCKT', 'BO', 'MTBO', 'RAMTEA']
+    Ordered algorithms: ['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT']
+    Generating animation... (this may take a while)
+    Animation saved to: ./TestResults/test_animation.gif
+      ✓ Success
+
+    ======================================================================
+    Processing Complete!
+    Merged animation: Success
+    ======================================================================
+    Animations saved to: ./TestResults
+    ======================================================================
+
+Best Practices
+~~~~~~~~~~~~~~
+
+1. **Use MP4 for publication quality:**
+
+   MP4 files are typically smaller and higher quality than GIF for the same content.
+
+2. **Adjust frame rate based on convergence speed:**
+
+   - Slow convergence (>1000 generations): ``fps=8-10``
+   - Medium convergence (100-1000 generations): ``fps=10-15``
+   - Fast convergence (<100 generations): ``fps=15-20``
+
+3. **Balance DPI and file size:**
+
+   - For presentations: ``dpi=100-120``
+   - For papers: ``dpi=120-150``
+   - For web sharing: ``dpi=70-100``
+
+4. **Use merge mode 2 for comparing many algorithms:**
+
+   Mode 2 allows clear visualization of individual decision spaces while comparing objectives together.
+
+5. **Specify max_nfes consistently:**
+
+   Ensure ``max_nfes`` matches your actual experimental setup for accurate NFEs display.
+
+6. **Use algorithm_order for clarity:**
+
+   Order algorithms logically (e.g., baseline first, variants after) for easier comparison.
+
+Integration with Batch Experiments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Combine with ``BatchExperiment`` for complete workflow:
+
+.. code-block:: python
+
+    from Methods.batch_experiment import BatchExperiment
+    from Methods.optimization_animator import create_optimization_animation
+
+    # Step 1: Run batch experiments
+    batch_exp = BatchExperiment(base_path='./Data')
+    batch_exp.add_problem(problem_creator=problem.P1, problem_name='P1')
+    batch_exp.add_algorithm(algorithm_class=GA, algorithm_name='GA', n=100, max_nfes=10000)
+    batch_exp.add_algorithm(algorithm_class=DE, algorithm_name='DE', n=100, max_nfes=10000)
+    batch_exp.run(n_runs=30)
+
+    # Step 2: Generate animations for first run of each algorithm
+    create_optimization_animation(
+        pkl_path=['./Data/GA/GA_P1_1.pkl',
+                  './Data/DE/DE_P1_1.pkl'],
+        merge=2,
+        title='GA vs DE on P1',
+        algorithm_order=['GA', 'DE'],
+        max_nfes=10000,
+        format='mp4'
+    )
+
+Troubleshooting
+~~~~~~~~~~~~~~~
+
+**Issue: "FFMpeg not installed, falling back to GIF"**
+
+Solution: Install FFmpeg:
+
+.. code-block:: bash
+
+    pip install ffmpeg-python
+
+**Issue: Animation file is too large**
+
+Solutions:
+
+- Reduce ``dpi`` (e.g., from 100 to 70)
+- Reduce ``fps`` (e.g., from 15 to 8)
+- Use MP4 instead of GIF
+- Reduce number of frames by using fewer generations in data
+
+**Issue: "Incompatible data: file X has Y tasks, expected Z"**
+
+Solution: Ensure all .pkl files have the same number of tasks when using merge mode.
+
+**Issue: "Algorithm names not found in pkl_paths"**
+
+Solution: Check that algorithm names in ``algorithm_order`` match the file stems (filenames without .pkl).
+
+**Issue: Animation generation is slow**
+
+Solutions:
+
+- Reduce ``dpi`` for faster processing
+- Use fewer data points (subsample generations)
+- Process files in smaller batches
+- Use fewer algorithms in merge mode
 
 Performance Metrics
 -------------------
