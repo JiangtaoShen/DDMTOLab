@@ -12,10 +12,10 @@ Single-Task Single-Objective (STSO)
 AO
 ^^
 
-.. automodule:: Algorithms.STSO.AO
+.. automodule:: ddmtolab.Algorithms.STSO.AO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.AO.AO
+.. autoclass:: ddmtolab.Algorithms.STSO.AO.AO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -25,10 +25,10 @@ AO
 BO
 ^^
 
-.. automodule:: Algorithms.STSO.BO
+.. automodule:: ddmtolab.Algorithms.STSO.BO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.BO.BO
+.. autoclass:: ddmtolab.Algorithms.STSO.BO.BO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -38,10 +38,10 @@ BO
 CMAES
 ^^^^^
 
-.. automodule:: Algorithms.STSO.CMAES
+.. automodule:: ddmtolab.Algorithms.STSO.CMAES
    :no-members:
 
-.. autoclass:: Algorithms.STSO.CMAES.CMAES
+.. autoclass:: ddmtolab.Algorithms.STSO.CMAES.CMAES
    :members:
    :undoc-members:
    :show-inheritance:
@@ -51,10 +51,10 @@ CMAES
 CSO
 ^^^
 
-.. automodule:: Algorithms.STSO.CSO
+.. automodule:: ddmtolab.Algorithms.STSO.CSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.CSO.CSO
+.. autoclass:: ddmtolab.Algorithms.STSO.CSO.CSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -64,10 +64,10 @@ CSO
 DE
 ^^
 
-.. automodule:: Algorithms.STSO.DE
+.. automodule:: ddmtolab.Algorithms.STSO.DE
    :no-members:
 
-.. autoclass:: Algorithms.STSO.DE.DE
+.. autoclass:: ddmtolab.Algorithms.STSO.DE.DE
    :members:
    :undoc-members:
    :show-inheritance:
@@ -77,10 +77,10 @@ DE
 EEI-BO
 ^^^^^^
 
-.. automodule:: Algorithms.STSO.EEIBO
+.. automodule:: ddmtolab.Algorithms.STSO.EEIBO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.EEIBO.EEIBO
+.. autoclass:: ddmtolab.Algorithms.STSO.EEIBO.EEIBO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -90,10 +90,10 @@ EEI-BO
 EO
 ^^
 
-.. automodule:: Algorithms.STSO.EO
+.. automodule:: ddmtolab.Algorithms.STSO.EO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.EO.EO
+.. autoclass:: ddmtolab.Algorithms.STSO.EO.EO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -103,10 +103,10 @@ EO
 GA
 ^^
 
-.. automodule:: Algorithms.STSO.GA
+.. automodule:: ddmtolab.Algorithms.STSO.GA
    :no-members:
 
-.. autoclass:: Algorithms.STSO.GA.GA
+.. autoclass:: ddmtolab.Algorithms.STSO.GA.GA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -116,10 +116,10 @@ GA
 GWO
 ^^^
 
-.. automodule:: Algorithms.STSO.GWO
+.. automodule:: ddmtolab.Algorithms.STSO.GWO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.GWO.GWO
+.. autoclass:: ddmtolab.Algorithms.STSO.GWO.GWO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -129,10 +129,10 @@ GWO
 KL-PSO
 ^^^^^^
 
-.. automodule:: Algorithms.STSO.KLPSO
+.. automodule:: ddmtolab.Algorithms.STSO.KLPSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.KLPSO.KLPSO
+.. autoclass:: ddmtolab.Algorithms.STSO.KLPSO.KLPSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -142,10 +142,10 @@ KL-PSO
 PSO
 ^^^
 
-.. automodule:: Algorithms.STSO.PSO
+.. automodule:: ddmtolab.Algorithms.STSO.PSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.PSO.PSO
+.. autoclass:: ddmtolab.Algorithms.STSO.PSO.PSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -155,10 +155,10 @@ PSO
 SL-PSO
 ^^^^^^
 
-.. automodule:: Algorithms.STSO.SLPSO
+.. automodule:: ddmtolab.Algorithms.STSO.SLPSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.SLPSO.SLPSO
+.. autoclass:: ddmtolab.Algorithms.STSO.SLPSO.SLPSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -168,10 +168,10 @@ SL-PSO
 ESAO
 ^^^^
 
-.. automodule:: Algorithms.STSO.ESAO
+.. automodule:: ddmtolab.Algorithms.STSO.ESAO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.ESAO.ESAO
+.. autoclass:: ddmtolab.Algorithms.STSO.ESAO.ESAO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -181,10 +181,10 @@ ESAO
 SHPSO
 ^^^^^
 
-.. automodule:: Algorithms.STSO.SHPSO
+.. automodule:: ddmtolab.Algorithms.STSO.SHPSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.SHPSO.SHPSO
+.. autoclass:: ddmtolab.Algorithms.STSO.SHPSO.SHPSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -194,10 +194,10 @@ SHPSO
 GL-SADE
 ^^^^^^^
 
-.. automodule:: Algorithms.STSO.GLSADE
+.. automodule:: ddmtolab.Algorithms.STSO.GLSADE
    :no-members:
 
-.. autoclass:: Algorithms.STSO.GLSADE.GLSADE
+.. autoclass:: ddmtolab.Algorithms.STSO.GLSADE.GLSADE
    :members:
    :undoc-members:
    :show-inheritance:
@@ -207,10 +207,10 @@ GL-SADE
 SA-COSO
 ^^^^^^^
 
-.. automodule:: Algorithms.STSO.SACOSO
+.. automodule:: ddmtolab.Algorithms.STSO.SACOSO
    :no-members:
 
-.. autoclass:: Algorithms.STSO.SACOSO.SACOSO
+.. autoclass:: ddmtolab.Algorithms.STSO.SACOSO.SACOSO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -220,10 +220,10 @@ SA-COSO
 TLRBF
 ^^^^^
 
-.. automodule:: Algorithms.STSO.TLRBF
+.. automodule:: ddmtolab.Algorithms.STSO.TLRBF
    :no-members:
 
-.. autoclass:: Algorithms.STSO.TLRBF.TLRBF
+.. autoclass:: ddmtolab.Algorithms.STSO.TLRBF.TLRBF
    :members:
    :undoc-members:
    :show-inheritance:
@@ -237,25 +237,23 @@ Multi-Task Single-Objective (MTSO)
 MFEA
 ^^^^
 
-.. automodule:: Algorithms.MTSO.MFEA
+.. automodule:: ddmtolab.Algorithms.MTSO.MFEA
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MFEA.MFEA
+.. autoclass:: ddmtolab.Algorithms.MTSO.MFEA.MFEA
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. autofunction:: Algorithms.MTSO.MFEA.mfea_selection
-
 MFEA-II
 ^^^^^^^
 
-.. automodule:: Algorithms.MTSO.MFEAII
+.. automodule:: ddmtolab.Algorithms.MTSO.MFEAII
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MFEAII.MFEAII
+.. autoclass:: ddmtolab.Algorithms.MTSO.MFEAII.MFEAII
    :members:
    :undoc-members:
    :show-inheritance:
@@ -265,25 +263,23 @@ MFEA-II
 EMEA
 ^^^^
 
-.. automodule:: Algorithms.MTSO.EMEA
+.. automodule:: ddmtolab.Algorithms.MTSO.EMEA
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.EMEA.EMEA
+.. autoclass:: ddmtolab.Algorithms.MTSO.EMEA.EMEA
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. autofunction:: Algorithms.MTSO.EMEA.mDA
-
 MTEA-AD
 ^^^^^^^
 
-.. automodule:: Algorithms.MTSO.MTEAAD
+.. automodule:: ddmtolab.Algorithms.MTSO.MTEAAD
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MTEAAD.MTEAAD
+.. autoclass:: ddmtolab.Algorithms.MTSO.MTEAAD.MTEAAD
    :members:
    :undoc-members:
    :show-inheritance:
@@ -293,10 +289,10 @@ MTEA-AD
 EBS
 ^^^
 
-.. automodule:: Algorithms.MTSO.EBS
+.. automodule:: ddmtolab.Algorithms.MTSO.EBS
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.EBS.EBS
+.. autoclass:: ddmtolab.Algorithms.MTSO.EBS.EBS
    :members:
    :undoc-members:
    :show-inheritance:
@@ -306,10 +302,10 @@ EBS
 G-MFEA
 ^^^^^^
 
-.. automodule:: Algorithms.MTSO.GMFEA
+.. automodule:: ddmtolab.Algorithms.MTSO.GMFEA
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.GMFEA.GMFEA
+.. autoclass:: ddmtolab.Algorithms.MTSO.GMFEA.GMFEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -319,10 +315,10 @@ G-MFEA
 MKTDE
 ^^^^^
 
-.. automodule:: Algorithms.MTSO.MKTDE
+.. automodule:: ddmtolab.Algorithms.MTSO.MKTDE
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MKTDE.MKTDE
+.. autoclass:: ddmtolab.Algorithms.MTSO.MKTDE.MKTDE
    :members:
    :undoc-members:
    :show-inheritance:
@@ -332,10 +328,10 @@ MKTDE
 MTEA-SaO
 ^^^^^^^^
 
-.. automodule:: Algorithms.MTSO.MTEASaO
+.. automodule:: ddmtolab.Algorithms.MTSO.MTEASaO
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MTEASaO.MTEASaO
+.. autoclass:: ddmtolab.Algorithms.MTSO.MTEASaO.MTEASaO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -345,10 +341,10 @@ MTEA-SaO
 SREMTO
 ^^^^^^
 
-.. automodule:: Algorithms.MTSO.SREMTO
+.. automodule:: ddmtolab.Algorithms.MTSO.SREMTO
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.SREMTO.SREMTO
+.. autoclass:: ddmtolab.Algorithms.MTSO.SREMTO.SREMTO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -358,10 +354,10 @@ SREMTO
 MTBO
 ^^^^
 
-.. automodule:: Algorithms.MTSO.MTBO
+.. automodule:: ddmtolab.Algorithms.MTSO.MTBO
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MTBO.MTBO
+.. autoclass:: ddmtolab.Algorithms.MTSO.MTBO.MTBO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -371,41 +367,36 @@ MTBO
 RAMTEA
 ^^^^^^^
 
-.. automodule:: Algorithms.MTSO.RAMTEA
+.. automodule:: ddmtolab.Algorithms.MTSO.RAMTEA
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.RAMTEA.RAMTEA
+.. autoclass:: ddmtolab.Algorithms.MTSO.RAMTEA.RAMTEA
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
-
-.. autofunction:: Algorithms.MTSO.RAMTEA.ramtea_knowledge_transfer
 
 SELF
 ^^^^
 
-.. automodule:: Algorithms.MTSO.SELF
+.. automodule:: ddmtolab.Algorithms.MTSO.SELF
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.SELF.SELF
+.. autoclass:: ddmtolab.Algorithms.MTSO.SELF.SELF
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. autofunction:: Algorithms.MTSO.SELF.de_generation_with_core
-.. autofunction:: Algorithms.MTSO.SELF.bo_next_point_de
-
 EEI-BO+
 ^^^^^^^
 
-.. automodule:: Algorithms.MTSO.EEIBOplus
+.. automodule:: ddmtolab.Algorithms.MTSO.EEIBOplus
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.EEIBOplus.EEIBOplus
+.. autoclass:: ddmtolab.Algorithms.MTSO.EEIBOplus.EEIBOplus
    :members:
    :undoc-members:
    :show-inheritance:
@@ -415,10 +406,10 @@ EEI-BO+
 MUMBO
 ^^^^^
 
-.. automodule:: Algorithms.MTSO.MUMBO
+.. automodule:: ddmtolab.Algorithms.MTSO.MUMBO
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.MUMBO.MUMBO
+.. autoclass:: ddmtolab.Algorithms.MTSO.MUMBO.MUMBO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -428,10 +419,10 @@ MUMBO
 LCB-EMT
 ^^^^^^^
 
-.. automodule:: Algorithms.MTSO.LCBEMT
+.. automodule:: ddmtolab.Algorithms.MTSO.LCBEMT
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.LCBEMT.LCBEMT
+.. autoclass:: ddmtolab.Algorithms.MTSO.LCBEMT.LCBEMT
    :members:
    :undoc-members:
    :show-inheritance:
@@ -441,10 +432,10 @@ LCB-EMT
 BO_LCB_CKT
 ^^^^^^^^^^
 
-.. automodule:: Algorithms.MTSO.BO_LCB_CKT
+.. automodule:: ddmtolab.Algorithms.MTSO.BO_LCB_CKT
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.BO_LCB_CKT.BO_LCB_CKT
+.. autoclass:: ddmtolab.Algorithms.MTSO.BO_LCB_CKT.BO_LCB_CKT
    :members:
    :undoc-members:
    :show-inheritance:
@@ -454,10 +445,10 @@ BO_LCB_CKT
 BO_LCB_BCKT
 ^^^^^^^^^^^
 
-.. automodule:: Algorithms.MTSO.BO_LCB_BCKT
+.. automodule:: ddmtolab.Algorithms.MTSO.BO_LCB_BCKT
    :no-members:
 
-.. autoclass:: Algorithms.MTSO.BO_LCB_BCKT.BO_LCB_BCKT
+.. autoclass:: ddmtolab.Algorithms.MTSO.BO_LCB_BCKT.BO_LCB_BCKT
    :members:
    :undoc-members:
    :show-inheritance:
@@ -471,10 +462,10 @@ Single-Task Multi-Objective (STMO)
 NSGA-II
 ^^^^^^^
 
-.. automodule:: Algorithms.STMO.NSGAII
+.. automodule:: ddmtolab.Algorithms.STMO.NSGAII
    :no-members:
 
-.. autoclass:: Algorithms.STMO.NSGAII.NSGAII
+.. autoclass:: ddmtolab.Algorithms.STMO.NSGAII.NSGAII
    :members:
    :undoc-members:
    :show-inheritance:
@@ -484,10 +475,10 @@ NSGA-II
 SPEA2
 ^^^^^
 
-.. automodule:: Algorithms.STMO.SPEA2
+.. automodule:: ddmtolab.Algorithms.STMO.SPEA2
    :no-members:
 
-.. autoclass:: Algorithms.STMO.SPEA2.SPEA2
+.. autoclass:: ddmtolab.Algorithms.STMO.SPEA2.SPEA2
    :members:
    :undoc-members:
    :show-inheritance:
@@ -497,10 +488,10 @@ SPEA2
 MOEA/D
 ^^^^^^
 
-.. automodule:: Algorithms.STMO.MOEAD
+.. automodule:: ddmtolab.Algorithms.STMO.MOEAD
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MOEAD.MOEAD
+.. autoclass:: ddmtolab.Algorithms.STMO.MOEAD.MOEAD
    :members:
    :undoc-members:
    :show-inheritance:
@@ -510,10 +501,10 @@ MOEA/D
 IBEA
 ^^^^
 
-.. automodule:: Algorithms.STMO.IBEA
+.. automodule:: ddmtolab.Algorithms.STMO.IBEA
    :no-members:
 
-.. autoclass:: Algorithms.STMO.IBEA.IBEA
+.. autoclass:: ddmtolab.Algorithms.STMO.IBEA.IBEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -523,10 +514,10 @@ IBEA
 RVEA
 ^^^^
 
-.. automodule:: Algorithms.STMO.RVEA
+.. automodule:: ddmtolab.Algorithms.STMO.RVEA
    :no-members:
 
-.. autoclass:: Algorithms.STMO.RVEA.RVEA
+.. autoclass:: ddmtolab.Algorithms.STMO.RVEA.RVEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -536,10 +527,10 @@ RVEA
 NSGA-III
 ^^^^^^^^
 
-.. automodule:: Algorithms.STMO.NSGAIII
+.. automodule:: ddmtolab.Algorithms.STMO.NSGAIII
    :no-members:
 
-.. autoclass:: Algorithms.STMO.NSGAIII.NSGAIII
+.. autoclass:: ddmtolab.Algorithms.STMO.NSGAIII.NSGAIII
    :members:
    :undoc-members:
    :show-inheritance:
@@ -549,10 +540,10 @@ NSGA-III
 MOEA/DD
 ^^^^^^^
 
-.. automodule:: Algorithms.STMO.MOEADD
+.. automodule:: ddmtolab.Algorithms.STMO.MOEADD
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MOEADD.MOEADD
+.. autoclass:: ddmtolab.Algorithms.STMO.MOEADD.MOEADD
    :members:
    :undoc-members:
    :show-inheritance:
@@ -562,10 +553,10 @@ MOEA/DD
 CCMO
 ^^^^
 
-.. automodule:: Algorithms.STMO.CCMO
+.. automodule:: ddmtolab.Algorithms.STMO.CCMO
    :no-members:
 
-.. autoclass:: Algorithms.STMO.CCMO.CCMO
+.. autoclass:: ddmtolab.Algorithms.STMO.CCMO.CCMO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -575,10 +566,10 @@ CCMO
 MSEA
 ^^^^
 
-.. automodule:: Algorithms.STMO.MSEA
+.. automodule:: ddmtolab.Algorithms.STMO.MSEA
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MSEA.MSEA
+.. autoclass:: ddmtolab.Algorithms.STMO.MSEA.MSEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -588,10 +579,10 @@ MSEA
 NSGA-II-SDR
 ^^^^^^^^^^^
 
-.. automodule:: Algorithms.STMO.NSGAIISDR
+.. automodule:: ddmtolab.Algorithms.STMO.NSGAIISDR
    :no-members:
 
-.. autoclass:: Algorithms.STMO.NSGAIISDR.NSGAIISDR
+.. autoclass:: ddmtolab.Algorithms.STMO.NSGAIISDR.NSGAIISDR
    :members:
    :undoc-members:
    :show-inheritance:
@@ -601,10 +592,10 @@ NSGA-II-SDR
 Two_Arch2
 ^^^^^^^^^^
 
-.. automodule:: Algorithms.STMO.TwoArch2
+.. automodule:: ddmtolab.Algorithms.STMO.TwoArch2
    :no-members:
 
-.. autoclass:: Algorithms.STMO.TwoArch2.TwoArch2
+.. autoclass:: ddmtolab.Algorithms.STMO.TwoArch2.TwoArch2
    :members:
    :undoc-members:
    :show-inheritance:
@@ -614,10 +605,10 @@ Two_Arch2
 C-TAEA
 ^^^^^^
 
-.. automodule:: Algorithms.STMO.CTAEA
+.. automodule:: ddmtolab.Algorithms.STMO.CTAEA
    :no-members:
 
-.. autoclass:: Algorithms.STMO.CTAEA.CTAEA
+.. autoclass:: ddmtolab.Algorithms.STMO.CTAEA.CTAEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -627,10 +618,10 @@ C-TAEA
 MOEA/D-FRRMAB
 ^^^^^^^^^^^^^
 
-.. automodule:: Algorithms.STMO.MOEADFRRMAB
+.. automodule:: ddmtolab.Algorithms.STMO.MOEADFRRMAB
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MOEADFRRMAB.MOEADFRRMAB
+.. autoclass:: ddmtolab.Algorithms.STMO.MOEADFRRMAB.MOEADFRRMAB
    :members:
    :undoc-members:
    :show-inheritance:
@@ -640,10 +631,10 @@ MOEA/D-FRRMAB
 MOEA/D-STM
 ^^^^^^^^^^^^^
 
-.. automodule:: Algorithms.STMO.MOEADSTM
+.. automodule:: ddmtolab.Algorithms.STMO.MOEADSTM
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MOEADSTM.MOEADSTM
+.. autoclass:: ddmtolab.Algorithms.STMO.MOEADSTM.MOEADSTM
    :members:
    :undoc-members:
    :show-inheritance:
@@ -653,10 +644,10 @@ MOEA/D-STM
 MCEA/D
 ^^^^^^
 
-.. automodule:: Algorithms.STMO.MCEAD
+.. automodule:: ddmtolab.Algorithms.STMO.MCEAD
    :no-members:
 
-.. autoclass:: Algorithms.STMO.MCEAD.MCEAD
+.. autoclass:: ddmtolab.Algorithms.STMO.MCEAD.MCEAD
    :members:
    :undoc-members:
    :show-inheritance:
@@ -666,10 +657,10 @@ MCEA/D
 K-RVEA
 ^^^^^^
 
-.. automodule:: Algorithms.STMO.KRVEA
+.. automodule:: ddmtolab.Algorithms.STMO.KRVEA
    :no-members:
 
-.. autoclass:: Algorithms.STMO.KRVEA.KRVEA
+.. autoclass:: ddmtolab.Algorithms.STMO.KRVEA.KRVEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -679,10 +670,10 @@ K-RVEA
 DSAEA-PS
 ^^^^^^^^
 
-.. automodule:: Algorithms.STMO.DSAEAPS
+.. automodule:: ddmtolab.Algorithms.STMO.DSAEAPS
    :no-members:
 
-.. autoclass:: Algorithms.STMO.DSAEAPS.DSAEAPS
+.. autoclass:: ddmtolab.Algorithms.STMO.DSAEAPS.DSAEAPS
    :members:
    :undoc-members:
    :show-inheritance:
@@ -696,25 +687,25 @@ Multi-Task Multi-Objective (MTMO)
 MO-MFEA
 ^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MOMFEA
+.. automodule:: ddmtolab.Algorithms.MTMO.MOMFEA
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MOMFEA.MOMFEA
+.. autoclass:: ddmtolab.Algorithms.MTMO.MOMFEA.MOMFEA
    :members:
    :undoc-members:
    :show-inheritance:
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. autofunction:: Algorithms.MTMO.MOMFEA.momfea_selection
+
 
 MO-MFEA-II
 ^^^^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MOMFEAII
+.. automodule:: ddmtolab.Algorithms.MTMO.MOMFEAII
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MOMFEAII.MOMFEAII
+.. autoclass:: ddmtolab.Algorithms.MTMO.MOMFEAII.MOMFEAII
    :members:
    :undoc-members:
    :show-inheritance:
@@ -724,10 +715,10 @@ MO-MFEA-II
 MO-EMEA
 ^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MOEMEA
+.. automodule:: ddmtolab.Algorithms.MTMO.MOEMEA
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MOEMEA.MOEMEA
+.. autoclass:: ddmtolab.Algorithms.MTMO.MOEMEA.MOEMEA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -737,10 +728,10 @@ MO-EMEA
 EMT-ET
 ^^^^^^
 
-.. automodule:: Algorithms.MTMO.EMTET
+.. automodule:: ddmtolab.Algorithms.MTMO.EMTET
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.EMTET.EMTET
+.. autoclass:: ddmtolab.Algorithms.MTMO.EMTET.EMTET
    :members:
    :undoc-members:
    :show-inheritance:
@@ -750,10 +741,10 @@ EMT-ET
 EMT-PD
 ^^^^^^
 
-.. automodule:: Algorithms.MTMO.EMTPD
+.. automodule:: ddmtolab.Algorithms.MTMO.EMTPD
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.EMTPD.EMTPD
+.. autoclass:: ddmtolab.Algorithms.MTMO.EMTPD.EMTPD
    :members:
    :undoc-members:
    :show-inheritance:
@@ -763,10 +754,10 @@ EMT-PD
 MO-MTEA-SaO
 ^^^^^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MOMTEASaO
+.. automodule:: ddmtolab.Algorithms.MTMO.MOMTEASaO
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MOMTEASaO.MOMTEASaO
+.. autoclass:: ddmtolab.Algorithms.MTMO.MOMTEASaO.MOMTEASaO
    :members:
    :undoc-members:
    :show-inheritance:
@@ -776,10 +767,10 @@ MO-MTEA-SaO
 MTDE-MKTA
 ^^^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MTDEMKTA
+.. automodule:: ddmtolab.Algorithms.MTMO.MTDEMKTA
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MTDEMKTA.MTDEMKTA
+.. autoclass:: ddmtolab.Algorithms.MTMO.MTDEMKTA.MTDEMKTA
    :members:
    :undoc-members:
    :show-inheritance:
@@ -789,10 +780,10 @@ MTDE-MKTA
 MTEA/D-DN
 ^^^^^^^^^
 
-.. automodule:: Algorithms.MTMO.MTEADDN
+.. automodule:: ddmtolab.Algorithms.MTMO.MTEADDN
    :no-members:
 
-.. autoclass:: Algorithms.MTMO.MTEADDN.MTEADDN
+.. autoclass:: ddmtolab.Algorithms.MTMO.MTEADDN.MTEADDN
    :members:
    :undoc-members:
    :show-inheritance:
@@ -808,7 +799,7 @@ Single-Task Single-Objective Problems
 Classical Single-Objective Functions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.STSO.classical_so
+.. automodule:: ddmtolab.Problems.STSO.classical_so
    :members:
    :undoc-members:
 
@@ -818,21 +809,21 @@ Single-Task Multi-Objective Problems
 DTLZ Test Suite
 ^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.STMO.DTLZ
+.. automodule:: ddmtolab.Problems.STMO.DTLZ
    :members:
    :undoc-members:
 
 ZDT Test Suite
 ^^^^^^^^^^^^^^
 
-.. automodule:: Problems.STMO.ZDT
+.. automodule:: ddmtolab.Problems.STMO.ZDT
    :members:
    :undoc-members:
 
 UF Test Suite
 ^^^^^^^^^^^^^^
 
-.. automodule:: Problems.STMO.UF
+.. automodule:: ddmtolab.Problems.STMO.UF
    :members:
    :undoc-members:
 
@@ -842,21 +833,21 @@ Multi-Task Single-Objective Problems
 CEC17 MTSO Benchmark
 ^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.MTSO.cec17_mtso
+.. automodule:: ddmtolab.Problems.MTSO.cec17_mtso
    :members:
    :undoc-members:
 
 CEC17 MTSO 10D Benchmark
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.MTSO.cec17_mtso_10d
+.. automodule:: ddmtolab.Problems.MTSO.cec17_mtso_10d
    :members:
    :undoc-members:
 
 CEC19 MATSO Benchmark
 ^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.MTSO.cec19_matso
+.. automodule:: ddmtolab.Problems.MTSO.cec19_matso
    :members:
    :undoc-members:
 
@@ -866,7 +857,7 @@ Multi-Task Multi-Objective Problems
 CEC17 MTMO Benchmark
 ^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Problems.MTMO.cec17_mtmo
+.. automodule:: ddmtolab.Problems.MTMO.cec17_mtmo
    :members:
    :undoc-members:
 
@@ -876,8 +867,8 @@ Real-World Optimization Problems
 PINN Hyperparameter Optimization
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: Problems.RWP.PINN_HPO.pinn_hpo.PINN_HPO
-   :members: P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12
+.. autoclass:: ddmtolab.Problems.RWO.PINN_HPO.pinn_hpo.PINN_HPO
+   :members:
    :undoc-members:
 
 Methods and Utilities
@@ -886,7 +877,7 @@ Methods and Utilities
 Batch Experiment
 ~~~~~~~~~~~~~~~~
 
-.. automodule:: Methods.batch_experiment
+.. automodule:: ddmtolab.Methods.batch_experiment
    :members:
    :undoc-members:
    :show-inheritance:
@@ -894,7 +885,7 @@ Batch Experiment
 Data Analysis
 ~~~~~~~~~~~~~
 
-.. automodule:: Methods.data_analysis
+.. automodule:: ddmtolab.Methods.data_analysis
    :members:
    :undoc-members:
    :noindex:
@@ -902,7 +893,7 @@ Data Analysis
 Test Data Analysis
 ~~~~~~~~~~~~~~~~~~
 
-.. automodule:: Methods.test_data_analysis
+.. automodule:: ddmtolab.Methods.test_data_analysis
    :members:
    :undoc-members:
    :noindex:
@@ -910,7 +901,7 @@ Test Data Analysis
 Metrics
 ~~~~~~~
 
-.. automodule:: Methods.metrics
+.. automodule:: ddmtolab.Methods.metrics
    :members:
    :undoc-members:
    :noindex:
@@ -932,7 +923,7 @@ The **MTOP (Multi-Task Optimization Problem)** class provides a flexible and pow
 
 .. code-block:: python
 
-    from Methods.mtop import MTOP
+    from ddmtolab.Methods.mtop import MTOP
     import numpy as np
 
     def sphere(x):
@@ -946,7 +937,7 @@ The **MTOP (Multi-Task Optimization Problem)** class provides a flexible and pow
 MTOP Class
 ^^^^^^^^^^
 
-.. autoclass:: Methods.mtop.MTOP
+.. autoclass:: ddmtolab.Methods.mtop.MTOP
    :members:
    :undoc-members:
    :show-inheritance:
@@ -955,7 +946,7 @@ MTOP Class
 ObjectiveFunctionWrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: Methods.mtop.ObjectiveFunctionWrapper
+.. autoclass:: ddmtolab.Methods.mtop.ObjectiveFunctionWrapper
    :members:
    :undoc-members:
    :show-inheritance:
@@ -963,7 +954,7 @@ ObjectiveFunctionWrapper
 ConstraintFunctionWrapper
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. autoclass:: Methods.mtop.ConstraintFunctionWrapper
+.. autoclass:: ddmtolab.Methods.mtop.ConstraintFunctionWrapper
    :members:
    :undoc-members:
    :show-inheritance:
@@ -971,7 +962,7 @@ ConstraintFunctionWrapper
 Algorithm Utilities
 ~~~~~~~~~~~~~~~~~~~
 
-.. automodule:: Methods.Algo_Methods.algo_utils
+.. automodule:: ddmtolab.Methods.Algo_Methods.algo_utils
    :members:
    :undoc-members:
    :noindex:
@@ -979,20 +970,20 @@ Algorithm Utilities
 Bayesian Optimization Utilities
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Methods.Algo_Methods.bo_utils
+.. automodule:: ddmtolab.Methods.Algo_Methods.bo_utils
    :members:
    :undoc-members:
 
 Similarity Evaluation
 ^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Methods.Algo_Methods.sim_evaluation
+.. automodule:: ddmtolab.Methods.Algo_Methods.sim_evaluation
    :members:
    :undoc-members:
 
 Uniform Point Generation
 ^^^^^^^^^^^^^^^^^^^^^^^^^
 
-.. automodule:: Methods.Algo_Methods.uniform_point
+.. automodule:: ddmtolab.Methods.Algo_Methods.uniform_point
    :members:
    :undoc-members:

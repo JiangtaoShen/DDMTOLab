@@ -18,7 +18,7 @@ from tqdm import tqdm
 import time
 import numpy as np
 from scipy.interpolate import RBFInterpolator
-from Methods.Algo_Methods.algo_utils import *
+from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Algorithms.STSO.GA import GA
 from ddmtolab.Methods.mtop import MTOP
 import warnings

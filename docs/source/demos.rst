@@ -1,7 +1,7 @@
-.. _quickstart:
+.. _demos:
 
-Quick Start
-===========
+Demos
+=====
 
 Overview
 --------

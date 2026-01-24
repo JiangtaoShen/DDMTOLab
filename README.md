@@ -12,6 +12,12 @@
   <a href="https://jiangtaoshen.github.io/DDMTOLab/">
     <img src="https://img.shields.io/badge/docs-latest-blue.svg" alt="Documentation">
   </a>
+  <a href="https://pypi.org/project/ddmtolab/">
+    <img src="https://img.shields.io/pypi/v/ddmtolab.svg" alt="PyPI version">
+  </a>
+  <a href="https://pypi.org/project/ddmtolab/">
+    <img src="https://img.shields.io/pypi/dm/ddmtolab.svg" alt="Downloads">
+  </a>
   <a href="https://github.com/JiangtaoShen/DDMTOLab/stargazers">
     <img src="https://img.shields.io/github/stars/JiangtaoShen/DDMTOLab?style=social" alt="GitHub Stars">
   </a>
@@ -27,51 +33,43 @@
 
 ## 📖 Overview
 
-**DDMTOLab** is a comprehensive Python platform designed for data-driven multitask optimization, featuring **30+ algorithms**, **100+ benchmark problems**, and powerful experiment tools for algorithm development and performance evaluation.
+**DDMTOLab is a comprehensive Python platform designed for data-driven multitask optimization**, featuring **60+ algorithms**, **180+ benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
 
-Whether you're working on expensive black-box optimization, multi-objective optimization, or complex multi-task scenarios, DDMTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
+Whether you're working on expensive black-box optimization, multiobjective optimization, or complex multitask scenarios, DDMTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
 
 ## ✨ Features
 
-- 🚀 **Comprehensive Algorithms** - Single/multi-task, single/multi-objective optimization algorithms
-- 📊 **Rich Problem Suite** - Extensive benchmark functions and real-world applications
+- 🚀 **Comprehensive Algorithms** - Expensive/inexpensive, single/multi-task, single/multi-objective optimization algorithms
+- 📊 **Rich Problem Suite** - Extensive benchmark problem suites and real-world applications
 - 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
 - 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
 - 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
 - 📈 **Powerful Analysis Tools** - Built-in visualization and statistical analysis
 - ⚡ **Parallel Computing** - Multi-core support for batch experiments
-- 📝 **Complete Documentation** - Comprehensive **[Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)** and API reference
+- 📝 **Complete Documentation** - Comprehensive [Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html) and API reference
 
 ## 🚀 Quick Start
-
-👉 **[Get Started with Our Tutorial](https://jiangtaoshen.github.io/DDMTOLab/quickstart.html)**
-
-DDMTOLab requires:
-
-* Python 3.10+
-* PyTorch 2.5+ with CUDA 12.1 support (optional, for GPU-accelerated Gaussian Process modeling)
-* BoTorch 0.16+
-* GPyTorch 1.14+
-* NumPy 2.0+
-* SciPy 1.15+
-* scikit-learn 1.7+
-* Pandas 2.3+
-* Matplotlib 3.10+
-* tqdm
 
 ### Installation
 
 ```bash
-git clone https://github.com/JiangtaoShen/DDMTOLab.git
-cd DDMTOLab
-pip install -r requirements.txt
+pip install ddmtolab
 ```
 
+**Requirements:**
+- Python 3.10+
+- PyTorch 2.5+ (supports CPU, GPU optional for acceleration)
+- NumPy 2.0+, SciPy 1.15+, scikit-learn 1.7+
+- Matplotlib 3.10+, Pandas 2.3+
+
+For detailed installation instructions, see [Installation Guide](https://jiangtaoshen.github.io/DDMTOLab/installation.html).
+
 ### Basic Usage
+
 ```python
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
-from ddmtolab.Algorithms.STSO.GA import GA
+from ddmtolab.Algorithms.MTSO.MTBO import MTBO
 
 # Step 1: Define objective function
 def t1(x):
@@ -83,7 +81,7 @@ problem = MTOP()
 problem.add_task(t1, dim=1)
 
 # Step 3: Run optimization
-results = GA(problem).optimize()
+results = MTBO(problem).optimize()
 
 # Step 4: Display results
 print(results.best_decs, results.best_objs)
@@ -93,16 +91,14 @@ from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 TestDataAnalyzer().run()
 ```
 
-### Batch Experiments
+### Batch Experiment
+
 ```python
 from ddmtolab.Methods.batch_experiment import BatchExperiment
 from ddmtolab.Methods.data_analysis import DataAnalyzer
-from ddmtolab.Algorithms.STSO.GA import GA
-from ddmtolab.Algorithms.STSO.PSO import PSO
-from ddmtolab.Algorithms.STSO.DE import DE
-from ddmtolab.Algorithms.MTSO.EMEA import EMEA
-from ddmtolab.Algorithms.MTSO.MFEA import MFEA
-from ddmtolab.Problems.MTSO.cec17_mtso import CEC17MTSO
+from ddmtolab.Algorithms.STSO.BO import BO
+from ddmtolab.Algorithms.MTSO.MTBO import MTBO
+from ddmtolab.Problems.MTSO.cec17_mtso_10d import CEC17MTSO_10D
 
 if __name__ == '__main__':
     # Step 1: Create batch experiment manager
@@ -112,70 +108,90 @@ if __name__ == '__main__':
     )
 
     # Step 2: Add test problems
-    cec17mtso = CEC17MTSO()
-    batch_exp.add_problem(cec17mtso.P1, 'P1')
-    batch_exp.add_problem(cec17mtso.P2, 'P2')
-    batch_exp.add_problem(cec17mtso.P3, 'P3')
+    prob = CEC17MTSO_10D()
+    batch_exp.add_problem(prob.P1, 'P1')
+    batch_exp.add_problem(prob.P2, 'P2')
 
     # Step 3: Add algorithms with parameters
-    batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=20000)
-    batch_exp.add_algorithm(DE, 'DE', n=100, max_nfes=20000)
-    batch_exp.add_algorithm(PSO, 'PSO', n=100, max_nfes=20000)
-    batch_exp.add_algorithm(MFEA, 'MFEA', n=100, max_nfes=20000)
-    batch_exp.add_algorithm(EMEA, 'EMEA', n=100, max_nfes=20000)
+    batch_exp.add_algorithm(BO, 'BO', n_initial=20, max_nfes=100)
+    batch_exp.add_algorithm(MTBO, 'MTBO', n_initial=20, max_nfes=100)
 
     # Step 4: Run batch experiments
     batch_exp.run(n_runs=20, verbose=True, max_workers=8)
 
     # Step 5: Configure data analyzer
-    analyzer = DataAnalyzer(algorithm_order=['GA', 'DE', 'PSO', 'EMEA', 'MFEA'])
+    analyzer = DataAnalyzer()
 
     # Step 6: Run data analysis
     results = analyzer.run()
 ```
 
-## 📊 Example Results
+### Optimization Process Visualization
 
-Results from the batch experiment above:
+DDMTOLab provides built-in animation tools to visualize the optimization process. Run the following code to generate an optimization animation:
+
+```python
+from ddmtolab.Problems.MTSO.cec17_mtso_10d import CEC17MTSO_10D
+from ddmtolab.Algorithms.STSO.BO import BO
+from ddmtolab.Algorithms.MTSO.MTBO import MTBO
+from ddmtolab.Methods.animation_generator import create_optimization_animation
+
+# Define problem
+problem = CEC17MTSO_10D().P1()
+
+# Run algorithms
+BO(problem, n_initial=20, max_nfes=100, name='BO').optimize()
+MTBO(problem, n_initial=20, max_nfes=100, name='MTBO').optimize()
+
+# Generate animation
+animation = create_optimization_animation(max_nfes=100, merge=2, title='BO and MTBO on CEC17MTSO-10D-P1')
+```
+
+The generated animation shows how BO and MTBO algorithms explore the search space on the CEC17-MTSO-10D-P1 problem:
 
 <p align="center">
-  <img src="docs/images/P1-Task1.png" alt="Convergence 1" width="28%">
-  <img src="docs/images/P1-Task2.png" alt="Convergence 2" width="28%">
-  <img src="docs/images/runtime_comparison.png" alt="Runtime" width="32%">
+  <img src="docs/images/animation.gif"
+       alt="BO and MTBO on CEC17-MTSO-10D-P1 Animation"
+       width="100%">
 </p>
 
 ## 🎯 Key Components
 
 ### Algorithms
-**40+ state-of-the-art optimization algorithms** across four categories:
+
+**60+ state-of-the-art optimization algorithms** across four categories:
 
 | Category | Algorithms |
 |----------|-----------|
-| **STSO** | GA, DE, PSO, SL-PSO, KL-PSO, CSO, CMA-ES, AO, GWO, EO, BO, EEI-BO |
-| **STMO** | NSGA-II, NSGA-III, NSGA-II-SDR, SPEA2, MOEA/D, MOEA/DD, RVEA, IBEA, Two_Arch2, MSEA, CCMO |
-| **MTSO** | MFEA, MFEA-II, EMEA, G-MFEA, MTBO, RAMTEA, SELF, EEI-BO+, MUMBO, LCB-EMT |
-| **MTMO** | MO-MFEA, MO-MFEA-II |
+| **STSO** | GA, DE, PSO, SL-PSO, KL-PSO, CSO, CMA-ES, AO, GWO, EO, BO, EEI-BO, ESAO, SHPSO, SA-COSO, TLRBF, GL-SADE |
+| **STMO** | NSGA-II, NSGA-III, NSGA-II-SDR, SPEA2, MOEA/D, MOEA/DD, FRRMAB, MOEA/D-STM, RVEA, IBEA, Two_Arch2, MSEA, C-TAEA, CCMO, MCEA/D, ParEGO, K-RVEA, DSAEA-PS |
+| **MTSO** | MFEA, MFEA-II, EMEA, EBS, G-MFEA, MTEA-AD, MKTDE, MTEA-SaO, SREMTO, LCB-EMT, MTBO, RAMTEA, SELF, EEI-BO+, MUMBO, BO-LCB-CKT, BO-LCB-BCKT |
+| **MTMO** | MO-MFEA, MO-MFEA-II, MO-EMEA, MO-MTEA-SaO, MTDE-MKTA, MTEA/D-DN, EMT-ET, EMT-PD |
 
 ### Problems
-**132+ benchmark problems** across five categories:
+
+**180+ benchmark problems** across five categories:
 
 | Category | Problem Suites |
 |----------|---------------|
 | **STSO** | Classical Functions (9), CEC10-CSO (18) |
-| **STMO** | ZDT (6), UF (10), DTLZ (9) |
-| **MTSO** | CEC17-MTSO (9), CEC17-MTSO-10D (9), CEC19-MaTSO (6) |
+| **STMO** | ZDT (6), DTLZ (9), WFG (9), UF (10), CF (10) |
+| **MTSO** | CEC17-MTSO (9), CEC17-MTSO-10D (9), CEC19-MaTSO (6), CMT (9), STOP (12) |
 | **MTMO** | CEC17-MTMO (9), CEC19-MTMO (10), CEC19-MaTMO (6), CEC21-MTMO (10), MTMO-Instance (2) |
 | **Real-World** | PEPVM (1), PINN-HPO (12), SOPM (2), SCP (1), MO-SCP (2), PKACP (1) |
 
 ### Methods
-- **Batch Experiments**: Parallel execution framework for large-scale testing
-- **Data Analysis**: Statistical testing (Wilcoxon, Friedman) and visualization tools
+
+- **Batch Experiments**: Parallel execution framework for large-scale experiments
+- **Data Analysis**: Statistical analysis and visualization tools
 - **Performance Metrics**: IGD, HV, Spacing, Spread, FR, CV, and more
 - **Algorithm Components**: Reusable building blocks for rapid development
+
 
 ## 📄 Citation
 
 If you use DDMTOLab in your research, please cite:
+
 ```bibtex
 @software{ddmtolab2025,
   author = {Jiangtao Shen},
@@ -184,6 +200,10 @@ If you use DDMTOLab in your research, please cite:
   url = {https://github.com/JiangtaoShen/DDMTOLab}
 }
 ```
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request. For major changes, please open an issue first to discuss what you would like to change.
 
 ## 📧 Contact
 
@@ -195,8 +215,6 @@ If you use DDMTOLab in your research, please cite:
 ## 📜 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
 
 <p align="center">
   Made with ❤️ by <a href="https://github.com/JiangtaoShen">Jiangtao Shen</a>

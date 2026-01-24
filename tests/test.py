@@ -1,20 +1,11 @@
-import ddmtolab
-from ddmtolab.Algorithms.STMO.NSGAII import NSGAII
-from ddmtolab.Problems.MTMO.mtmo_instance import MTMOInstances, SETTINGS
-from ddmtolab.Methods.data_analysis import DataAnalyzer
-from ddmtolab.Methods.batch_experiment import BatchExperiment
+from ddmtolab.Problems.MTSO.cec17_mtso_10d import CEC17MTSO_10D
+from ddmtolab.Algorithms.STSO.BO import BO
+from ddmtolab.Algorithms.MTSO.MTBO import MTBO
+from ddmtolab.Methods.animation_generator import create_optimization_animation
 
-if __name__ == "__main__":
-    batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
+problem = CEC17MTSO_10D().P1()
+BO(problem, n_initial=20, max_nfes=100, name='BO').optimize()
+MTBO(problem, n_initial=20, max_nfes=100, name='MTBO').optimize()
+animation = create_optimization_animation(max_nfes=100, merge=2, title='BO and MTBO on CEC17MTSO-10D-P1')
 
-    prob = MTMOInstances()
-    batch_exp.add_problem(prob.P1, 'P1')
-    batch_exp.add_problem(prob.P2, 'P2')
-
-    batch_exp.add_algorithm(NSGAII, 'NSGAII', max_nfes=10000)
-
-    batch_exp.run(n_runs=5)
-
-    data_analyzer = DataAnalyzer(settings=SETTINGS, figure_format='png')
-    data_analyzer.run()
 

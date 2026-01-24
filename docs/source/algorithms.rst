@@ -406,4 +406,4 @@ See Also
 --------
 
 * :ref:`api` - Complete API documentation
-* :ref:`quickstart` - Getting started guide
+* :ref:`demos` - Diverse demonstrations
