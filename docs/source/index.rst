@@ -180,7 +180,7 @@ DDMTOLab provides built-in animation tools to visualize the optimization process
 
 The generated animation shows how BO and MTBO algorithms explore the search space on the CEC17-MTSO-10D-P1 problem:
 
-.. image:: ../_images/animation.gif
+.. image:: _static/animation.gif
    :alt: BO and MTBO on CEC17-MTSO-10D-P1 Animation
    :width: 100%
    :align: center
