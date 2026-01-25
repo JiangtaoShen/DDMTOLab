@@ -1,0 +1,418 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STSO.CMAES &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STSO.CMAES</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STSO.CMAES</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">CMA-ES (Covariance Matrix Adaptation Evolution Strategy)</span>
+
+<span class="sd">This module implements the CMA-ES algorithm for single-objective optimization problems.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Hansen, N., &amp; Ostermeier, A. (2001). Completely Derandomized Self-Adaptation \</span>
+<span class="sd">        in Evolution Strategies. Evolutionary Computation, 9(2), 159-195. \</span>
+<span class="sd">        DOI: 10.1162/106365601750190398</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2025.12.12</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="CMAES">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.CMAES.CMAES">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">CMAES</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    CMA-ES for single-objective optimization.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;1-K&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0-C&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="CMAES.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.CMAES.CMAES.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma0</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">use_n</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./TestData&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;CMA_ES_test&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize CMA-ES Algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n : int or List[int], optional</span>
+<span class="sd">            Population size per task (default: None, will use 4+3*log(D))</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 10000)</span>
+<span class="sd">        sigma0 : float, optional</span>
+<span class="sd">            Initial step size (default: 0.3)</span>
+<span class="sd">        use_n : bool, optional</span>
+<span class="sd">            If True, use provided n; if False, use 4+3*log(D) (default: True)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;CMA_ES_test&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma0</span> <span class="o">=</span> <span class="n">sigma0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">use_n</span> <span class="o">=</span> <span class="n">use_n</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="CMAES.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.CMAES.CMAES.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the CMA-ES Algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Initialize parameters for each task</span>
+        <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">dim</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+
+            <span class="c1"># Determine population size</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">use_n</span><span class="p">:</span>
+                <span class="n">lam</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)[</span><span class="n">t</span><span class="p">]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">lam</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">dim</span><span class="p">))</span>
+
+            <span class="n">mu</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">lam</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="c1"># Recombination weights</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>
+            <span class="n">mueff</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="c1"># Step size control parameters</span>
+            <span class="n">cs</span> <span class="o">=</span> <span class="p">(</span><span class="n">mueff</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">dim</span> <span class="o">+</span> <span class="n">mueff</span> <span class="o">+</span> <span class="mi">5</span><span class="p">)</span>
+            <span class="n">damps</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">cs</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="nb">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">((</span><span class="n">mueff</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+            <span class="c1"># Covariance update parameters</span>
+            <span class="n">cc</span> <span class="o">=</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="n">mueff</span> <span class="o">/</span> <span class="n">dim</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="n">dim</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mueff</span> <span class="o">/</span> <span class="n">dim</span><span class="p">)</span>
+            <span class="n">c1</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">((</span><span class="n">dim</span> <span class="o">+</span> <span class="mf">1.3</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">mueff</span><span class="p">)</span>
+            <span class="n">cmu</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">c1</span><span class="p">,</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">mueff</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">mueff</span><span class="p">)</span> <span class="o">/</span> <span class="p">((</span><span class="n">dim</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mueff</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="c1"># Initialize</span>
+            <span class="n">m_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">ps</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">pc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">D</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">C</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">invsqrtC</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">sigma</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma0</span>
+            <span class="n">eigenFE</span> <span class="o">=</span> <span class="mi">0</span>
+            <span class="n">chiN</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="n">dim</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="mi">21</span> <span class="o">*</span> <span class="n">dim</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s1">&#39;dim&#39;</span><span class="p">:</span> <span class="n">dim</span><span class="p">,</span> <span class="s1">&#39;lam&#39;</span><span class="p">:</span> <span class="n">lam</span><span class="p">,</span> <span class="s1">&#39;mu&#39;</span><span class="p">:</span> <span class="n">mu</span><span class="p">,</span> <span class="s1">&#39;weights&#39;</span><span class="p">:</span> <span class="n">weights</span><span class="p">,</span> <span class="s1">&#39;mueff&#39;</span><span class="p">:</span> <span class="n">mueff</span><span class="p">,</span>
+                <span class="s1">&#39;cs&#39;</span><span class="p">:</span> <span class="n">cs</span><span class="p">,</span> <span class="s1">&#39;damps&#39;</span><span class="p">:</span> <span class="n">damps</span><span class="p">,</span> <span class="s1">&#39;cc&#39;</span><span class="p">:</span> <span class="n">cc</span><span class="p">,</span> <span class="s1">&#39;c1&#39;</span><span class="p">:</span> <span class="n">c1</span><span class="p">,</span> <span class="s1">&#39;cmu&#39;</span><span class="p">:</span> <span class="n">cmu</span><span class="p">,</span>
+                <span class="s1">&#39;m_dec&#39;</span><span class="p">:</span> <span class="n">m_dec</span><span class="p">,</span> <span class="s1">&#39;ps&#39;</span><span class="p">:</span> <span class="n">ps</span><span class="p">,</span> <span class="s1">&#39;pc&#39;</span><span class="p">:</span> <span class="n">pc</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">:</span> <span class="n">B</span><span class="p">,</span> <span class="s1">&#39;D&#39;</span><span class="p">:</span> <span class="n">D</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">:</span> <span class="n">C</span><span class="p">,</span>
+                <span class="s1">&#39;invsqrtC&#39;</span><span class="p">:</span> <span class="n">invsqrtC</span><span class="p">,</span> <span class="s1">&#39;sigma&#39;</span><span class="p">:</span> <span class="n">sigma</span><span class="p">,</span> <span class="s1">&#39;eigenFE&#39;</span><span class="p">:</span> <span class="n">eigenFE</span><span class="p">,</span> <span class="s1">&#39;chiN&#39;</span><span class="p">:</span> <span class="n">chiN</span>
+            <span class="p">})</span>
+
+        <span class="c1"># Initialize tracking variables</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">objs</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">cons</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">all_decs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_objs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">p</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+                <span class="c1"># Generate offspring using cmaes_generation</span>
+                <span class="n">sample_decs</span> <span class="o">=</span> <span class="n">cmaes_generation</span><span class="p">(</span>
+                    <span class="n">m_dec</span><span class="o">=</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">],</span>
+                    <span class="n">sigma</span><span class="o">=</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">],</span>
+                    <span class="n">B</span><span class="o">=</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">],</span>
+                    <span class="n">D</span><span class="o">=</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">],</span>
+                    <span class="n">lam</span><span class="o">=</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Evaluate samples</span>
+                <span class="n">sample_objs</span><span class="p">,</span> <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">sample_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+                <span class="c1"># Sort by constraint violation first, then by objective</span>
+                <span class="n">cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">sort_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">sample_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">cvs</span><span class="p">))</span>
+
+                <span class="n">sample_decs</span> <span class="o">=</span> <span class="n">sample_decs</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
+                <span class="n">sample_objs</span> <span class="o">=</span> <span class="n">sample_objs</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
+                <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">sample_cons</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
+
+                <span class="c1"># Update current population</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sample_decs</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sample_objs</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sample_cons</span>
+
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">])</span>
+
+                <span class="c1"># Append to history</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">all_cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="c1"># Update mean decision variables</span>
+                <span class="n">old_dec</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">p</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;weights&#39;</span><span class="p">]</span> <span class="o">@</span> <span class="n">sample_decs</span><span class="p">[:</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;mu&#39;</span><span class="p">]]</span>
+
+                <span class="c1"># Update evolution paths</span>
+                <span class="n">diff</span> <span class="o">=</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">old_dec</span><span class="p">)</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span>
+                <span class="n">p</span><span class="p">[</span><span class="s1">&#39;ps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cs&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;ps&#39;</span><span class="p">]</span> <span class="o">+</span> \
+                          <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;cs&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cs&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;mueff&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;invsqrtC&#39;</span><span class="p">]</span> <span class="o">@</span> <span class="n">diff</span><span class="p">)</span>
+
+                <span class="n">ps_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;ps&#39;</span><span class="p">])</span>
+                <span class="n">hsig</span> <span class="o">=</span> <span class="n">ps_norm</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cs&#39;</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]))</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span>
+                    <span class="s1">&#39;chiN&#39;</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mf">1.4</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+
+                <span class="n">p</span><span class="p">[</span><span class="s1">&#39;pc&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cc&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;pc&#39;</span><span class="p">]</span> <span class="o">+</span> \
+                          <span class="n">hsig</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;cc&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cc&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;mueff&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">diff</span>
+
+                <span class="c1"># Update covariance matrix</span>
+                <span class="n">artmp</span> <span class="o">=</span> <span class="p">(</span><span class="n">sample_decs</span><span class="p">[:</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;mu&#39;</span><span class="p">]]</span> <span class="o">-</span> <span class="n">old_dec</span><span class="p">)</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">hsig</span><span class="p">)</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cc&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="mi">2</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cc&#39;</span><span class="p">])</span>
+                <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;c1&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cmu&#39;</span><span class="p">])</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">]</span> <span class="o">+</span> \
+                         <span class="n">p</span><span class="p">[</span><span class="s1">&#39;c1&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;pc&#39;</span><span class="p">],</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;pc&#39;</span><span class="p">])</span> <span class="o">+</span> <span class="n">delta</span> <span class="o">*</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">])</span> <span class="o">+</span> \
+                         <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cmu&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">artmp</span><span class="o">.</span><span class="n">T</span> <span class="o">@</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;weights&#39;</span><span class="p">])</span> <span class="o">@</span> <span class="n">artmp</span><span class="p">)</span>
+
+                <span class="c1"># Update step size</span>
+                <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;cs&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;damps&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">ps_norm</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;chiN&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+                <span class="c1"># Update eigendecomposition periodically</span>
+                <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;eigenFE&#39;</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;c1&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;cmu&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">]</span> <span class="o">/</span> <span class="mi">10</span><span class="p">:</span>
+                    <span class="n">p</span><span class="p">[</span><span class="s1">&#39;eigenFE&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">triu</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">],</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+
+                    <span class="n">eigvals</span><span class="p">,</span> <span class="n">eigvecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">eigh</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">])</span>
+
+                    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">])</span>
+                        <span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">])</span>
+                        <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">])</span>
+                        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Warning: Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2"> - Covariance matrix not positive definite, resetting to identity.&quot;</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">eigvecs</span>
+                        <span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">eigvals</span><span class="p">)</span>
+
+                    <span class="n">p</span><span class="p">[</span><span class="s1">&#39;invsqrtC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span> <span class="o">@</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">])</span> <span class="o">@</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">cmaes_params</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">p</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">cmaes_params</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s1">&#39;m_dec&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;sigma&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">],</span>
+                <span class="s1">&#39;C&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;C&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;B&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;D&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;ps&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;ps&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;pc&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;pc&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+                <span class="s1">&#39;mueff&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;mueff&#39;</span><span class="p">],</span>
+                <span class="s1">&#39;weights&#39;</span><span class="p">:</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;weights&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+            <span class="p">})</span>
+
+        <span class="c1"># Save results</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
+                                     <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
+                                     <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span><span class="p">,</span> <span class="n">cmaes_params</span></div>
+</div>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">cmaes_generation</span><span class="p">(</span><span class="n">m_dec</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">sigma</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">B</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">D</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">lam</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generate offspring population using CMA-ES sampling strategy.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    m_dec : np.ndarray</span>
+<span class="sd">        Mean decision vector, shape (d,)</span>
+<span class="sd">    sigma : float</span>
+<span class="sd">        Step size (global scaling factor)</span>
+<span class="sd">    B : np.ndarray</span>
+<span class="sd">        Eigenvector matrix from covariance matrix decomposition, shape (d, d)</span>
+<span class="sd">    D : np.ndarray</span>
+<span class="sd">        Square root of eigenvalues (standard deviations), shape (d,)</span>
+<span class="sd">    lam : int, optional</span>
+<span class="sd">        Number of offspring to generate (default: None)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    offdecs : np.ndarray</span>
+<span class="sd">        Offspring decision variables, shape (lam, d)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">m_dec</span><span class="p">)</span>
+
+    <span class="c1"># If lam is None, generate a default number</span>
+    <span class="k">if</span> <span class="n">lam</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">lam</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">d</span><span class="p">))</span>
+
+    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">lam</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lam</span><span class="p">):</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+        <span class="n">offdec</span> <span class="o">=</span> <span class="n">m_dec</span> <span class="o">+</span> <span class="n">sigma</span> <span class="o">*</span> <span class="p">(</span><span class="n">B</span> <span class="o">@</span> <span class="p">(</span><span class="n">D</span> <span class="o">*</span> <span class="n">z</span><span class="p">))</span>
+        <span class="n">offdec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offdec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">offdecs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">offdec</span>
+
+    <span class="k">return</span> <span class="n">offdecs</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

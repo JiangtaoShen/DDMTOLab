@@ -1,0 +1,675 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Methods.Algo_Methods.bo_utils &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Methods.Algo_Methods.bo_utils</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Methods.Algo_Methods.bo_utils</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">gpytorch</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.models</span><span class="w"> </span><span class="kn">import</span> <span class="n">SingleTaskGP</span><span class="p">,</span> <span class="n">MultiTaskGP</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.fit</span><span class="w"> </span><span class="kn">import</span> <span class="n">fit_gpytorch_mll</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.acquisition</span><span class="w"> </span><span class="kn">import</span> <span class="n">LogExpectedImprovement</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.optim</span><span class="w"> </span><span class="kn">import</span> <span class="n">optimize_acqf</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.models.transforms.outcome</span><span class="w"> </span><span class="kn">import</span> <span class="n">Standardize</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.acquisition.objective</span><span class="w"> </span><span class="kn">import</span> <span class="n">ScalarizedPosteriorTransform</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gpytorch.mlls</span><span class="w"> </span><span class="kn">import</span> <span class="n">ExactMarginalLogLikelihood</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">botorch.acquisition</span><span class="w"> </span><span class="kn">import</span> <span class="n">UpperConfidenceBound</span>
+
+
+
+<div class="viewcode-block" id="gp_build">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.gp_build">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">gp_build</span><span class="p">(</span>
+    <span class="n">decs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">objs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">SingleTaskGP</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build and fit a Single-Task Gaussian Process model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    decs : np.ndarray</span>
+<span class="sd">        Historical decision variables, shape: (n_samples, dim)</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Historical objective function values, shape: (n_samples,) or (n_samples, 1)</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    gp : SingleTaskGP</span>
+<span class="sd">        Fitted Gaussian Process model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Prepare training data</span>
+    <span class="n">train_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">train_Y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="o">-</span><span class="n">objs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">train_Y</span> <span class="o">=</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Build and fit Gaussian Process model</span>
+    <span class="n">gp</span> <span class="o">=</span> <span class="n">SingleTaskGP</span><span class="p">(</span>
+        <span class="n">train_X</span><span class="o">=</span><span class="n">train_X</span><span class="p">,</span>
+        <span class="n">train_Y</span><span class="o">=</span><span class="n">train_Y</span><span class="p">,</span>
+        <span class="n">outcome_transform</span><span class="o">=</span><span class="n">Standardize</span><span class="p">(</span><span class="n">m</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">)</span>
+    <span class="n">mll</span> <span class="o">=</span> <span class="n">ExactMarginalLogLikelihood</span><span class="p">(</span><span class="n">gp</span><span class="o">.</span><span class="n">likelihood</span><span class="p">,</span> <span class="n">gp</span><span class="p">)</span>
+    <span class="n">fit_gpytorch_mll</span><span class="p">(</span><span class="n">mll</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">gp</span></div>
+
+
+
+<div class="viewcode-block" id="gp_predict">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.gp_predict">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">gp_predict</span><span class="p">(</span>
+    <span class="n">gp</span><span class="p">:</span> <span class="n">SingleTaskGP</span><span class="p">,</span>
+    <span class="n">test_X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Predict objectives and uncertainties using a trained Gaussian Process model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    gp : SingleTaskGP</span>
+<span class="sd">        Trained Gaussian Process model</span>
+<span class="sd">    test_X : np.ndarray</span>
+<span class="sd">        Test decision variables, shape: (n_candidates, dim)</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pred_objs : np.ndarray</span>
+<span class="sd">        Predicted objective values, shape: (n_candidates, 1)</span>
+<span class="sd">    pred_std : np.ndarray</span>
+<span class="sd">        Predicted standard deviations, shape: (n_candidates, 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert to tensor</span>
+    <span class="n">test_X_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">test_X</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+
+    <span class="c1"># Predict using the trained model</span>
+    <span class="n">gp</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">posterior</span> <span class="o">=</span> <span class="n">gp</span><span class="o">.</span><span class="n">posterior</span><span class="p">(</span><span class="n">test_X_tensor</span><span class="p">)</span>
+        <span class="n">pred_mean</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">mean</span>
+        <span class="n">pred_var</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">variance</span>
+
+    <span class="c1"># Convert to numpy and negate for minimization</span>
+    <span class="n">pred_objs</span> <span class="o">=</span> <span class="o">-</span><span class="n">pred_mean</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+    <span class="n">pred_std</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">pred_var</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">pred_objs</span><span class="p">,</span> <span class="n">pred_std</span></div>
+
+
+
+<div class="viewcode-block" id="mo_gp_build">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mo_gp_build">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mo_gp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build Gaussian Process models for each objective in multi-objective optimization.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    decs : np.ndarray</span>
+<span class="sd">        Decision variables, shape (N, D) where N is the number of samples</span>
+<span class="sd">        and D is the dimension of decision space.</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Objective values, shape (N, M) where M is the number of objectives.</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for GP models (default: torch.float).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    models : list</span>
+<span class="sd">        List of trained GP models, one for each objective.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">models</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">gp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">[:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">data_type</span><span class="p">)</span>
+        <span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">models</span></div>
+
+
+
+<div class="viewcode-block" id="mo_gp_predict">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mo_gp_predict">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mo_gp_predict</span><span class="p">(</span><span class="n">models</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float</span><span class="p">,</span> <span class="n">mse</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Predict objectives using trained GP models for multi-objective optimization.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    models : list</span>
+<span class="sd">        List of trained GP models (one per objective), as returned by mo_gp_build.</span>
+<span class="sd">    x : np.ndarray</span>
+<span class="sd">        Decision variables to predict, shape (N, D) where N is the number of</span>
+<span class="sd">        samples and D is the dimension of decision space.</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for GP prediction (default: torch.float).</span>
+<span class="sd">    mse : bool, optional</span>
+<span class="sd">        If True, also return the Mean Squared Error (variance) of predictions.</span>
+<span class="sd">        If False, only return predicted objective values (default: False).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pred_objs : np.ndarray</span>
+<span class="sd">        Predicted objective values, shape (N, M) where M is the number of objectives.</span>
+<span class="sd">    pred_mse : np.ndarray, optional</span>
+<span class="sd">        Predicted MSE (variance) for each objective, shape (N, M).</span>
+<span class="sd">        Only returned if mse=True.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">)</span>
+    <span class="n">pred_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">mse</span><span class="p">:</span>
+        <span class="n">pred_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+            <span class="n">pred</span><span class="p">,</span> <span class="n">std</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">x</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+            <span class="n">pred_objs</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+            <span class="n">pred_mse</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">std</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">pred_objs</span><span class="p">,</span> <span class="n">pred_mse</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+            <span class="n">pred</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">x</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+            <span class="n">pred_objs</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">pred_objs</span></div>
+
+
+
+<div class="viewcode-block" id="bo_next_point">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.bo_next_point">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">bo_next_point</span><span class="p">(</span>
+    <span class="n">dim_i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">decs_i</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">objs_i</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the next sampling point using Bayesian Optimization</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    dim_i : int</span>
+<span class="sd">        Dimension of decision variables</span>
+<span class="sd">    decs_i : np.ndarray</span>
+<span class="sd">        Historical decision variables, shape: (n_samples, dim_i)</span>
+<span class="sd">    objs_i : np.ndarray</span>
+<span class="sd">        Historical objective function values, shape: (n_samples,) or (n_samples, 1)</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type, default is torch.float</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    candidate_np : np.ndarray</span>
+<span class="sd">        Next sampling point, shape: (1, dim_i)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Define search bounds [0, 1]^dim_i</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">),</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Prepare training data for Gaussian Process</span>
+    <span class="n">train_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">decs_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">train_Y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="o">-</span><span class="n">objs_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">train_Y</span> <span class="o">=</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Build and fit Gaussian Process model</span>
+    <span class="n">gp</span> <span class="o">=</span> <span class="n">SingleTaskGP</span><span class="p">(</span>
+        <span class="n">train_X</span><span class="o">=</span><span class="n">train_X</span><span class="p">,</span>
+        <span class="n">train_Y</span><span class="o">=</span><span class="n">train_Y</span><span class="p">,</span>
+        <span class="c1"># outcome_transform=Standardize(m=1)</span>
+    <span class="p">)</span>
+    <span class="n">mll</span> <span class="o">=</span> <span class="n">ExactMarginalLogLikelihood</span><span class="p">(</span><span class="n">gp</span><span class="o">.</span><span class="n">likelihood</span><span class="p">,</span> <span class="n">gp</span><span class="p">)</span>
+    <span class="n">fit_gpytorch_mll</span><span class="p">(</span><span class="n">mll</span><span class="p">)</span>
+
+    <span class="c1"># Optimize Log Expected Improvement acquisition function</span>
+    <span class="n">best_f</span> <span class="o">=</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+    <span class="n">logEI</span> <span class="o">=</span> <span class="n">LogExpectedImprovement</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">gp</span><span class="p">,</span> <span class="n">best_f</span><span class="o">=</span><span class="n">best_f</span><span class="p">)</span>
+    <span class="n">candidate</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">optimize_acqf</span><span class="p">(</span>
+        <span class="n">logEI</span><span class="p">,</span>
+        <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span>
+        <span class="n">q</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_restarts</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">raw_samples</span><span class="o">=</span><span class="mi">20</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Convert to numpy array and return</span>
+    <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">candidate_np</span></div>
+
+
+
+<div class="viewcode-block" id="bo_next_point_lcb">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.bo_next_point_lcb">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">bo_next_point_lcb</span><span class="p">(</span>
+    <span class="n">dim_i</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">decs_i</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">objs_i</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span><span class="p">,</span>
+    <span class="n">kappa</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">2.0</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the next sampling point using Bayesian Optimization with LCB acquisition</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    dim_i : int</span>
+<span class="sd">        Dimension of decision variables</span>
+<span class="sd">    decs_i : np.ndarray</span>
+<span class="sd">        Historical decision variables, shape: (n_samples, dim_i)</span>
+<span class="sd">    objs_i : np.ndarray</span>
+<span class="sd">        Historical objective function values, shape: (n_samples,) or (n_samples, 1)</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type, default is torch.float</span>
+<span class="sd">    kappa : float, optional</span>
+<span class="sd">        Exploration weight for LCB, default is 2.0</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    candidate_np : np.ndarray</span>
+<span class="sd">        Next sampling point, shape: (1, dim_i)</span>
+<span class="sd">    gp : SingleTaskGP</span>
+<span class="sd">        Fitted Gaussian Process model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># Define search bounds [0, 1]^dim_i</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">),</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Prepare training data for Gaussian Process</span>
+    <span class="n">train_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">decs_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">train_Y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="o">-</span><span class="n">objs_i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>  <span class="c1"># 取负以最大化</span>
+    <span class="k">if</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">train_Y</span> <span class="o">=</span> <span class="n">train_Y</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Build and fit Gaussian Process model</span>
+    <span class="n">gp</span> <span class="o">=</span> <span class="n">SingleTaskGP</span><span class="p">(</span><span class="n">train_X</span><span class="o">=</span><span class="n">train_X</span><span class="p">,</span> <span class="n">train_Y</span><span class="o">=</span><span class="n">train_Y</span><span class="p">)</span>
+    <span class="n">mll</span> <span class="o">=</span> <span class="n">ExactMarginalLogLikelihood</span><span class="p">(</span><span class="n">gp</span><span class="o">.</span><span class="n">likelihood</span><span class="p">,</span> <span class="n">gp</span><span class="p">)</span>
+    <span class="n">fit_gpytorch_mll</span><span class="p">(</span><span class="n">mll</span><span class="p">)</span>
+
+    <span class="c1"># Optimize Upper Confidence Bound (UCB) acquisition function</span>
+    <span class="n">UCB</span> <span class="o">=</span> <span class="n">UpperConfidenceBound</span><span class="p">(</span><span class="n">model</span><span class="o">=</span><span class="n">gp</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="n">kappa</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>  <span class="c1"># beta = kappa^2</span>
+    <span class="n">candidate</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">optimize_acqf</span><span class="p">(</span>
+        <span class="n">UCB</span><span class="p">,</span>
+        <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span>
+        <span class="n">q</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_restarts</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">raw_samples</span><span class="o">=</span><span class="mi">20</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Convert to numpy array and return</span>
+    <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">gp</span></div>
+
+
+
+<div class="viewcode-block" id="mtgp_build">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mtgp_build">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mtgp_build</span><span class="p">(</span>
+        <span class="n">decs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">objs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+        <span class="n">dims</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+        <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MultiTaskGP</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build a Multi-Task Gaussian Process model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    decs : list[np.ndarray]</span>
+<span class="sd">        List of decision variable matrices for each task</span>
+<span class="sd">    objs : list[np.ndarray]</span>
+<span class="sd">        List of objective value matrices for each task</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        List of dimensionalities for each task</span>
+<span class="sd">    std_params : list[dict] | None</span>
+<span class="sd">        Standardization parameters for each task. If None, objectives are not standardized.</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type for tensors</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Fitted Multi-Task GP model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">nt</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">decs</span><span class="p">)</span>
+    <span class="n">max_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+    <span class="n">train_X_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">train_Y_list</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">train_i_list</span> <span class="o">=</span> <span class="p">[]</span>
+
+    <span class="n">task_range</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+        <span class="n">task_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="c1"># Use negative objectives for maximization</span>
+        <span class="n">task_obj</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="o">-</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="n">task_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">task_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span>
+            <span class="n">task_range</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Pad with zeros if current task has fewer dimensions</span>
+        <span class="k">if</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_dim</span><span class="p">:</span>
+            <span class="n">padding</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">task_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">max_dim</span> <span class="o">-</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+            <span class="n">task_data</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">task_data</span><span class="p">,</span> <span class="n">padding</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">train_X_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_data</span><span class="p">)</span>
+        <span class="n">train_Y_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_obj</span><span class="p">)</span>
+        <span class="n">train_i_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_idx</span><span class="p">)</span>
+
+    <span class="n">train_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">train_X_list</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">train_Y</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">train_Y_list</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">train_i</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">(</span><span class="n">train_i_list</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">train_X_with_task</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">train_X</span><span class="p">,</span> <span class="n">train_i</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">mtgp</span> <span class="o">=</span> <span class="n">MultiTaskGP</span><span class="p">(</span>
+        <span class="n">train_X</span><span class="o">=</span><span class="n">train_X_with_task</span><span class="p">,</span>
+        <span class="n">train_Y</span><span class="o">=</span><span class="n">train_Y</span><span class="p">,</span>
+        <span class="n">task_feature</span><span class="o">=-</span><span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span>
+
+    <span class="n">mll</span> <span class="o">=</span> <span class="n">ExactMarginalLogLikelihood</span><span class="p">(</span><span class="n">mtgp</span><span class="o">.</span><span class="n">likelihood</span><span class="p">,</span> <span class="n">mtgp</span><span class="p">)</span>
+    <span class="n">fit_gpytorch_mll</span><span class="p">(</span><span class="n">mll</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">mtgp</span></div>
+
+
+
+<div class="viewcode-block" id="mtgp_predict">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mtgp_predict">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mtgp_predict</span><span class="p">(</span>
+    <span class="n">mtgp</span><span class="p">:</span> <span class="n">MultiTaskGP</span><span class="p">,</span>
+    <span class="n">off_decs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">dims</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">nt</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">obj_min_vals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">obj_max_vals</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Use Multi-Task GP to predict objectives and uncertainties for candidate solutions.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained Multi-Task Gaussian Process model</span>
+<span class="sd">    off_decs : np.ndarray</span>
+<span class="sd">        Candidate decision variables, shape (n_candidates, dim)</span>
+<span class="sd">    task_id : int</span>
+<span class="sd">        Task index for prediction</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        List of dimensionalities for each task</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Total number of tasks</span>
+<span class="sd">    obj_min_vals : list[float] | None</span>
+<span class="sd">        Minimum objective values for each task (for denormalization)</span>
+<span class="sd">    obj_max_vals : list[float] | None</span>
+<span class="sd">        Maximum objective values for each task (for denormalization)</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pred_objs : np.ndarray</span>
+<span class="sd">        Predicted objective values, shape (n_candidates, 1)</span>
+<span class="sd">    pred_std : np.ndarray</span>
+<span class="sd">        Predicted standard deviations, shape (n_candidates, 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Convert to tensor and pad dimensions if necessary</span>
+    <span class="n">test_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">off_decs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">max_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">dims</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_dim</span><span class="p">:</span>
+        <span class="n">padding</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">test_X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">max_dim</span> <span class="o">-</span> <span class="n">dims</span><span class="p">[</span><span class="n">task_id</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+        <span class="n">test_X</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">test_X</span><span class="p">,</span> <span class="n">padding</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Append task index as the last feature</span>
+    <span class="n">task_range</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+    <span class="n">task_idx</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">test_X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span> <span class="n">task_range</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">(),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">test_X_with_task</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">test_X</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Predict using the trained model</span>
+    <span class="n">mtgp</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">posterior</span> <span class="o">=</span> <span class="n">mtgp</span><span class="o">.</span><span class="n">posterior</span><span class="p">(</span><span class="n">test_X_with_task</span><span class="p">)</span>
+        <span class="n">pred_mean</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">mean</span>
+        <span class="n">pred_var</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">variance</span>
+
+    <span class="c1"># Convert to numpy and negate for minimization</span>
+    <span class="n">pred_objs</span> <span class="o">=</span> <span class="o">-</span><span class="n">pred_mean</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+    <span class="n">pred_std</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">pred_var</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Denormalize if min/max values are provided</span>
+    <span class="k">if</span> <span class="n">obj_min_vals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">obj_max_vals</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">min_val</span> <span class="o">=</span> <span class="n">obj_min_vals</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
+        <span class="n">max_val</span> <span class="o">=</span> <span class="n">obj_max_vals</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
+        <span class="n">range_val</span> <span class="o">=</span> <span class="n">max_val</span> <span class="o">-</span> <span class="n">min_val</span>
+        <span class="k">if</span> <span class="n">range_val</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">range_val</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">pred_objs</span> <span class="o">=</span> <span class="n">pred_objs</span> <span class="o">*</span> <span class="n">range_val</span> <span class="o">+</span> <span class="n">min_val</span>
+        <span class="n">pred_std</span> <span class="o">=</span> <span class="n">pred_std</span> <span class="o">*</span> <span class="n">range_val</span>
+
+    <span class="k">return</span> <span class="n">pred_objs</span><span class="p">,</span> <span class="n">pred_std</span></div>
+
+
+
+<div class="viewcode-block" id="mtgp_task_corr">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mtgp_task_corr">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mtgp_task_corr</span><span class="p">(</span>
+    <span class="n">mtgp</span><span class="p">:</span> <span class="n">MultiTaskGP</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Extract task correlation matrix from multi-task Gaussian process model.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained Multi-Task Gaussian Process model</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    task_corr : np.ndarray</span>
+<span class="sd">        Task correlation matrix (normalized covariance matrix)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Set model to evaluation mode</span>
+    <span class="n">mtgp</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+
+    <span class="c1"># Find the IndexKernel from the covariance module</span>
+    <span class="n">index_kernel</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="k">for</span> <span class="n">kernel</span> <span class="ow">in</span> <span class="n">mtgp</span><span class="o">.</span><span class="n">covar_module</span><span class="o">.</span><span class="n">kernels</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">kernel</span><span class="p">,</span> <span class="n">gpytorch</span><span class="o">.</span><span class="n">kernels</span><span class="o">.</span><span class="n">IndexKernel</span><span class="p">):</span>
+            <span class="n">index_kernel</span> <span class="o">=</span> <span class="n">kernel</span>
+            <span class="k">break</span>
+
+    <span class="c1"># Extract task correlations without gradient computation</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">covar_factor</span> <span class="o">=</span> <span class="n">index_kernel</span><span class="o">.</span><span class="n">covar_factor</span>
+        <span class="n">task_covar</span> <span class="o">=</span> <span class="p">(</span><span class="n">covar_factor</span> <span class="o">@</span> <span class="n">covar_factor</span><span class="o">.</span><span class="n">T</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Normalize covariance matrix to get correlation matrix</span>
+    <span class="n">diag</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="n">task_covar</span><span class="p">))</span>
+    <span class="n">task_corr</span> <span class="o">=</span> <span class="n">task_covar</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">outer</span><span class="p">(</span><span class="n">diag</span><span class="p">,</span> <span class="n">diag</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">task_corr</span></div>
+
+
+
+<div class="viewcode-block" id="mtbo_next_point">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.bo_utils.mtbo_next_point">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">mtbo_next_point</span><span class="p">(</span>
+    <span class="n">mtgp</span><span class="p">:</span> <span class="n">MultiTaskGP</span><span class="p">,</span>
+    <span class="n">task_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">objs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+    <span class="n">dims</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+    <span class="n">nt</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get the next sampling point using Multi-Task Bayesian Optimization.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained Multi-Task Gaussian Process model</span>
+<span class="sd">    task_id : int</span>
+<span class="sd">        Task index for which to find the next point</span>
+<span class="sd">    objs : list[np.ndarray]</span>
+<span class="sd">        List of objective value matrices for each task</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        List of dimensionalities for each task</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Total number of tasks</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Data type for tensors (default: torch.float)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    candidate_np : np.ndarray</span>
+<span class="sd">        Next sampling point, shape: (1, dims[task_id])</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Define search bounds [0, 1]^max_dim with fixed task index</span>
+    <span class="n">max_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+    <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">max_dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">max_dim</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">task_range</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+    <span class="n">lower_bound</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">task_range</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="n">upper_bound</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">task_range</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="n">bounds</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">lower_bound</span><span class="p">,</span> <span class="n">upper_bound</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="c1"># Compute the best observed value for the current task</span>
+    <span class="n">best_f</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="o">-</span><span class="n">objs</span><span class="p">[</span><span class="n">task_id</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span><span class="o">.</span><span class="n">squeeze</span><span class="p">()</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+
+    <span class="c1"># Build Log Expected Improvement acquisition function</span>
+    <span class="n">posterior_transform</span> <span class="o">=</span> <span class="n">ScalarizedPosteriorTransform</span><span class="p">(</span><span class="n">weights</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">([</span><span class="mf">1.0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">))</span>
+    <span class="n">logEI</span> <span class="o">=</span> <span class="n">LogExpectedImprovement</span><span class="p">(</span>
+        <span class="n">model</span><span class="o">=</span><span class="n">mtgp</span><span class="p">,</span>
+        <span class="n">best_f</span><span class="o">=</span><span class="n">best_f</span><span class="p">,</span>
+        <span class="n">posterior_transform</span><span class="o">=</span><span class="n">posterior_transform</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Optimize acquisition function and extract decision variables</span>
+    <span class="n">candidate</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">optimize_acqf</span><span class="p">(</span>
+        <span class="n">logEI</span><span class="p">,</span>
+        <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span>
+        <span class="n">q</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+        <span class="n">num_restarts</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">raw_samples</span><span class="o">=</span><span class="mi">20</span>
+    <span class="p">)</span>
+    <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">task_id</span><span class="p">]]</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">candidate_np</span></div>
+
+
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

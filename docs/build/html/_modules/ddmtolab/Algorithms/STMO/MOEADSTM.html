@@ -1,0 +1,525 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STMO.MOEADSTM &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STMO.MOEADSTM</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STMO.MOEADSTM</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">MOEA/D with Stable Matching (MOEA/D-STM)</span>
+
+<span class="sd">This module implements MOEA/D-STM for multi-objective optimization problems.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Li, Ke, et al. &quot;Stable matching-based selection in evolutionary multiobjective \</span>
+<span class="sd">        optimization.&quot; IEEE Transactions on Evolutionary Computation 18.6 (2014): 909-923.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2025.01.01</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.uniform_point</span><span class="w"> </span><span class="kn">import</span> <span class="n">uniform_point</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="MOEADSTM">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.MOEADSTM.MOEADSTM">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MOEADSTM</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    MOEA/D with Stable Matching for multi-objective optimization.</span>
+
+<span class="sd">    This algorithm uses a stable matching model to select solutions for</span>
+<span class="sd">    subproblems, ensuring a stable assignment between solutions and weight vectors.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;1-K&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;2-M&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MOEADSTM.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.MOEADSTM.MOEADSTM.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./TestData&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MOEADSTM_test&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize MOEA/D-STM algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n : int or List[int], optional</span>
+<span class="sd">            Population size per task (default: 100)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 10000)</span>
+<span class="sd">        T : int or List[int], optional</span>
+<span class="sd">            Size of neighborhood (default: ceil(n/10))</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;MOEADSTM_test&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">T</span> <span class="o">=</span> <span class="n">T</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="MOEADSTM.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.MOEADSTM.MOEADSTM.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the MOEA/D-STM algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, constraints, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">no</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span>
+        <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Set neighborhood size for each task</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">T</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">T_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n</span> <span class="o">/</span> <span class="mi">10</span><span class="p">))</span> <span class="k">for</span> <span class="n">n</span> <span class="ow">in</span> <span class="n">n_per_task</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">T_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">T</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Generate uniformly distributed weight vectors for each task</span>
+        <span class="n">Weight</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">B</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Neighborhood for each task</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">Weight_i</span><span class="p">,</span> <span class="n">n</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">no</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">Weight</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Weight_i</span><span class="p">)</span>
+            <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">n</span>
+
+            <span class="c1"># Detect the neighbors of each solution</span>
+            <span class="n">distance</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">Weight_i</span><span class="p">,</span> <span class="n">Weight_i</span><span class="p">)</span>
+            <span class="n">B_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">T_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="n">B</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">B_i</span><span class="p">)</span>
+
+        <span class="c1"># Initialize population and evaluate for each task</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">)</span>
+
+        <span class="c1"># Initialize algorithm-specific variables for each task</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Ideal point</span>
+        <span class="n">Pi</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Utility for each subproblem</span>
+        <span class="n">oldObj</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Old Tchebycheff function value</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">z_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">z</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">z_i</span><span class="p">)</span>
+
+            <span class="n">Pi_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">Pi</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Pi_i</span><span class="p">)</span>
+
+            <span class="c1"># Calculate old Tchebycheff values</span>
+            <span class="n">oldObj_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">z_i</span><span class="p">)</span> <span class="o">/</span> <span class="n">Weight</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">oldObj</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">oldObj_i</span><span class="p">)</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="c1"># Skip tasks that have exhausted their evaluation budget</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="c1"># Perform 5 sub-generations</span>
+                <span class="k">for</span> <span class="n">subgen</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">5</span><span class="p">):</span>
+                    <span class="c1"># Choose I: boundary solutions + tournament selection</span>
+                    <span class="c1"># Boundary solutions are those with weight close to axes</span>
+                    <span class="n">boundary</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">Weight</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mf">1e-3</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">==</span> <span class="n">no</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">n_select</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="mi">5</span><span class="p">))</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">boundary</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="n">n_select</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># Tournament selection based on negative utility</span>
+                        <span class="n">tournament_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_tournament_selection</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="n">n_select</span><span class="p">,</span> <span class="o">-</span><span class="n">Pi</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                        <span class="n">I</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">boundary</span><span class="p">,</span> <span class="n">tournament_indices</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">I</span> <span class="o">=</span> <span class="n">boundary</span>
+
+                    <span class="c1"># Generate offspring for each solution in I</span>
+                    <span class="n">P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">I</span><span class="p">),</span> <span class="mi">3</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+                    <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">sol_idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">I</span><span class="p">):</span>
+                        <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                            <span class="k">break</span>
+
+                        <span class="c1"># Choose the parents</span>
+                        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.9</span><span class="p">:</span>
+                            <span class="c1"># From neighborhood</span>
+                            <span class="n">P</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">B</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sol_idx</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">T_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])[:</span><span class="mi">3</span><span class="p">]]</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="c1"># From entire population</span>
+                            <span class="n">P</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])[:</span><span class="mi">3</span><span class="p">]</span>
+
+                    <span class="c1"># Generate offspring using DE</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">I</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                        <span class="c1"># Prepare parent arrays</span>
+                        <span class="n">parent1</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">P</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]]</span>
+                        <span class="n">parent2</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">P</span><span class="p">[:,</span> <span class="mi">1</span><span class="p">]]</span>
+                        <span class="n">parent3</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">P</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]]</span>
+
+                        <span class="c1"># DE operator</span>
+                        <span class="n">off_decs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_operator_de</span><span class="p">(</span><span class="n">parent1</span><span class="p">,</span> <span class="n">parent2</span><span class="p">,</span> <span class="n">parent3</span><span class="p">)</span>
+
+                        <span class="c1"># Evaluate offspring</span>
+                        <span class="n">off_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+                        <span class="c1"># Update ideal point</span>
+                        <span class="n">z</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">z</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">off_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+
+                        <span class="c1"># Combine population and offspring</span>
+                        <span class="n">combined_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">])</span>
+                        <span class="n">combined_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">])</span>
+
+                        <span class="c1"># STM selection</span>
+                        <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_stm_selection</span><span class="p">(</span>
+                            <span class="n">combined_objs</span><span class="p">,</span> <span class="n">combined_decs</span><span class="p">,</span> <span class="n">Weight</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">z</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                            <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                        <span class="p">)</span>
+
+                        <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">)</span>
+                        <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">))</span>
+
+                <span class="c1"># Update Pi every 10 generations</span>
+                <span class="n">current_gen</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+                <span class="k">if</span> <span class="n">current_gen</span> <span class="o">%</span> <span class="mi">10</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Calculate new Tchebycheff values</span>
+                    <span class="n">newObj_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">z</span><span class="p">[</span><span class="n">i</span><span class="p">])</span> <span class="o">/</span> <span class="n">Weight</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">DELTA</span> <span class="o">=</span> <span class="n">oldObj</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">newObj_i</span>
+
+                    <span class="c1"># Update utility</span>
+                    <span class="n">Temp</span> <span class="o">=</span> <span class="n">DELTA</span> <span class="o">&lt;</span> <span class="mf">0.001</span>
+                    <span class="n">Pi</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="o">~</span><span class="n">Temp</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+                    <span class="n">Pi</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">Temp</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.95</span> <span class="o">+</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">DELTA</span><span class="p">[</span><span class="n">Temp</span><span class="p">]</span> <span class="o">/</span> <span class="mf">0.001</span><span class="p">)</span> <span class="o">*</span> <span class="n">Pi</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">Temp</span><span class="p">]</span>
+
+                    <span class="n">oldObj</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">newObj_i</span>
+
+                <span class="c1"># Update history</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="c1"># Save results</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+            <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+            <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_tournament_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tournament_size</span><span class="p">,</span> <span class="n">n_select</span><span class="p">,</span> <span class="n">fitness</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Tournament selection based on fitness values.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tournament_size : int</span>
+<span class="sd">            Number of individuals in each tournament</span>
+<span class="sd">        n_select : int</span>
+<span class="sd">            Number of individuals to select</span>
+<span class="sd">        fitness : ndarray</span>
+<span class="sd">            Fitness values (higher is better after negation)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray</span>
+<span class="sd">            Selected indices</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pop_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_select</span><span class="p">):</span>
+            <span class="c1"># Randomly select tournament_size individuals</span>
+            <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">tournament_size</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="c1"># Select the best one</span>
+            <span class="n">winner</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">candidates</span><span class="p">])]</span>
+            <span class="n">selected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">winner</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_operator_de</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parent1</span><span class="p">,</span> <span class="n">parent2</span><span class="p">,</span> <span class="n">parent3</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Differential Evolution operator with polynomial mutation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        parent1 : ndarray</span>
+<span class="sd">            First parent (N x D)</span>
+<span class="sd">        parent2 : ndarray</span>
+<span class="sd">            Second parent (N x D)</span>
+<span class="sd">        parent3 : ndarray</span>
+<span class="sd">            Third parent (N x D)</span>
+<span class="sd">        CR : float, optional</span>
+<span class="sd">            Crossover rate (default: 1.0)</span>
+<span class="sd">        F : float, optional</span>
+<span class="sd">            Scaling factor (default: 0.5)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray</span>
+<span class="sd">            Offspring solutions</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">N</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">parent1</span><span class="o">.</span><span class="n">shape</span>
+
+        <span class="c1"># DE mutation: V = X1 + F * (X2 - X3)</span>
+        <span class="n">V</span> <span class="o">=</span> <span class="n">parent1</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">parent2</span> <span class="o">-</span> <span class="n">parent3</span><span class="p">)</span>
+
+        <span class="c1"># Crossover</span>
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">parent1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">CR</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">V</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="c1"># Boundary handling</span>
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Polynomial mutation</span>
+        <span class="n">proM</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">disM</span> <span class="o">=</span> <span class="mi">20</span>
+        <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">proM</span> <span class="o">/</span> <span class="n">D</span>
+        <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+
+        <span class="c1"># Lower half</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">offspring</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="n">delta</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+
+        <span class="c1"># Upper half</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mu</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">mu</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">offspring</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="n">delta</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+
+        <span class="c1"># Final boundary handling</span>
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">offspring</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_stm_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">z</span><span class="p">,</span> <span class="n">znad</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Stable Matching based selection.</span>
+
+<span class="sd">        This implements the stable matching model where solutions are matched</span>
+<span class="sd">        to subproblems in a stable manner.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objs : ndarray</span>
+<span class="sd">            Objective values of all solutions (N x M)</span>
+<span class="sd">        decs : ndarray</span>
+<span class="sd">            Decision variables of all solutions (N x D)</span>
+<span class="sd">        W : ndarray</span>
+<span class="sd">            Weight vectors (NW x M)</span>
+<span class="sd">        z : ndarray</span>
+<span class="sd">            Ideal point (M,)</span>
+<span class="sd">        znad : ndarray</span>
+<span class="sd">            Nadir point (M,)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        tuple</span>
+<span class="sd">            Selected decision variables and objectives (NW solutions)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">NW</span> <span class="o">=</span> <span class="n">W</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Calculate the modified Tchebycheff value of each solution on each subproblem</span>
+        <span class="n">g</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">NW</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+            <span class="c1"># For each solution, calculate its Tchebycheff value on all subproblems</span>
+            <span class="n">g</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span> <span class="o">/</span> <span class="n">W</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># Calculate the perpendicular distance of each solution on each subproblem</span>
+        <span class="c1"># Normalize objectives</span>
+        <span class="n">PopObj</span> <span class="o">=</span> <span class="p">(</span><span class="n">objs</span> <span class="o">-</span> <span class="n">z</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">znad</span> <span class="o">-</span> <span class="n">z</span> <span class="o">+</span> <span class="mf">1e-10</span><span class="p">)</span>
+
+        <span class="c1"># Calculate cosine similarity</span>
+        <span class="n">Cosine</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">PopObj</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Calculate perpendicular distance</span>
+        <span class="n">norms</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">PopObj</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+        <span class="n">Distance</span> <span class="o">=</span> <span class="n">norms</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">Cosine</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="c1"># STM selection - Stable Matching</span>
+        <span class="n">Fp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">NW</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>  <span class="c1"># Subproblem -&gt; Solution mapping</span>
+        <span class="n">FX</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>  <span class="c1"># Solution -&gt; Subproblem mapping</span>
+        <span class="n">Phi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">NW</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>  <span class="c1"># Proposal history</span>
+
+        <span class="c1"># Continue until all subproblems are matched</span>
+        <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">Fp</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="c1"># Find unmatched subproblems</span>
+            <span class="n">RemainW</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">Fp</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Randomly select one unmatched subproblem</span>
+            <span class="n">i</span> <span class="o">=</span> <span class="n">RemainW</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">RemainW</span><span class="p">))]</span>
+
+            <span class="c1"># Find solutions that haven&#39;t been proposed to by this subproblem</span>
+            <span class="n">RemainX</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">Phi</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:])[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># Select the best solution for this subproblem (minimum Tchebycheff)</span>
+            <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">g</span><span class="p">[</span><span class="n">RemainX</span><span class="p">,</span> <span class="n">i</span><span class="p">])</span>
+            <span class="n">j</span> <span class="o">=</span> <span class="n">RemainX</span><span class="p">[</span><span class="n">best_idx</span><span class="p">]</span>
+
+            <span class="c1"># Mark this proposal</span>
+            <span class="n">Phi</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+            <span class="k">if</span> <span class="n">FX</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Solution j is not matched, accept immediately</span>
+                <span class="n">Fp</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span>  <span class="c1"># +1 because 0 means unmatched</span>
+                <span class="n">FX</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+            <span class="k">elif</span> <span class="n">Distance</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">Distance</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">FX</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]:</span>
+                <span class="c1"># Solution j prefers subproblem i over its current match</span>
+                <span class="n">old_match</span> <span class="o">=</span> <span class="n">FX</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span>
+                <span class="n">Fp</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="n">Fp</span><span class="p">[</span><span class="n">old_match</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>  <span class="c1"># Old match becomes unmatched</span>
+                <span class="n">FX</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
+
+        <span class="c1"># Extract selected solutions (Fp contains 1-indexed solution IDs)</span>
+        <span class="n">selected_indices</span> <span class="o">=</span> <span class="n">Fp</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># Convert back to 0-indexed</span>
+
+        <span class="k">return</span> <span class="n">decs</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

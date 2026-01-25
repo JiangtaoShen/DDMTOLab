@@ -1,0 +1,551 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.MTSO.GMFEA &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.MTSO.GMFEA</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.MTSO.GMFEA</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Generalized Multifactorial Evolutionary Algorithm (G-MFEA)</span>
+
+<span class="sd">This module implements G-MFEA for multi-task optimization with adaptive knowledge transfer.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Ding, Jinliang, et al. &quot;Generalized Multitasking for Evolutionary Optimization of Expensive Problems.&quot; IEEE Transactions on Evolutionary Computation 23.1 (2019): 44-58. https://doi.org/10.1109/TEVC.2017.2785351</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2025.11.12</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="GMFEA">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.GMFEA.GMFEA">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">GMFEA</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generalized Multifactorial Evolutionary Algorithm for multi-task optimization.</span>
+
+<span class="sd">    This algorithm features:</span>
+<span class="sd">    - Adaptive knowledge transfer via task-pair specific transfer vectors</span>
+<span class="sd">    - Dimension shuffling for heterogeneous task alignment</span>
+<span class="sd">    - Translation strategy based on population centroids</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;2-K&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0-C&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="GMFEA.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.GMFEA.GMFEA.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rmp</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">5.0</span><span class="p">,</span>
+                 <span class="n">phi</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">theta</span><span class="o">=</span><span class="mf">0.02</span><span class="p">,</span> <span class="n">top</span><span class="o">=</span><span class="mf">0.4</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./TestData&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;GMFEA_test&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize G-MFEA algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n : int, optional</span>
+<span class="sd">            Population size per task (default: 100)</span>
+<span class="sd">        max_nfes : int, optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 10000)</span>
+<span class="sd">        rmp : float, optional</span>
+<span class="sd">            Random mating probability for inter-task crossover (default: 0.3)</span>
+<span class="sd">        muc : float, optional</span>
+<span class="sd">            Distribution index for SBX crossover (default: 2.0)</span>
+<span class="sd">        mum : float, optional</span>
+<span class="sd">            Distribution index for polynomial mutation (default: 5.0)</span>
+<span class="sd">        phi : float, optional</span>
+<span class="sd">            Threshold ratio to activate translation (default: 0.1)</span>
+<span class="sd">        theta : float, optional</span>
+<span class="sd">            Interval ratio for translation frequency (default: 0.02)</span>
+<span class="sd">        top : float, optional</span>
+<span class="sd">            Ratio of top individuals to estimate current optimums (default: 0.4)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;GMFEA_test&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rmp</span> <span class="o">=</span> <span class="n">rmp</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">muc</span> <span class="o">=</span> <span class="n">muc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mum</span> <span class="o">=</span> <span class="n">mum</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phi</span> <span class="o">=</span> <span class="n">phi</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">theta</span> <span class="o">=</span> <span class="n">theta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">top</span> <span class="o">=</span> <span class="n">top</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="GMFEA.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.GMFEA.GMFEA.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the G-MFEA algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">d_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">max_gen</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="o">//</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Center of decision space</span>
+        <span class="n">mid_num</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">d_max</span><span class="p">)</span>
+
+        <span class="c1"># Initialize alpha (adaptive coefficient) and mean vectors</span>
+        <span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="n">mean_t</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d_max</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)}</span>
+
+        <span class="c1"># Initialize transfer matrix (task-pair specific)</span>
+        <span class="c1"># transfer[t1, t2] is the transfer vector from task t1 to task t2</span>
+        <span class="n">transfer</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">t1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">t2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">t1</span> <span class="o">!=</span> <span class="n">t2</span><span class="p">:</span>
+                    <span class="n">transfer</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d_max</span><span class="p">)</span>
+
+        <span class="c1"># Initialize dimension shuffling orders (task-pair specific)</span>
+        <span class="c1"># inorder[t1, t2] stores the permutation for aligning t1 and t2</span>
+        <span class="n">inorder</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">t1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">t2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">t1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
+                <span class="n">inorder</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">d_max</span><span class="p">)</span>
+
+        <span class="c1"># Initialize population in unified space</span>
+        <span class="n">pop_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="n">nt</span><span class="p">,</span> <span class="n">d_max</span><span class="p">)</span>
+        <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span> <span class="o">*</span> <span class="n">nt</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+        <span class="n">pop_cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span> <span class="o">*</span> <span class="n">nt</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">)</span>
+        <span class="n">pop_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span> <span class="o">*</span> <span class="n">nt</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>  <span class="c1"># Skill factors</span>
+
+        <span class="c1"># Assign skill factors (n individuals per task)</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">pop_sfs</span><span class="p">[</span><span class="n">t</span> <span class="o">*</span> <span class="n">n</span><span class="p">:(</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">n</span><span class="p">]</span> <span class="o">=</span> <span class="n">t</span>
+
+        <span class="c1"># Get per-task populations</span>
+        <span class="n">pop_dec_per_task</span> <span class="o">=</span> <span class="p">{</span><span class="n">t</span><span class="p">:</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)}</span>
+
+        <span class="c1"># Initial dimension shuffling: align lower-dim populations with higher-dim ones</span>
+        <span class="k">for</span> <span class="n">t1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">t2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">t1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">dims</span><span class="p">[</span><span class="n">t1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">dims</span><span class="p">[</span><span class="n">t2</span><span class="p">]:</span>
+                    <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">t1</span><span class="p">,</span> <span class="n">t2</span>  <span class="c1"># p1 is higher-dim</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">t2</span><span class="p">,</span> <span class="n">t1</span>
+
+                <span class="c1"># Borrow genetic material from higher-dim task for lower-dim task</span>
+                <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+                <span class="n">int_pop</span> <span class="o">=</span> <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p1</span><span class="p">][</span><span class="n">indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">int_pop</span><span class="p">[:,</span> <span class="n">inorder</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)][:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]]</span> <span class="o">=</span> <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p2</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]</span>
+                <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">=</span> <span class="n">int_pop</span>
+
+                <span class="c1"># Update unified population</span>
+                <span class="n">pop_decs</span><span class="p">[</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">p2</span><span class="p">]</span> <span class="o">=</span> <span class="n">int_pop</span>
+
+        <span class="c1"># Evaluate initial population</span>
+        <span class="n">nfes</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">task_indices</span><span class="p">:</span>
+                <span class="n">dec_t</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">obj_t</span><span class="p">,</span> <span class="n">con_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">dec_t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">pop_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj_t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                <span class="n">cv_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">con_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="k">if</span> <span class="n">con_t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">con_t</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="n">pop_cvs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">cv_t</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c1"># Initialize history</span>
+        <span class="n">all_decs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_objs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="c1"># Store initial population</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_cvs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+        <span class="c1"># Progress bar</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">max_nfes</span><span class="p">:</span>
+            <span class="c1"># Generation</span>
+            <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_sfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">,</span> <span class="n">transfer</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">d_max</span><span class="p">)</span>
+
+            <span class="c1"># Evaluate offspring</span>
+            <span class="n">off_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">),</span> <span class="mi">1</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+            <span class="n">off_cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">),</span> <span class="mi">1</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">)</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">)):</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">off_sfs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                <span class="n">dec_t</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">obj_t</span><span class="p">,</span> <span class="n">con_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">dec_t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">off_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj_t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                <span class="n">cv_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">con_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="k">if</span> <span class="n">con_t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">con_t</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                <span class="n">off_cvs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">cv_t</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="k">if</span> <span class="n">nfes</span> <span class="o">&gt;=</span> <span class="n">max_nfes</span><span class="p">:</span>
+                    <span class="k">break</span>
+
+            <span class="c1"># Selection: merge and select best n per task</span>
+            <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">off_objs</span><span class="p">)]])</span>
+            <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">off_objs</span><span class="p">])</span>
+            <span class="n">merged_cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_cvs</span><span class="p">,</span> <span class="n">off_cvs</span><span class="p">])</span>
+            <span class="n">merged_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_sfs</span><span class="p">,</span> <span class="n">off_sfs</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">off_objs</span><span class="p">)]])</span>
+
+            <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cvs</span><span class="p">,</span> <span class="n">pop_sfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_selection</span><span class="p">(</span>
+                <span class="n">merged_decs</span><span class="p">,</span> <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cvs</span><span class="p">,</span> <span class="n">merged_sfs</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">nt</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Update per-task populations and ranks</span>
+            <span class="n">pop_dec_per_task</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="n">pop_rank_per_task</span> <span class="o">=</span> <span class="p">{}</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="c1"># Sort by CV then objective</span>
+                <span class="n">task_objs</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="n">task_cvs</span> <span class="o">=</span> <span class="n">pop_cvs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="n">pop_rank_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">task_objs</span><span class="p">,</span> <span class="n">task_cvs</span><span class="p">))</span>
+
+            <span class="c1"># Update alpha and mean vectors at specified intervals</span>
+            <span class="k">if</span> <span class="n">gen</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phi</span> <span class="o">*</span> <span class="n">max_gen</span> <span class="ow">and</span> <span class="n">gen</span> <span class="o">%</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">theta</span> <span class="o">*</span> <span class="n">max_gen</span><span class="p">))</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">alpha</span> <span class="o">=</span> <span class="p">(</span><span class="n">nfes</span> <span class="o">/</span> <span class="n">max_nfes</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+                <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                    <span class="n">top_num</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">top</span> <span class="o">*</span> <span class="n">n</span><span class="p">))</span>
+                    <span class="n">top_indices</span> <span class="o">=</span> <span class="n">pop_rank_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">][:</span><span class="n">top_num</span><span class="p">]</span>
+                    <span class="n">mean_t</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">top_indices</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+            <span class="c1"># Update dimension shuffling and transfer vectors</span>
+            <span class="k">for</span> <span class="n">t1</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">t2</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">t1</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
+                    <span class="c1"># New random permutation</span>
+                    <span class="n">inorder</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">d_max</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="n">dims</span><span class="p">[</span><span class="n">t1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">dims</span><span class="p">[</span><span class="n">t2</span><span class="p">]:</span>
+                        <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">t1</span><span class="p">,</span> <span class="n">t2</span>  <span class="c1"># p1 is higher-dim</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">t2</span><span class="p">,</span> <span class="n">t1</span>
+
+                    <span class="c1"># Borrow genetic material from higher-dim task</span>
+                    <span class="n">indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p1</span><span class="p">]),</span> <span class="n">size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p2</span><span class="p">]))</span>
+                    <span class="n">int_pop</span> <span class="o">=</span> <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p1</span><span class="p">][</span><span class="n">indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">int_pop</span><span class="p">[:,</span> <span class="n">inorder</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)][:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]]</span> <span class="o">=</span> <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p2</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]</span>
+
+                    <span class="c1"># Re-evaluate the aligned population</span>
+                    <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">p2</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">task_indices</span><span class="p">):</span>
+                        <span class="n">pop_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">int_pop</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                        <span class="n">dec_t</span> <span class="o">=</span> <span class="n">int_pop</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                        <span class="n">obj_t</span><span class="p">,</span> <span class="n">con_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">dec_t</span><span class="p">,</span> <span class="n">p2</span><span class="p">)</span>
+                        <span class="n">pop_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj_t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                        <span class="n">cv_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">con_t</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span> <span class="k">if</span> <span class="n">con_t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">con_t</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="mi">0</span>
+                        <span class="n">pop_cvs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">cv_t</span>
+                        <span class="n">nfes</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                        <span class="k">if</span> <span class="n">nfes</span> <span class="o">&gt;=</span> <span class="n">max_nfes</span><span class="p">:</span>
+                            <span class="k">break</span>
+
+                    <span class="c1"># Update per-task population</span>
+                    <span class="n">pop_dec_per_task</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">=</span> <span class="n">int_pop</span>
+
+                    <span class="c1"># Calculate transfer vectors</span>
+                    <span class="c1"># int_mean: mean of p2 mapped to p1&#39;s space</span>
+                    <span class="n">int_mean</span> <span class="o">=</span> <span class="n">mean_t</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">int_mean</span><span class="p">[</span><span class="n">inorder</span><span class="p">[(</span><span class="n">t1</span><span class="p">,</span> <span class="n">t2</span><span class="p">)][:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]]</span> <span class="o">=</span> <span class="n">mean_t</span><span class="p">[</span><span class="n">p2</span><span class="p">][:</span><span class="n">dims</span><span class="p">[</span><span class="n">p2</span><span class="p">]]</span>
+
+                    <span class="n">transfer</span><span class="p">[(</span><span class="n">p1</span><span class="p">,</span> <span class="n">p2</span><span class="p">)]</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="p">(</span><span class="n">mid_num</span> <span class="o">-</span> <span class="n">mean_t</span><span class="p">[</span><span class="n">p1</span><span class="p">])</span>
+                    <span class="n">transfer</span><span class="p">[(</span><span class="n">p2</span><span class="p">,</span> <span class="n">p1</span><span class="p">)]</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="p">(</span><span class="n">mid_num</span> <span class="o">-</span> <span class="n">int_mean</span><span class="p">)</span>
+
+                    <span class="k">if</span> <span class="n">nfes</span> <span class="o">&gt;=</span> <span class="n">max_nfes</span><span class="p">:</span>
+                        <span class="k">break</span>
+                <span class="k">if</span> <span class="n">nfes</span> <span class="o">&gt;=</span> <span class="n">max_nfes</span><span class="p">:</span>
+                    <span class="k">break</span>
+
+            <span class="c1"># Store history</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">pop_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+                <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+                <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pop_cvs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+            <span class="n">gen</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="c1"># Build and save results</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+                                     <span class="n">max_nfes</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span>
+                                     <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
+                                     <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">,</span> <span class="n">transfer</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">d_max</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate offspring using assortative mating with transfer.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        pop_decs : np.ndarray</span>
+<span class="sd">            Population decision variables, shape (pop_size, d_max)</span>
+<span class="sd">        pop_sfs : np.ndarray</span>
+<span class="sd">            Population skill factors, shape (pop_size, 1)</span>
+<span class="sd">        transfer : dict</span>
+<span class="sd">            Transfer vectors, transfer[(t1, t2)] is vector from t1 to t2</span>
+<span class="sd">        nt : int</span>
+<span class="sd">            Number of tasks</span>
+<span class="sd">        d_max : int</span>
+<span class="sd">            Maximum dimension</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        off_decs : np.ndarray</span>
+<span class="sd">            Offspring decision variables, shape (pop_size, d_max)</span>
+<span class="sd">        off_sfs : np.ndarray</span>
+<span class="sd">            Offspring skill factors, shape (pop_size, 1)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">pop_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">)</span>
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">d_max</span><span class="p">))</span>
+        <span class="n">off_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+        <span class="c1"># Shuffle for random pairing</span>
+        <span class="n">ind_order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+
+        <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pop_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">):</span>
+            <span class="n">p1</span> <span class="o">=</span> <span class="n">ind_order</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">p2</span> <span class="o">=</span> <span class="n">ind_order</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">pop_size</span> <span class="o">//</span> <span class="mi">2</span><span class="p">]</span>
+            <span class="n">sf1</span> <span class="o">=</span> <span class="n">pop_sfs</span><span class="p">[</span><span class="n">p1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+            <span class="n">sf2</span> <span class="o">=</span> <span class="n">pop_sfs</span><span class="p">[</span><span class="n">p2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">sf1</span> <span class="o">==</span> <span class="n">sf2</span><span class="p">:</span>
+                <span class="c1"># Same task: direct crossover</span>
+                <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">],</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">)</span>
+                <span class="c1"># Random imitation</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">])</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">])</span>
+
+            <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmp</span><span class="p">:</span>
+                <span class="c1"># Different tasks with RMP: crossover with transfer</span>
+                <span class="n">t_dec1</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">+</span> <span class="n">transfer</span><span class="p">[(</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">)]</span>
+                <span class="n">t_dec2</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">+</span> <span class="n">transfer</span><span class="p">[(</span><span class="n">sf2</span><span class="p">,</span> <span class="n">sf1</span><span class="p">)]</span>
+                <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">t_dec1</span><span class="p">,</span> <span class="n">t_dec2</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">)</span>
+                <span class="n">off_dec1</span> <span class="o">=</span> <span class="n">off_dec1</span> <span class="o">-</span> <span class="n">transfer</span><span class="p">[(</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">)]</span>
+                <span class="n">off_dec2</span> <span class="o">=</span> <span class="n">off_dec2</span> <span class="o">-</span> <span class="n">transfer</span><span class="p">[(</span><span class="n">sf2</span><span class="p">,</span> <span class="n">sf1</span><span class="p">)]</span>
+                <span class="c1"># Random imitation</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">])</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">])</span>
+
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Different tasks without transfer: mutation only</span>
+                <span class="n">off_dec1</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
+                <span class="n">off_dec2</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
+                <span class="c1"># Keep original skill factors</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
+                <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
+
+            <span class="c1"># Boundary handling</span>
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">count</span> <span class="o">+=</span> <span class="mi">2</span>
+
+        <span class="k">return</span> <span class="n">off_decs</span><span class="p">[:</span><span class="n">count</span><span class="p">],</span> <span class="n">off_sfs</span><span class="p">[:</span><span class="n">count</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cvs</span><span class="p">,</span> <span class="n">all_sfs</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Environmental selection: keep best n individuals per task.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        all_decs : np.ndarray</span>
+<span class="sd">            All decision variables, shape (total, d_max)</span>
+<span class="sd">        all_objs : np.ndarray</span>
+<span class="sd">            All objective values, shape (total, 1)</span>
+<span class="sd">        all_cvs : np.ndarray</span>
+<span class="sd">            All constraint violations, shape (total, 1)</span>
+<span class="sd">        all_sfs : np.ndarray</span>
+<span class="sd">            All skill factors, shape (total, 1)</span>
+<span class="sd">        n : int</span>
+<span class="sd">            Population size per task</span>
+<span class="sd">        nt : int</span>
+<span class="sd">            Number of tasks</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        pop_decs, pop_objs, pop_cvs, pop_sfs : np.ndarray</span>
+<span class="sd">            Selected population arrays</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">selected_decs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">selected_objs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">selected_cvs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">selected_sfs</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">task_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">all_sfs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span> <span class="o">==</span> <span class="n">t</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">task_decs</span> <span class="o">=</span> <span class="n">all_decs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span>
+            <span class="n">task_objs</span> <span class="o">=</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span>
+            <span class="n">task_cvs</span> <span class="o">=</span> <span class="n">all_cvs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span>
+            <span class="n">task_sfs</span> <span class="o">=</span> <span class="n">all_sfs</span><span class="p">[</span><span class="n">task_indices</span><span class="p">]</span>
+
+            <span class="c1"># Sort by CV first, then objective</span>
+            <span class="n">sort_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">task_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">task_cvs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()))</span>
+            <span class="n">top_n</span> <span class="o">=</span> <span class="n">sort_indices</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
+
+            <span class="n">selected_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_decs</span><span class="p">[</span><span class="n">top_n</span><span class="p">])</span>
+            <span class="n">selected_objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_objs</span><span class="p">[</span><span class="n">top_n</span><span class="p">])</span>
+            <span class="n">selected_cvs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_cvs</span><span class="p">[</span><span class="n">top_n</span><span class="p">])</span>
+            <span class="n">selected_sfs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task_sfs</span><span class="p">[</span><span class="n">top_n</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">selected_decs</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">selected_objs</span><span class="p">),</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">selected_cvs</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">selected_sfs</span><span class="p">))</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
