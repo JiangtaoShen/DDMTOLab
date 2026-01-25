@@ -150,7 +150,7 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO and M
 The generated animation shows how BO and MTBO algorithms explore the search space on the CEC17-MTSO-10D-P1 problem:
 
 <p align="center">
-  <img src="docs/images/animation.gif"
+  <img src="\docs\source\_static\animation.gif"
        alt="BO and MTBO on CEC17-MTSO-10D-P1 Animation"
        width="100%">
 </p>
