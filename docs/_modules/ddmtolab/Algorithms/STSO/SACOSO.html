@@ -1,0 +1,537 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STSO.SACOSO &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STSO.SACOSO</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STSO.SACOSO</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Surrogate-Assisted Cooperative Swarm Optimization (SA-COSO)</span>
+
+<span class="sd">This module implements SA-COSO for expensive single-objective optimization problems.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Sun, Chaoli, et al. &quot;Surrogate-assisted cooperative swarm optimization of high-dimensional expensive problems.&quot; IEEE Transactions on Evolutionary Computation 21.4 (2017): 644-660.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2025.01.13</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">RBFInterpolator</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="SACOSO">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.SACOSO.SACOSO">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SACOSO</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Surrogate-Assisted Cooperative Swarm Optimization for expensive optimization problems.</span>
+
+<span class="sd">    This algorithm uses two cooperative swarms:</span>
+<span class="sd">    1. FES-PSO: Small swarm with Fitness Estimation Strategy to reduce evaluations</span>
+<span class="sd">    2. RBF-SLPSO: Large swarm with RBF-assisted Social Learning PSO</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;1-K&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="SACOSO.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.SACOSO.SACOSO.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_fes</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">n_rbf</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+                 <span class="n">mu</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./TestData&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;SACOSO_test&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize SA-COSO algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task (default: n_fes + n_rbf)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 300)</span>
+<span class="sd">        n_fes : int, optional</span>
+<span class="sd">            Population size of FES-assisted PSO (default: 30)</span>
+<span class="sd">        n_rbf : int, optional</span>
+<span class="sd">            Population size of RBF-assisted SL-PSO (default: 100)</span>
+<span class="sd">        mu : int, optional</span>
+<span class="sd">            Total number of samples per iteration (default: 5, must be &gt;= 2)</span>
+<span class="sd">            - (mu - 1) samples from FES-PSO</span>
+<span class="sd">            - 1 sample from RBF-SLPSO</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;SACOSO_test&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_fes</span> <span class="o">=</span> <span class="n">n_fes</span>  <span class="c1"># FES-PSO population size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_rbf</span> <span class="o">=</span> <span class="n">n_rbf</span>  <span class="c1"># RBF-SLPSO population size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mu</span> <span class="o">=</span> <span class="n">mu</span>  <span class="c1"># Total samples per iteration</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_sample_fes</span> <span class="o">=</span> <span class="n">mu</span> <span class="o">-</span> <span class="mi">1</span>  <span class="c1"># Samples from FES-PSO</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_sample_rbf</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Samples from RBF-SLPSO (fixed to 1)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="p">(</span><span class="n">n_fes</span> <span class="o">+</span> <span class="n">n_rbf</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">300</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span>
+
+        <span class="c1"># PSO parameters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c1</span> <span class="o">=</span> <span class="mf">2.05</span>  <span class="c1"># Cognitive coefficient</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c2</span> <span class="o">=</span> <span class="mf">1.025</span>  <span class="c1"># Social coefficient (GbestFES)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">c3</span> <span class="o">=</span> <span class="mf">1.025</span>  <span class="c1"># Social coefficient (GbestRBF)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">w</span> <span class="o">=</span> <span class="mf">0.7298</span>  <span class="c1"># Inertia weight (constriction factor)</span>
+
+        <span class="c1"># RBF parameters</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_node</span> <span class="o">=</span> <span class="mi">8</span></div>
+
+
+<div class="viewcode-block" id="SACOSO.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.SACOSO.SACOSO.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the SA-COSO algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Generate initial samples using Latin Hypercube Sampling</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Initialize history</span>
+        <span class="n">all_decs</span> <span class="o">=</span> <span class="n">reorganize_initial_data</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">)</span>
+        <span class="n">all_objs</span> <span class="o">=</span> <span class="n">reorganize_initial_data</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">interval</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">)</span>
+
+        <span class="c1"># Initialize data structures for each task</span>
+        <span class="n">hx</span> <span class="o">=</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">hf</span> <span class="o">=</span> <span class="p">[</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="c1"># FES-PSO swarm</span>
+        <span class="n">swarm_fes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">vel_fes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">pbest_fes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">pbest_fes_val</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">gbest_fes</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">gbest_fes_val</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># RBF-SLPSO swarm</span>
+        <span class="n">swarm_rbf</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">delta_rbf</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">gbest_rbf</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">gbest_rbf_val</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Spread sum for RBF</span>
+        <span class="n">spread_sum</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">n_total</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="c1"># Split initial population</span>
+            <span class="n">n_fes_actual</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_fes</span><span class="p">,</span> <span class="n">n_total</span><span class="p">)</span>
+            <span class="n">n_rbf_actual</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_rbf</span><span class="p">,</span> <span class="n">n_total</span> <span class="o">-</span> <span class="n">n_fes_actual</span><span class="p">)</span>
+
+            <span class="c1"># FES-PSO initialization</span>
+            <span class="n">pos_fes</span> <span class="o">=</span> <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">][:</span><span class="n">n_fes_actual</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">obj_fes</span> <span class="o">=</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">][:</span><span class="n">n_fes_actual</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="n">swarm_fes</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">&#39;pos&#39;</span><span class="p">:</span> <span class="n">pos_fes</span><span class="p">,</span> <span class="s1">&#39;obj&#39;</span><span class="p">:</span> <span class="n">obj_fes</span><span class="p">})</span>
+
+            <span class="n">vel_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_fes_actual</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span>
+            <span class="n">vel_fes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">vel_i</span><span class="p">)</span>
+
+            <span class="n">pbest_fes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos_fes</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">pbest_fes_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_fes</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+            <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">obj_fes</span><span class="p">)</span>
+            <span class="n">gbest_fes</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos_fes</span><span class="p">[</span><span class="n">best_idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">gbest_fes_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_fes</span><span class="p">[</span><span class="n">best_idx</span><span class="p">])</span>
+
+            <span class="c1"># RBF-SLPSO initialization</span>
+            <span class="k">if</span> <span class="n">n_rbf_actual</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">pos_rbf</span> <span class="o">=</span> <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">n_fes_actual</span><span class="p">:</span><span class="n">n_fes_actual</span> <span class="o">+</span> <span class="n">n_rbf_actual</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">obj_rbf</span> <span class="o">=</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">n_fes_actual</span><span class="p">:</span><span class="n">n_fes_actual</span> <span class="o">+</span> <span class="n">n_rbf_actual</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Generate additional random samples if needed</span>
+                <span class="n">pos_rbf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_rbf</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+                <span class="n">obj_rbf_arr</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">pos_rbf</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">obj_rbf</span> <span class="o">=</span> <span class="n">obj_rbf_arr</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pos_rbf</span><span class="p">])</span>
+                <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">obj_rbf</span><span class="p">])</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_rbf</span>
+
+            <span class="n">swarm_rbf</span><span class="o">.</span><span class="n">append</span><span class="p">({</span><span class="s1">&#39;pos&#39;</span><span class="p">:</span> <span class="n">pos_rbf</span><span class="p">,</span> <span class="s1">&#39;obj&#39;</span><span class="p">:</span> <span class="n">obj_rbf</span><span class="p">})</span>
+
+            <span class="n">delta_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">pos_rbf</span><span class="p">),</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span>
+            <span class="n">delta_rbf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">delta_i</span><span class="p">)</span>
+
+            <span class="n">best_idx_rbf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">obj_rbf</span><span class="p">)</span>
+            <span class="n">gbest_rbf</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">pos_rbf</span><span class="p">[</span><span class="n">best_idx_rbf</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">gbest_rbf_val</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_rbf</span><span class="p">[</span><span class="n">best_idx_rbf</span><span class="p">])</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="n">iter_count</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">iter_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="c1"># Determine global best across both swarms</span>
+                <span class="k">if</span> <span class="n">gbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">gbest_rbf_val</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                    <span class="n">gbest</span> <span class="o">=</span> <span class="n">gbest_fes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">gbest</span> <span class="o">=</span> <span class="n">gbest_rbf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+                <span class="c1"># Update spread for RBF</span>
+                <span class="n">pos_range</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">spread_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pos_range</span> <span class="o">**</span> <span class="mi">2</span><span class="p">))</span>
+                <span class="n">spread</span> <span class="o">=</span> <span class="n">spread_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">iter_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+                <span class="c1"># Build RBF surrogate model</span>
+                <span class="n">rbf_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_rbf_model</span><span class="p">(</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">spread</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+                <span class="c1"># ===== FES-PSO Update =====</span>
+                <span class="n">new_evals_fes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fes_pso_update</span><span class="p">(</span>
+                    <span class="n">i</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">rbf_model</span><span class="p">,</span>
+                    <span class="n">swarm_fes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">vel_fes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pbest_fes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                    <span class="n">gbest_fes</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">gbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">gbest_rbf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                    <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_sample_fes</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Update history and counters for FES-PSO</span>
+                <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">new_evals_fes</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                        <span class="k">break</span>
+                    <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pos</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)])</span>
+                    <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="p">[</span><span class="n">obj</span><span class="p">]])</span>
+                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="c1"># Update FES gbest</span>
+                <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">pbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">pbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">best_idx</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">gbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                    <span class="n">gbest_fes</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pbest_fes</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">best_idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">gbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pbest_fes_val</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">best_idx</span><span class="p">]</span>
+
+                <span class="c1"># ===== RBF-SLPSO Update =====</span>
+                <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                    <span class="c1"># Rebuild RBF model with updated data</span>
+                    <span class="n">spread</span> <span class="o">=</span> <span class="n">spread_sum</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">iter_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">rbf_model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_rbf_model</span><span class="p">(</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">spread</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+                    <span class="n">new_evals_rbf</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rbf_slpso_update</span><span class="p">(</span>
+                        <span class="n">i</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">rbf_model</span><span class="p">,</span>
+                        <span class="n">swarm_rbf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">delta_rbf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">gbest</span><span class="p">,</span>
+                        <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_sample_rbf</span>
+                    <span class="p">)</span>
+
+                    <span class="c1"># Update history for RBF-SLPSO</span>
+                    <span class="k">for</span> <span class="n">pos</span><span class="p">,</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">new_evals_rbf</span><span class="p">:</span>
+                        <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                            <span class="k">break</span>
+                        <span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pos</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)])</span>
+                        <span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="p">[</span><span class="n">obj</span><span class="p">]])</span>
+                        <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                        <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                        <span class="c1"># Update RBF gbest</span>
+                        <span class="k">if</span> <span class="n">obj</span> <span class="o">&lt;</span> <span class="n">gbest_rbf_val</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                            <span class="n">gbest_rbf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pos</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                            <span class="n">gbest_rbf_val</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span>
+
+                <span class="c1"># Append to history for results</span>
+                <span class="n">all_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">hx</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+                <span class="n">all_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">hf</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="c1"># Build and save results</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
+                                     <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                     <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="c1"># Build RBF surrogate model</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_rbf_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">hx</span><span class="p">,</span> <span class="n">hf</span><span class="p">,</span> <span class="n">spread</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">spread</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">spread</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">rbf_interpolator</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">hx</span><span class="p">,</span> <span class="n">hf</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">spread</span><span class="p">)</span>
+        <span class="k">except</span><span class="p">:</span>
+            <span class="n">rbf_interpolator</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">hx</span><span class="p">,</span> <span class="n">hf</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;thin_plate_spline&#39;</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">rbf_model</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">pred</span> <span class="o">=</span> <span class="n">rbf_interpolator</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">rbf_model</span>
+
+    <span class="c1"># FES-PSO update with fixed number of samples</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_fes_pso_update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">rbf_model</span><span class="p">,</span>
+                        <span class="n">swarm</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">pbest</span><span class="p">,</span> <span class="n">pbest_val</span><span class="p">,</span>
+                        <span class="n">gbest_fes</span><span class="p">,</span> <span class="n">gbest_fes_val</span><span class="p">,</span> <span class="n">gbest_rbf</span><span class="p">,</span>
+                        <span class="n">hx</span><span class="p">,</span> <span class="n">hf</span><span class="p">,</span> <span class="n">n_sample</span><span class="p">):</span>
+
+        <span class="n">new_evals</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">])</span>
+
+        <span class="c1"># PSO velocity and position update</span>
+        <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+        <span class="n">r3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+        <span class="c1"># Velocity update: influenced by pbest, gbest_fes, and gbest_rbf</span>
+        <span class="n">vel_new</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">w</span> <span class="o">*</span> <span class="p">(</span><span class="n">vel</span> <span class="o">+</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">c1</span> <span class="o">*</span> <span class="n">r1</span> <span class="o">*</span> <span class="p">(</span><span class="n">pbest</span> <span class="o">-</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">])</span> <span class="o">+</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">c2</span> <span class="o">*</span> <span class="n">r2</span> <span class="o">*</span> <span class="p">(</span><span class="n">gbest_fes</span> <span class="o">-</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">])</span> <span class="o">+</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">c3</span> <span class="o">*</span> <span class="n">r3</span> <span class="o">*</span> <span class="p">(</span><span class="n">gbest_rbf</span> <span class="o">-</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">]))</span>
+
+        <span class="c1"># Velocity clamping</span>
+        <span class="n">vel_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">vel_new</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">vel</span><span class="p">[:]</span> <span class="o">=</span> <span class="n">vel_new</span>
+
+        <span class="c1"># Position update</span>
+        <span class="n">pos_new</span> <span class="o">=</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">vel_new</span>
+        <span class="n">pos_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">pos_new</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">pos_new</span>
+
+        <span class="c1"># Use surrogate model for fitness approximation</span>
+        <span class="n">srgt_obj</span> <span class="o">=</span> <span class="n">rbf_model</span><span class="p">(</span><span class="n">pos_new</span><span class="p">)</span>
+        <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">srgt_obj</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Select top n_sample particles by surrogate prediction (ascending order)</span>
+        <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">srgt_obj</span><span class="p">)</span>
+
+        <span class="c1"># Evaluate top n_sample non-duplicate particles</span>
+        <span class="n">eval_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">sorted_idx</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">eval_count</span> <span class="o">&gt;=</span> <span class="n">n_sample</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_duplicate</span><span class="p">(</span><span class="n">pos_new</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">hx</span><span class="p">):</span>
+                <span class="n">obj_arr</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">pos_new</span><span class="p">[</span><span class="n">idx</span><span class="p">:</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">task_idx</span><span class="p">)</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="n">obj_arr</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span>
+                <span class="n">new_evals</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">pos_new</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">obj</span><span class="p">))</span>
+                <span class="n">eval_count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="c1"># Update personal best</span>
+                <span class="k">if</span> <span class="n">obj</span> <span class="o">&lt;</span> <span class="n">pbest_val</span><span class="p">[</span><span class="n">idx</span><span class="p">]:</span>
+                    <span class="n">pbest</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">pos_new</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">pbest_val</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span>
+
+        <span class="k">return</span> <span class="n">new_evals</span>
+
+    <span class="c1"># RBF-assisted SL-PSO update with fixed number of samples</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rbf_slpso_update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">rbf_model</span><span class="p">,</span>
+                          <span class="n">swarm</span><span class="p">,</span> <span class="n">delta</span><span class="p">,</span> <span class="n">gbest</span><span class="p">,</span> <span class="n">hx</span><span class="p">,</span> <span class="n">hf</span><span class="p">,</span> <span class="n">n_sample</span><span class="p">):</span>
+
+        <span class="n">new_evals</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">])</span>
+
+        <span class="c1"># Combine swarm with historical best as demonstrators</span>
+        <span class="n">n_demons</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">hf</span><span class="p">))</span>
+        <span class="n">idx_sorted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">hf</span><span class="p">)[:</span><span class="n">n_demons</span><span class="p">]</span>
+        <span class="n">demons_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">],</span> <span class="n">hx</span><span class="p">[</span><span class="n">idx_sorted</span><span class="p">]])</span>
+        <span class="n">demons_obj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">],</span> <span class="n">hf</span><span class="p">[</span><span class="n">idx_sorted</span><span class="p">]])</span>
+
+        <span class="c1"># Social Learning PSO update</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+            <span class="c1"># Find better individuals (demonstrators)</span>
+            <span class="n">better_mask</span> <span class="o">=</span> <span class="n">demons_obj</span> <span class="o">&lt;</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">][</span><span class="n">j</span><span class="p">]</span>
+            <span class="n">better_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">better_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">better_idx</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Choose demonstrators for each dimension</span>
+                <span class="n">chosen</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">better_idx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">chosen</span> <span class="o">=</span> <span class="n">demons_pos</span><span class="p">[</span><span class="n">better_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
+                <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">better_idx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="n">mix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">0.5</span>
+                    <span class="n">chosen</span><span class="p">[</span><span class="n">mix</span><span class="p">]</span> <span class="o">=</span> <span class="n">demons_pos</span><span class="p">[</span><span class="n">better_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">mix</span><span class="p">]</span>
+                    <span class="n">chosen</span><span class="p">[</span><span class="o">~</span><span class="n">mix</span><span class="p">]</span> <span class="o">=</span> <span class="n">demons_pos</span><span class="p">[</span><span class="n">better_idx</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="o">~</span><span class="n">mix</span><span class="p">]</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span><span class="p">):</span>
+                        <span class="n">rand_idx</span> <span class="o">=</span> <span class="n">better_idx</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">better_idx</span><span class="p">))]</span>
+                        <span class="n">chosen</span><span class="p">[</span><span class="n">d</span><span class="p">]</span> <span class="o">=</span> <span class="n">demons_pos</span><span class="p">[</span><span class="n">rand_idx</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span>
+
+                <span class="c1"># Update velocity (delta) and position</span>
+                <span class="n">delta</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">*</span> <span class="n">delta</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">chosen</span> <span class="o">-</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">j</span><span class="p">])</span>
+                <span class="n">delta</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">delta</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+                <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">j</span><span class="p">]</span> <span class="o">+</span> <span class="n">delta</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+
+        <span class="c1"># Boundary handling</span>
+        <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+        <span class="c1"># Update fitness using surrogate</span>
+        <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">rbf_model</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">])</span>
+
+        <span class="c1"># Select top n_sample particles by surrogate prediction</span>
+        <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">])</span>
+
+        <span class="c1"># Evaluate top n_sample non-duplicate particles</span>
+        <span class="n">eval_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">sorted_idx</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">eval_count</span> <span class="o">&gt;=</span> <span class="n">n_sample</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">is_duplicate</span><span class="p">(</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">],</span> <span class="n">hx</span><span class="p">):</span>
+                <span class="n">obj_arr</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">:</span><span class="n">idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">task_idx</span><span class="p">)</span>
+                <span class="n">obj</span> <span class="o">=</span> <span class="n">obj_arr</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
+                <span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;obj&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">obj</span>
+                <span class="n">new_evals</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">swarm</span><span class="p">[</span><span class="s1">&#39;pos&#39;</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">obj</span><span class="p">))</span>
+                <span class="n">eval_count</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="k">return</span> <span class="n">new_evals</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

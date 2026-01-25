@@ -1,0 +1,1548 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Methods.mtop &mdash; DDMTOLab 1.0.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../_static/documentation_options.js?v=8d563738"></script>
+      <script src="../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../api.html">API</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Methods.mtop</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Methods.mtop</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">Any</span><span class="p">,</span> <span class="n">Union</span>
+
+
+<div class="viewcode-block" id="ObjectiveFunctionWrapper">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.ObjectiveFunctionWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ObjectiveFunctionWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pickle-compatible objective function wrapper for cross-platform parallel execution.</span>
+
+<span class="sd">    This wrapper ensures that objective functions can be serialized and passed</span>
+<span class="sd">    between processes in parallel computing environments across different platforms.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    func : Callable</span>
+<span class="sd">        The objective function to wrap.</span>
+<span class="sd">    dim : int</span>
+<span class="sd">        Dimension of the decision variables.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    func : Callable</span>
+<span class="sd">        The wrapped objective function.</span>
+<span class="sd">    dim : int</span>
+<span class="sd">        Dimension of the decision variables.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The wrapper normalizes function outputs to a consistent 2D array format</span>
+<span class="sd">    with shape (n_samples, n_objectives), handling both vectorized and</span>
+<span class="sd">    non-vectorized function implementations.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; def my_objective(x):</span>
+<span class="sd">    ...     return np.sum(x**2, axis=1)</span>
+<span class="sd">    &gt;&gt;&gt; wrapper = ObjectiveFunctionWrapper(my_objective, dim=3)</span>
+<span class="sd">    &gt;&gt;&gt; X = np.array([[1, 2, 3], [4, 5, 6]])</span>
+<span class="sd">    &gt;&gt;&gt; result = wrapper(X)</span>
+<span class="sd">    &gt;&gt;&gt; result.shape</span>
+<span class="sd">    (2, 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">func</span> <span class="o">=</span> <span class="n">func</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">=</span> <span class="n">dim</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the objective function on input samples.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        X : np.ndarray</span>
+<span class="sd">            Input array of shape (n_samples, dim) or (dim,).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Objective values of shape (n_samples, n_objectives).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If the output cannot be aligned to the input batch size.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>  <span class="c1"># try vectorized call</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="c1"># try per-row</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+
+        <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="c1"># Normalize to 2D with n rows</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># ambiguous: if length == n -&gt; (n,1); else if n==1 -&gt; (1,len)</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># cannot align</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned 1D array that cannot be aligned to input batch.&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n</span><span class="p">:</span>
+                <span class="c1"># maybe user returned shape (n_obj, n) accidental -&gt; try transpose</span>
+                <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned 2D array with incompatible number of rows.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned array with ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="ConstraintFunctionWrapper">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.ConstraintFunctionWrapper">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">ConstraintFunctionWrapper</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pickle-compatible constraint function wrapper for cross-platform parallel execution.</span>
+
+<span class="sd">    This wrapper ensures that constraint functions can be serialized and passed</span>
+<span class="sd">    between processes in parallel computing environments across different platforms.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    func : Callable</span>
+<span class="sd">        The constraint function to wrap.</span>
+<span class="sd">    k_local : int</span>
+<span class="sd">        Number of constraints returned by this function.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    func : Callable</span>
+<span class="sd">        The wrapped constraint function.</span>
+<span class="sd">    k_local : int</span>
+<span class="sd">        Number of constraints.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The wrapper normalizes function outputs to a consistent 2D array format</span>
+<span class="sd">    with shape (n_samples, k_local), handling both vectorized and</span>
+<span class="sd">    non-vectorized function implementations.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    &gt;&gt;&gt; def my_constraint(x):</span>
+<span class="sd">    ...     return x[0] - 0.5</span>
+<span class="sd">    &gt;&gt;&gt; wrapper = ConstraintFunctionWrapper(my_constraint, k_local=1)</span>
+<span class="sd">    &gt;&gt;&gt; X = np.array([[0.3, 0.4], [0.6, 0.7]])</span>
+<span class="sd">    &gt;&gt;&gt; result = wrapper(X)</span>
+<span class="sd">    &gt;&gt;&gt; result.shape</span>
+<span class="sd">    (2, 1)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">k_local</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">func</span> <span class="o">=</span> <span class="n">func</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span> <span class="o">=</span> <span class="n">k_local</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the constraint function on input samples.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        X : np.ndarray</span>
+<span class="sd">            Input array of shape (n_samples, dim) or (dim,).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Constraint values of shape (n_samples, k_local).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If the output cannot be aligned to the input batch size.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="c1"># normalize to (n, k_local)</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># if can reshape to (n, k_local), try:</span>
+                    <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">n</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">:</span>
+                        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned 1D that cannot be aligned to inputs.&quot;</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned 2D with incompatible rows.&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span></div>
+
+
+
+<div class="viewcode-block" id="MTOP">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MTOP</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Multi-Task Optimization Problem (MTOP) definition and management.</span>
+
+<span class="sd">    This class allows defining multiple optimization tasks, each with decision</span>
+<span class="sd">    variables, objectives, and constraints. It handles vectorized and non-vectorized</span>
+<span class="sd">    objective/constraint functions, normalizes outputs to consistent 2D arrays,</span>
+<span class="sd">    and provides unified evaluation interfaces.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    unified_eval_mode : bool, optional</span>
+<span class="sd">        If True, evaluation results will be padded to maximum dimensions</span>
+<span class="sd">        across all tasks (default is False).</span>
+<span class="sd">    fill_value : float, optional</span>
+<span class="sd">        Value used for padding in unified evaluation mode (default is 0.0).</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    tasks : List[Dict[str, Any]]</span>
+<span class="sd">        List of task dictionaries containing function wrappers and metadata.</span>
+<span class="sd">    dims : List[int]</span>
+<span class="sd">        List of decision variable dimensions for each task.</span>
+<span class="sd">    bounds : List[Tuple[np.ndarray, np.ndarray]]</span>
+<span class="sd">        List of (lower_bound, upper_bound) tuples for each task.</span>
+<span class="sd">    n_tasks : int</span>
+<span class="sd">        Total number of tasks.</span>
+<span class="sd">    m_max : int</span>
+<span class="sd">        Maximum number of objectives across all tasks.</span>
+<span class="sd">    c_max : int</span>
+<span class="sd">        Maximum number of constraints across all tasks.</span>
+<span class="sd">    unified_eval_mode : bool</span>
+<span class="sd">        Whether unified evaluation mode is enabled.</span>
+<span class="sd">    fill_value : float</span>
+<span class="sd">        Fill value for padding in unified evaluation mode.</span>
+
+<span class="sd">    Examples</span>
+<span class="sd">    --------</span>
+<span class="sd">    Create a simple MTOP with two tasks:</span>
+
+<span class="sd">    &gt;&gt;&gt; def sphere(x):</span>
+<span class="sd">    ...     return np.sum(x**2, axis=1)</span>
+<span class="sd">    &gt;&gt;&gt; def rosenbrock(x):</span>
+<span class="sd">    ...     x = np.atleast_2d(x)</span>
+<span class="sd">    ...     return np.sum(100*(x[:, 1:] - x[:, :-1]**2)**2 + (1 - x[:, :-1])**2, axis=1)</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">    &gt;&gt;&gt; mtop.add_task(sphere, dim=3)</span>
+<span class="sd">    0</span>
+<span class="sd">    &gt;&gt;&gt; mtop.add_task(rosenbrock, dim=5, lower_bound=-5, upper_bound=5)</span>
+<span class="sd">    1</span>
+<span class="sd">    &gt;&gt;&gt;</span>
+<span class="sd">    &gt;&gt;&gt; # Evaluate first task</span>
+<span class="sd">    &gt;&gt;&gt; X = np.random.rand(10, 3)</span>
+<span class="sd">    &gt;&gt;&gt; obj, con = mtop.evaluate_task(0, X)</span>
+<span class="sd">    &gt;&gt;&gt; obj.shape</span>
+<span class="sd">    (10, 1)</span>
+
+<span class="sd">    See Also</span>
+<span class="sd">    --------</span>
+<span class="sd">    ObjectiveFunctionWrapper : Wrapper for objective functions</span>
+<span class="sd">    ConstraintFunctionWrapper : Wrapper for constraint functions</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">unified_eval_mode</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Unified evaluation mode settings</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unified_eval_mode</span> <span class="o">=</span> <span class="n">unified_eval_mode</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fill_value</span> <span class="o">=</span> <span class="n">fill_value</span>
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Unified evaluation mode settings</span>
+    <span class="c1"># -------------------------</span>
+<div class="viewcode-block" id="MTOP.set_unified_eval_mode">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.set_unified_eval_mode">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">set_unified_eval_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">enabled</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Set unified evaluation mode configuration.</span>
+
+<span class="sd">        In unified evaluation mode, all task evaluations are padded to have</span>
+<span class="sd">        the same dimensions (m_max objectives and c_max constraints).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        enabled : bool</span>
+<span class="sd">            Enable or disable unified evaluation mode.</span>
+<span class="sd">        fill_value : float, optional</span>
+<span class="sd">            Value used for padding (default is 0.0).</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop.set_unified_eval_mode(enabled=True, fill_value=0.0)</span>
+<span class="sd">        &gt;&gt;&gt; mtop.unified_eval_mode</span>
+<span class="sd">        True</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_unified_eval_mode</span> <span class="o">=</span> <span class="n">enabled</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_fill_value</span> <span class="o">=</span> <span class="n">fill_value</span></div>
+
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">unified_eval_mode</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Check if unified evaluation mode is enabled.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        bool</span>
+<span class="sd">            True if unified evaluation mode is enabled, False otherwise.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unified_eval_mode</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">fill_value</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">float</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the fill value for unified evaluation mode.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        float</span>
+<span class="sd">            The fill value used for padding.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fill_value</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">m_max</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Maximum number of objectives across all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Maximum number of objectives, or 0 if no tasks are defined.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_objectives&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">c_max</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Maximum number of constraints across all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Maximum number of constraints, or 0 if no tasks are defined.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_constraints&#39;</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">)</span>
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Task addition interfaces</span>
+    <span class="c1"># -------------------------</span>
+<div class="viewcode-block" id="MTOP.add_task">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.add_task">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_task</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">objective_func</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">Any</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="o">...</span><span class="p">]],</span>
+            <span class="n">dim</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]],</span>
+            <span class="n">constraint_func</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">lower_bound</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+                <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">upper_bound</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span>
+                <span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add one or more tasks to MTOP.</span>
+
+<span class="sd">        This method provides a flexible interface for adding tasks with various</span>
+<span class="sd">        configurations. It supports both single task and multiple task additions.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objective_func : Callable or Tuple[Callable, ...]</span>
+<span class="sd">            Objective function(s) to evaluate. Can be:</span>
+
+<span class="sd">            - A single callable: adds one task</span>
+<span class="sd">            - A tuple of callables: adds multiple tasks</span>
+
+<span class="sd">            Each function should accept X with shape (n, dim) and return</span>
+<span class="sd">            objective values.</span>
+<span class="sd">        dim : int or Tuple[int, ...]</span>
+<span class="sd">            Dimension(s) of decision variables. Can be:</span>
+
+<span class="sd">            - A single int: dimension for one task (or broadcast to all if multiple funcs)</span>
+<span class="sd">            - A tuple of ints: dimensions for each task in objective_func tuple</span>
+<span class="sd">        constraint_func : Callable, List[Callable], Tuple[List[Callable], ...], optional</span>
+<span class="sd">            Constraint function(s). Can be:</span>
+
+<span class="sd">            - None: no constraints (default)</span>
+<span class="sd">            - A single callable: one constraint function</span>
+<span class="sd">            - A list of callables: multiple constraint functions for one task</span>
+<span class="sd">            - A tuple: constraint functions for each task (when adding multiple)</span>
+<span class="sd">        lower_bound : float, List[float], np.ndarray, Tuple[...], optional</span>
+<span class="sd">            Lower bound(s) for decision variables. Can be:</span>
+
+<span class="sd">            - None: defaults to zeros array with length dim</span>
+<span class="sd">            - float: broadcasts to all dimensions</span>
+<span class="sd">            - array: must have length dim</span>
+<span class="sd">        upper_bound : float, List[float], np.ndarray, Tuple[...], optional</span>
+<span class="sd">            Upper bound(s) for decision variables. Can be:</span>
+
+<span class="sd">            - None: defaults to ones array with length dim</span>
+<span class="sd">            - float: broadcasts to all dimensions</span>
+<span class="sd">            - array: must have length dim</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int or List[int]</span>
+<span class="sd">            Task index (single task) or list of task indices (multiple tasks).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If dimensions mismatch or bounds are incompatible.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        Add a single task with default bounds [0, 1]:</span>
+
+<span class="sd">        &gt;&gt;&gt; def sphere(x):</span>
+<span class="sd">        ...     return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; idx = mtop.add_task(sphere, dim=3)</span>
+<span class="sd">        &gt;&gt;&gt; idx</span>
+<span class="sd">        0</span>
+
+<span class="sd">        Add a single task with custom bounds (scalar):</span>
+
+<span class="sd">        &gt;&gt;&gt; idx = mtop.add_task(sphere, dim=5, lower_bound=-5, upper_bound=5)</span>
+<span class="sd">        &gt;&gt;&gt; idx</span>
+<span class="sd">        1</span>
+
+<span class="sd">        Add multiple tasks at once:</span>
+
+<span class="sd">        &gt;&gt;&gt; def f1(x): return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; def f2(x): return np.sum((x-1)**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; indices = mtop.add_task(</span>
+<span class="sd">        ...     objective_func=(f1, f2),</span>
+<span class="sd">        ...     dim=(3, 4),</span>
+<span class="sd">        ...     lower_bound=([-1]*3, [-2]*4),</span>
+<span class="sd">        ...     upper_bound=([1]*3, [2]*4)</span>
+<span class="sd">        ... )</span>
+<span class="sd">        &gt;&gt;&gt; indices</span>
+<span class="sd">        [2, 3]</span>
+
+<span class="sd">        Add task with constraints:</span>
+
+<span class="sd">        &gt;&gt;&gt; def con(x): return x[0] - 0.5</span>
+<span class="sd">        &gt;&gt;&gt; idx = mtop.add_task(sphere, dim=2, constraint_func=con)</span>
+<span class="sd">        &gt;&gt;&gt; idx</span>
+<span class="sd">        4</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">):</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add_multiple_tasks</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> <span class="n">upper_bound</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add_single_task</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="p">,</span> <span class="n">lower_bound</span><span class="p">,</span> <span class="n">upper_bound</span><span class="p">)</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add_single_task</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">objective_func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">Any</span><span class="p">],</span>
+            <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+            <span class="n">constraint_func</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">lower_bound</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">upper_bound</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add a single task to MTOP.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objective_func : Callable</span>
+<span class="sd">            Objective function to evaluate.</span>
+<span class="sd">        dim : int</span>
+<span class="sd">            Dimension of decision variables.</span>
+<span class="sd">        constraint_func : Callable or List[Callable], optional</span>
+<span class="sd">            Constraint function(s) (default is None).</span>
+<span class="sd">        lower_bound : float, List[float], or np.ndarray, optional</span>
+<span class="sd">            Lower bound (default is zeros array with length dim).</span>
+<span class="sd">            If scalar, broadcasts to all dimensions.</span>
+<span class="sd">        upper_bound : float, List[float], or np.ndarray, optional</span>
+<span class="sd">            Upper bound (default is ones array with length dim).</span>
+<span class="sd">            If scalar, broadcasts to all dimensions.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Task index.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If bounds size doesn&#39;t match dim.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># Default bounds to [0, 1] if not provided</span>
+        <span class="k">if</span> <span class="n">lower_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lower_bound</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">lb</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Broadcast scalar to all dimensions</span>
+                <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">lb</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">lower_bound</span> <span class="o">=</span> <span class="n">lb</span>
+
+        <span class="k">if</span> <span class="n">upper_bound</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">upper_bound</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">ub</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Broadcast scalar to all dimensions</span>
+                <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">ub</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">upper_bound</span> <span class="o">=</span> <span class="n">ub</span>
+
+        <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">lower_bound</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">upper_bound</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">lb</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">dim</span> <span class="ow">or</span> <span class="n">ub</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">dim</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Bounds must be length </span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Wrap objective and constraints (using independent wrapper classes, can be pickled)</span>
+        <span class="n">wrapped_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wrap_objective_func</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+        <span class="c1"># Infer n_objectives by testing a single sample</span>
+        <span class="n">test_out</span> <span class="o">=</span> <span class="n">wrapped_obj</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">test_out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Wrapped objective must produce 2D array&quot;</span><span class="p">)</span>
+        <span class="n">n_obj</span> <span class="o">=</span> <span class="n">test_out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">constraint_wrappers</span><span class="p">,</span> <span class="n">n_constraints</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_constraints</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+        <span class="n">task</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s1">&#39;raw_objective&#39;</span><span class="p">:</span> <span class="n">objective_func</span><span class="p">,</span>
+            <span class="s1">&#39;objective&#39;</span><span class="p">:</span> <span class="n">wrapped_obj</span><span class="p">,</span>  <span class="c1"># callable: X (n,dim) -&gt; (n, n_obj)</span>
+            <span class="s1">&#39;n_objectives&#39;</span><span class="p">:</span> <span class="n">n_obj</span><span class="p">,</span>
+            <span class="s1">&#39;constraints&#39;</span><span class="p">:</span> <span class="n">constraint_wrappers</span><span class="p">,</span>  <span class="c1"># list of callables X -&gt; (n, k_i)</span>
+            <span class="s1">&#39;n_constraints&#39;</span><span class="p">:</span> <span class="n">n_constraints</span>
+        <span class="p">}</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">lb</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">ub</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_add_multiple_tasks</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">objective_funcs</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">Callable</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+            <span class="n">dims</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="o">...</span><span class="p">]],</span>
+            <span class="n">constraint_func</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">],</span> <span class="o">...</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">lower_bounds</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">upper_bounds</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">Tuple</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="o">...</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add multiple tasks to MTOP.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objective_funcs : Tuple[Callable, ...]</span>
+<span class="sd">            Tuple of objective functions.</span>
+<span class="sd">        dims : int or Tuple[int, ...]</span>
+<span class="sd">            Single dimension (broadcast to all) or tuple of dimensions.</span>
+<span class="sd">        constraint_func : List[Callable] or Tuple[List[Callable], ...], optional</span>
+<span class="sd">            Constraint function(s) for each task (default is None for all).</span>
+<span class="sd">        lower_bounds : Tuple[Union[float, List[float], np.ndarray], ...], optional</span>
+<span class="sd">            Tuple of lower bounds for each task (default is zeros for each).</span>
+<span class="sd">            Each can be scalar or array.</span>
+<span class="sd">        upper_bounds : Tuple[Union[float, List[float], np.ndarray], ...], optional</span>
+<span class="sd">            Tuple of upper bounds for each task (default is ones for each).</span>
+<span class="sd">            Each can be scalar or array.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            List of task indices.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If tuple lengths don&#39;t match number of objective functions.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_tasks</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">objective_funcs</span><span class="p">)</span>
+
+        <span class="c1"># Broadcast dims if necessary</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">dims</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="n">dims</span> <span class="o">=</span> <span class="p">(</span><span class="n">dims</span><span class="p">,)</span> <span class="o">*</span> <span class="n">n_tasks</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span> <span class="o">!=</span> <span class="n">n_tasks</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;dims length must match number of objective_funcs&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Prepare constraint_func tuple/list</span>
+        <span class="k">if</span> <span class="n">constraint_func</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">constraint_func</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)</span> <span class="o">*</span> <span class="n">n_tasks</span>
+        <span class="k">elif</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">constraint_func</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">([</span><span class="n">constraint_func</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_tasks</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">)</span> <span class="o">!=</span> <span class="n">n_tasks</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;constraint_func length must match number of objective_funcs&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Handle bounds - allow None for default [0, 1]</span>
+        <span class="k">if</span> <span class="n">lower_bounds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">lower_bounds</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)</span> <span class="o">*</span> <span class="n">n_tasks</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">lower_bounds</span><span class="p">)</span> <span class="o">!=</span> <span class="n">n_tasks</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;lower_bounds length must match number of objective_funcs&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">upper_bounds</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">upper_bounds</span> <span class="o">=</span> <span class="p">(</span><span class="kc">None</span><span class="p">,)</span> <span class="o">*</span> <span class="n">n_tasks</span>
+        <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">upper_bounds</span><span class="p">)</span> <span class="o">!=</span> <span class="n">n_tasks</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;upper_bounds length must match number of objective_funcs&quot;</span><span class="p">)</span>
+
+        <span class="n">indices</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_tasks</span><span class="p">):</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_add_single_task</span><span class="p">(</span>
+                <span class="n">objective_func</span><span class="o">=</span><span class="n">objective_funcs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                <span class="n">constraint_func</span><span class="o">=</span><span class="n">constraint_func</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                <span class="n">lower_bound</span><span class="o">=</span><span class="n">lower_bounds</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                <span class="n">upper_bound</span><span class="o">=</span><span class="n">upper_bounds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="p">)</span>
+            <span class="n">indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">indices</span>
+
+<div class="viewcode-block" id="MTOP.add_tasks">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.add_tasks">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">add_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tasks_config</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Add multiple tasks from configuration dictionaries.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        tasks_config : List[Dict[str, Any]]</span>
+<span class="sd">            List of task configuration dictionaries. Each dict must contain:</span>
+
+<span class="sd">            - &#39;objective_func&#39; : Callable (required)</span>
+<span class="sd">            - &#39;dim&#39; : int (required)</span>
+<span class="sd">            - &#39;constraint_func&#39; : Callable or List[Callable] (optional)</span>
+<span class="sd">            - &#39;lower_bound&#39; : float, List[float], or np.ndarray (optional, default zeros)</span>
+<span class="sd">            - &#39;upper_bound&#39; : float, List[float], or np.ndarray (optional, default ones)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            List of task indices.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        TypeError</span>
+<span class="sd">            If tasks_config is not a list.</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If any config dict is missing required keys.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; def f1(x): return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; def f2(x): return np.sum((x-1)**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; configs = [</span>
+<span class="sd">        ...     {&#39;objective_func&#39;: f1, &#39;dim&#39;: 3},</span>
+<span class="sd">        ...     {&#39;objective_func&#39;: f2, &#39;dim&#39;: 5, &#39;lower_bound&#39;: -5, &#39;upper_bound&#39;: 5}</span>
+<span class="sd">        ... ]</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; indices = mtop.add_tasks(configs)</span>
+<span class="sd">        &gt;&gt;&gt; indices</span>
+<span class="sd">        [0, 1]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">tasks_config</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;tasks_config must be a list of dicts&quot;</span><span class="p">)</span>
+        <span class="n">indices</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">cfg</span> <span class="ow">in</span> <span class="n">tasks_config</span><span class="p">:</span>
+            <span class="k">if</span> <span class="s1">&#39;objective_func&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cfg</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Each task config must contain &#39;objective_func&#39;&quot;</span><span class="p">)</span>
+            <span class="k">if</span> <span class="s1">&#39;dim&#39;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">cfg</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Each task config must contain &#39;dim&#39;&quot;</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+                <span class="n">objective_func</span><span class="o">=</span><span class="n">cfg</span><span class="p">[</span><span class="s1">&#39;objective_func&#39;</span><span class="p">],</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">cfg</span><span class="p">[</span><span class="s1">&#39;dim&#39;</span><span class="p">],</span>
+                <span class="n">constraint_func</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;constraint_func&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                <span class="n">lower_bound</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;lower_bound&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">),</span>
+                <span class="n">upper_bound</span><span class="o">=</span><span class="n">cfg</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;upper_bound&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">indices</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">idx</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">indices</span></div>
+
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Wrapping helpers</span>
+    <span class="c1"># -------------------------</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_wrap_objective_func</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">func</span><span class="p">:</span> <span class="n">Callable</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Wrap objective function with pickle-compatible wrapper.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        func : Callable</span>
+<span class="sd">            Objective function to wrap.</span>
+<span class="sd">        dim : int</span>
+<span class="sd">            Dimension of decision variables.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Callable</span>
+<span class="sd">            Wrapped function that accepts X with shape (n, dim) and returns</span>
+<span class="sd">            array with shape (n, n_objectives).</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Uses ObjectiveFunctionWrapper class to support pickle serialization</span>
+<span class="sd">        for cross-platform parallel compatibility.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">ObjectiveFunctionWrapper</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_process_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constraint_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize constraint functions into list of pickle-compatible wrappers.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        constraint_func : None, Callable, or List[Callable]</span>
+<span class="sd">            Constraint function(s) to process.</span>
+<span class="sd">        dim : int</span>
+<span class="sd">            Dimension of decision variables.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Tuple[List[Callable], int]</span>
+<span class="sd">            Tuple of (wrappers_list, total_n_constraints).</span>
+<span class="sd">            If constraint_func is None, returns ([], 0).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        TypeError</span>
+<span class="sd">            If constraint_func has invalid type.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Uses ConstraintFunctionWrapper class to support pickle serialization</span>
+<span class="sd">        for cross-platform parallel compatibility.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">constraint_func</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">[],</span> <span class="mi">0</span>
+
+        <span class="c1"># If single callable provided, wrap into list</span>
+        <span class="k">if</span> <span class="nb">callable</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">funcs</span> <span class="o">=</span> <span class="p">[</span><span class="n">constraint_func</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">funcs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">)</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">all</span><span class="p">(</span><span class="nb">callable</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">):</span>
+                <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;All elements in constraint_func must be callables&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;constraint_func must be callable or list/tuple of callables or None&quot;</span><span class="p">)</span>
+
+        <span class="n">wrappers</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">:</span>
+            <span class="c1"># probe to detect per-call output size</span>
+            <span class="k">try</span><span class="p">:</span>
+                <span class="n">probe</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">))</span>
+                <span class="n">probe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">probe</span><span class="p">))</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="n">probe</span><span class="o">.</span><span class="n">size</span>
+            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                <span class="c1"># if probe fails, assume scalar per-call</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="mi">1</span>
+
+            <span class="n">total</span> <span class="o">+=</span> <span class="n">k</span>
+            <span class="n">wrappers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ConstraintFunctionWrapper</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">k</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">wrappers</span><span class="p">,</span> <span class="n">total</span>
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Evaluation</span>
+    <span class="c1"># -------------------------</span>
+<div class="viewcode-block" id="MTOP.evaluate_task">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.evaluate_task">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">evaluate_task</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">task_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+            <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+            <span class="n">eval_objectives</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="n">eval_constraints</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate a task with selective evaluation support.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_idx : int</span>
+<span class="sd">            Index of the task to evaluate.</span>
+<span class="sd">        X : np.ndarray</span>
+<span class="sd">            Input array of shape (n_samples, dim) or (dim,).</span>
+<span class="sd">        eval_objectives : bool, int, or List[int], optional</span>
+<span class="sd">            Evaluation mode for objectives (default is True):</span>
+
+<span class="sd">            - True: evaluate all objectives</span>
+<span class="sd">            - False: skip objective evaluation, return empty array</span>
+<span class="sd">            - int: evaluate only the i-th objective</span>
+<span class="sd">            - List[int]: evaluate specified objectives by indices</span>
+<span class="sd">        eval_constraints : bool, int, or List[int], optional</span>
+<span class="sd">            Evaluation mode for constraints (default is True):</span>
+
+<span class="sd">            - True: evaluate all constraints</span>
+<span class="sd">            - False: skip constraint evaluation, return empty array</span>
+<span class="sd">            - int: evaluate only the i-th constraint</span>
+<span class="sd">            - List[int]: evaluate specified constraints by indices</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Tuple[np.ndarray, np.ndarray]</span>
+<span class="sd">            Tuple of (objectives, constraints) as 2D numpy arrays:</span>
+
+<span class="sd">            - objectives: shape (n_samples, n_evaluated_objectives)</span>
+<span class="sd">              or padded to (n_samples, m_max) if unified_eval_mode is True</span>
+<span class="sd">            - constraints: shape (n_samples, n_evaluated_constraints)</span>
+<span class="sd">              or padded to (n_samples, c_max) if unified_eval_mode is True</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If task_idx is out of range or input dimension mismatch.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        Evaluate all objectives and constraints:</span>
+
+<span class="sd">        &gt;&gt;&gt; def sphere(x):</span>
+<span class="sd">        ...     return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop.add_task(sphere, dim=3)</span>
+<span class="sd">        0</span>
+<span class="sd">        &gt;&gt;&gt; X = np.random.rand(10, 3)</span>
+<span class="sd">        &gt;&gt;&gt; obj, con = mtop.evaluate_task(0, X)</span>
+<span class="sd">        &gt;&gt;&gt; obj.shape</span>
+<span class="sd">        (10, 1)</span>
+
+<span class="sd">        Evaluate only specific objectives:</span>
+
+<span class="sd">        &gt;&gt;&gt; def multi_obj(x):</span>
+<span class="sd">        ...     x = np.atleast_2d(x)</span>
+<span class="sd">        ...     f1 = np.sum(x**2, axis=1)</span>
+<span class="sd">        ...     f2 = np.sum((x-1)**2, axis=1)</span>
+<span class="sd">        ...     f3 = np.sum(x, axis=1)</span>
+<span class="sd">        ...     return np.column_stack([f1, f2, f3])</span>
+<span class="sd">        &gt;&gt;&gt; mtop2 = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop2.add_task(multi_obj, dim=3)</span>
+<span class="sd">        0</span>
+<span class="sd">        &gt;&gt;&gt; X = np.random.rand(10, 3)</span>
+<span class="sd">        &gt;&gt;&gt; obj, con = mtop2.evaluate_task(0, X, eval_objectives=[0, 2])</span>
+<span class="sd">        &gt;&gt;&gt; obj.shape</span>
+<span class="sd">        (10, 2)</span>
+
+<span class="sd">        Skip constraint evaluation:</span>
+
+<span class="sd">        &gt;&gt;&gt; mtop3 = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop3.add_task(sphere, dim=3)</span>
+<span class="sd">        0</span>
+<span class="sd">        &gt;&gt;&gt; X = np.random.rand(10, 3)</span>
+<span class="sd">        &gt;&gt;&gt; obj, con = mtop3.evaluate_task(0, X, eval_constraints=False)</span>
+<span class="sd">        &gt;&gt;&gt; con.shape</span>
+<span class="sd">        (10, 0)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">task_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_idx out of range&quot;</span><span class="p">)</span>
+        <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">!=</span> <span class="n">dim</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Input dimension mismatch: expected </span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+        <span class="n">task</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Evaluate objectives</span>
+        <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_objectives</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">eval_objectives</span><span class="p">)</span>
+
+        <span class="c1"># Evaluate constraints</span>
+        <span class="n">cons</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_constraints</span><span class="p">(</span><span class="n">task</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">eval_constraints</span><span class="p">)</span>
+
+        <span class="c1"># Apply unified evaluation mode if enabled</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_unified_eval_mode</span><span class="p">:</span>
+            <span class="n">obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pad_to_max</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">m_max</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_pad_to_max</span><span class="p">(</span><span class="n">cons</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">c_max</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">obj</span><span class="p">,</span> <span class="n">cons</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_objectives</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">task</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+            <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+            <span class="n">eval_objectives</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate objectives based on eval_objectives parameter.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task : Dict</span>
+<span class="sd">            Task dictionary containing objective function wrapper.</span>
+<span class="sd">        X : np.ndarray</span>
+<span class="sd">            Input array of shape (n_samples, dim).</span>
+<span class="sd">        eval_objectives : bool, int, or List[int]</span>
+<span class="sd">            Evaluation mode specification.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Objective values array.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If objective index is out of range.</span>
+<span class="sd">        TypeError</span>
+<span class="sd">            If eval_objectives has invalid type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">n_obj</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;n_objectives&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">eval_objectives</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+        <span class="c1"># Evaluate all objectives first</span>
+        <span class="n">all_obj</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;objective&#39;</span><span class="p">](</span><span class="n">X</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">all_obj</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Internal objective wrapper failed to produce 2D array&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">eval_objectives</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">all_obj</span>
+
+        <span class="c1"># Selective evaluation</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_objectives</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">eval_objectives</span> <span class="o">&lt;</span> <span class="n">n_obj</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Objective index </span><span class="si">{</span><span class="n">eval_objectives</span><span class="si">}</span><span class="s2"> out of range [0, </span><span class="si">{</span><span class="n">n_obj</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">all_obj</span><span class="p">[:,</span> <span class="n">eval_objectives</span><span class="p">:</span><span class="n">eval_objectives</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_objectives</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">eval_objectives</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">n_obj</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Objective index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> out of range [0, </span><span class="si">{</span><span class="n">n_obj</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">all_obj</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span>
+
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;eval_objectives must be bool, int, or list of int&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_constraints</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">task</span><span class="p">:</span> <span class="n">Dict</span><span class="p">,</span>
+            <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
+            <span class="n">eval_constraints</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate constraints based on eval_constraints parameter.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task : Dict</span>
+<span class="sd">            Task dictionary containing constraint function wrappers.</span>
+<span class="sd">        X : np.ndarray</span>
+<span class="sd">            Input array of shape (n_samples, dim).</span>
+<span class="sd">        eval_constraints : bool, int, or List[int]</span>
+<span class="sd">            Evaluation mode specification.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Constraint values array.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If constraint index is out of range.</span>
+<span class="sd">        TypeError</span>
+<span class="sd">            If eval_constraints has invalid type.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">n_cons</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;n_constraints&#39;</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">eval_constraints</span> <span class="ow">is</span> <span class="kc">False</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+        <span class="c1"># No constraints defined -&gt; return zeros with shape (n, 1)</span>
+        <span class="k">if</span> <span class="n">n_cons</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+        <span class="c1"># Evaluate all constraints</span>
+        <span class="n">parts</span> <span class="o">=</span> <span class="p">[</span><span class="n">w</span><span class="p">(</span><span class="n">X</span><span class="p">)</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;constraints&#39;</span><span class="p">]]</span>
+        <span class="n">all_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">parts</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">all_cons</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;Internal constraint wrappers failed to produce 2D array&quot;</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">eval_constraints</span> <span class="ow">is</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">all_cons</span>
+
+        <span class="c1"># Selective evaluation</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_constraints</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">eval_constraints</span> <span class="o">&lt;</span> <span class="n">n_cons</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Constraint index </span><span class="si">{</span><span class="n">eval_constraints</span><span class="si">}</span><span class="s2"> out of range [0, </span><span class="si">{</span><span class="n">n_cons</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">all_cons</span><span class="p">[:,</span> <span class="n">eval_constraints</span><span class="p">:</span><span class="n">eval_constraints</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_constraints</span><span class="p">,</span> <span class="p">(</span><span class="nb">list</span><span class="p">,</span> <span class="nb">tuple</span><span class="p">)):</span>
+            <span class="n">indices</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">eval_constraints</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="n">indices</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">idx</span> <span class="o">&lt;</span> <span class="n">n_cons</span><span class="p">:</span>
+                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Constraint index </span><span class="si">{</span><span class="n">idx</span><span class="si">}</span><span class="s2"> out of range [0, </span><span class="si">{</span><span class="n">n_cons</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">all_cons</span><span class="p">[:,</span> <span class="n">indices</span><span class="p">]</span>
+
+        <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;eval_constraints must be bool, int, or list of int&quot;</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_pad_to_max</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">arr</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">max_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Pad array to max_size along specified axis.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        arr : np.ndarray</span>
+<span class="sd">            Array to pad.</span>
+<span class="sd">        max_size : int</span>
+<span class="sd">            Target size along the specified axis.</span>
+<span class="sd">        axis : int, optional</span>
+<span class="sd">            Axis along which to pad (default is 1).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Padded array.</span>
+
+<span class="sd">        Notes</span>
+<span class="sd">        -----</span>
+<span class="sd">        Uses constant padding with the value specified by self._fill_value.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_size</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">arr</span>
+
+        <span class="n">pad_width</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">)]</span> <span class="o">*</span> <span class="n">arr</span><span class="o">.</span><span class="n">ndim</span>
+        <span class="n">pad_width</span><span class="p">[</span><span class="n">axis</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">max_size</span> <span class="o">-</span> <span class="n">arr</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">axis</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="n">pad_width</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;constant&#39;</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_fill_value</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MTOP.evaluate_tasks">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.evaluate_tasks">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">evaluate_tasks</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">task_indices</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
+            <span class="n">X_list</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
+            <span class="n">eval_objectives</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]]</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="n">eval_constraints</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="nb">bool</span><span class="p">,</span> <span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate multiple tasks simultaneously.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_indices : List[int]</span>
+<span class="sd">            List of task indices to evaluate.</span>
+<span class="sd">        X_list : List[np.ndarray]</span>
+<span class="sd">            List of input arrays, one for each task.</span>
+<span class="sd">        eval_objectives : bool, int, List[int], or List[Union[...]], optional</span>
+<span class="sd">            Evaluation mode for objectives (default is True):</span>
+
+<span class="sd">            - Single mode: applied to all tasks</span>
+<span class="sd">            - List of modes: per-task evaluation modes</span>
+<span class="sd">        eval_constraints : bool, int, List[int], or List[Union[...]], optional</span>
+<span class="sd">            Evaluation mode for constraints (default is True):</span>
+
+<span class="sd">            - Single mode: applied to all tasks</span>
+<span class="sd">            - List of modes: per-task evaluation modes</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Tuple[List[np.ndarray], List[np.ndarray]]</span>
+<span class="sd">            Tuple of (list of objective arrays, list of constraint arrays).</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If task_indices and X_list length mismatch.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; def f1(x): return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; def f2(x): return np.sum((x-1)**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop.add_task(f1, dim=3)</span>
+<span class="sd">        0</span>
+<span class="sd">        &gt;&gt;&gt; mtop.add_task(f2, dim=4)</span>
+<span class="sd">        1</span>
+<span class="sd">        &gt;&gt;&gt; mtop.add_task(f1, dim=5)</span>
+<span class="sd">        2</span>
+<span class="sd">        &gt;&gt;&gt; task_indices = [0, 1, 2]</span>
+<span class="sd">        &gt;&gt;&gt; X_list = [np.random.rand(10, 3), np.random.rand(10, 4), np.random.rand(10, 5)]</span>
+<span class="sd">        &gt;&gt;&gt; objs, cons = mtop.evaluate_tasks(task_indices, X_list)</span>
+<span class="sd">        &gt;&gt;&gt; len(objs)</span>
+<span class="sd">        3</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_indices</span><span class="p">)</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X_list</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_indices and X_list length mismatch&quot;</span><span class="p">)</span>
+
+        <span class="c1"># Handle per-task evaluation modes</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_objectives</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">eval_objectives</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_indices</span><span class="p">):</span>
+            <span class="n">obj_modes</span> <span class="o">=</span> <span class="n">eval_objectives</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">obj_modes</span> <span class="o">=</span> <span class="p">[</span><span class="n">eval_objectives</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_indices</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">eval_constraints</span><span class="p">,</span> <span class="nb">list</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">eval_constraints</span><span class="p">)</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_indices</span><span class="p">):</span>
+            <span class="n">con_modes</span> <span class="o">=</span> <span class="n">eval_constraints</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">con_modes</span> <span class="o">=</span> <span class="p">[</span><span class="n">eval_constraints</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_indices</span><span class="p">)</span>
+
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">obj_mode</span><span class="p">,</span> <span class="n">con_mode</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">task_indices</span><span class="p">,</span> <span class="n">X_list</span><span class="p">,</span> <span class="n">obj_modes</span><span class="p">,</span> <span class="n">con_modes</span><span class="p">):</span>
+            <span class="n">o</span><span class="p">,</span> <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">evaluate_task</span><span class="p">(</span><span class="n">idx</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">eval_objectives</span><span class="o">=</span><span class="n">obj_mode</span><span class="p">,</span> <span class="n">eval_constraints</span><span class="o">=</span><span class="n">con_mode</span><span class="p">)</span>
+            <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">o</span><span class="p">)</span>
+            <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">c</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span></div>
+
+
+    <span class="c1"># -------------------------</span>
+    <span class="c1"># Query / info</span>
+    <span class="c1"># -------------------------</span>
+<div class="viewcode-block" id="MTOP.get_n_objectives">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.get_n_objectives">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_n_objectives</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the number of objectives for a specific task.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_idx : int</span>
+<span class="sd">            Index of the task.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Number of objectives.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If task_idx is out of range.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">task_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_idx out of range&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">[</span><span class="n">task_idx</span><span class="p">][</span><span class="s1">&#39;n_objectives&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="MTOP.get_all_n_objectives">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.get_all_n_objectives">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_all_n_objectives</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the number of objectives for all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            List of number of objectives for each task.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_n_objectives</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_tasks</span><span class="p">)]</span></div>
+
+
+<div class="viewcode-block" id="MTOP.get_n_constraints">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.get_n_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_n_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the number of constraints for a specific task.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_idx : int</span>
+<span class="sd">            Index of the task.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Number of constraints.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If task_idx is out of range.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">task_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_idx out of range&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">[</span><span class="n">task_idx</span><span class="p">][</span><span class="s1">&#39;n_constraints&#39;</span><span class="p">]</span></div>
+
+
+<div class="viewcode-block" id="MTOP.get_all_n_constraints">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.get_all_n_constraints">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_all_n_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get the number of constraints for all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            List of number of constraints for each task.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">get_n_constraints</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_tasks</span><span class="p">)]</span></div>
+
+
+<div class="viewcode-block" id="MTOP.get_task_info">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.mtop.MTOP.get_task_info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_task_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">task_idx</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Get comprehensive information about a specific task.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        task_idx : int</span>
+<span class="sd">            Index of the task.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Dict[str, Any]</span>
+<span class="sd">            Dictionary containing task information:</span>
+
+<span class="sd">            - &#39;dimension&#39; : int - Decision variable dimension</span>
+<span class="sd">            - &#39;n_objectives&#39; : int - Number of objectives</span>
+<span class="sd">            - &#39;n_constraints&#39; : int - Number of constraints</span>
+<span class="sd">            - &#39;lower_bounds&#39; : np.ndarray - Lower bounds</span>
+<span class="sd">            - &#39;upper_bounds&#39; : np.ndarray - Upper bounds</span>
+<span class="sd">            - &#39;objective_func&#39; : Callable - Raw objective function</span>
+<span class="sd">            - &#39;constraint_funcs&#39; : List[Callable] - Constraint function wrappers</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If task_idx is out of range.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; def sphere(x): return np.sum(x**2, axis=1)</span>
+<span class="sd">        &gt;&gt;&gt; mtop = MTOP()</span>
+<span class="sd">        &gt;&gt;&gt; mtop.add_task(sphere, dim=3)</span>
+<span class="sd">        0</span>
+<span class="sd">        &gt;&gt;&gt; info = mtop.get_task_info(0)</span>
+<span class="sd">        &gt;&gt;&gt; print(f&quot;Task 0 has {info[&#39;n_objectives&#39;]} objectives&quot;)</span>
+<span class="sd">        Task 0 has 1 objectives</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="mi">0</span> <span class="o">&lt;=</span> <span class="n">task_idx</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_idx out of range&quot;</span><span class="p">)</span>
+        <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span>
+        <span class="n">t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="p">{</span>
+            <span class="s1">&#39;dimension&#39;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">],</span>
+            <span class="s1">&#39;n_objectives&#39;</span><span class="p">:</span> <span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_objectives&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;n_constraints&#39;</span><span class="p">:</span> <span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_constraints&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;lower_bounds&#39;</span><span class="p">:</span> <span class="n">lb</span><span class="p">,</span>
+            <span class="s1">&#39;upper_bounds&#39;</span><span class="p">:</span> <span class="n">ub</span><span class="p">,</span>
+            <span class="s1">&#39;objective_func&#39;</span><span class="p">:</span> <span class="n">t</span><span class="p">[</span><span class="s1">&#39;raw_objective&#39;</span><span class="p">],</span>
+            <span class="s1">&#39;constraint_funcs&#39;</span><span class="p">:</span> <span class="p">[</span><span class="n">w</span> <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="n">t</span><span class="p">[</span><span class="s1">&#39;constraints&#39;</span><span class="p">]]</span>
+        <span class="p">}</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__str__</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate string representation of MTOP.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        str</span>
+<span class="sd">            Multi-line string describing the MTOP configuration.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">lines</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;MTOP with </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">)</span><span class="si">}</span><span class="s2"> tasks:&quot;</span><span class="p">]</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Unified eval mode: </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_unified_eval_mode</span><span class="si">}</span><span class="s2"> (fill_value=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">_fill_value</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Max number of objectives (m_max): </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">m_max</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Max number of constraints (c_max): </span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">c_max</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">):</span>
+            <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bounds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">lines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;  Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: dim=</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="si">}</span><span class="s2">, n_objs=</span><span class="si">{</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_objectives&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, n_cons=</span><span class="si">{</span><span class="n">t</span><span class="p">[</span><span class="s1">&#39;n_constraints&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">, bounds=[</span><span class="si">{</span><span class="n">lb</span><span class="o">.</span><span class="n">min</span><span class="p">()</span><span class="si">}</span><span class="s2">..</span><span class="si">{</span><span class="n">ub</span><span class="o">.</span><span class="n">max</span><span class="p">()</span><span class="si">}</span><span class="s2">]&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">lines</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">n_tasks</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Total number of tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        int</span>
+<span class="sd">            Number of tasks in the MTOP.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">tasks</span><span class="p">)</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">n_objs</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        List of number of objectives for all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            Number of objectives for each task.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_all_n_objectives</span><span class="p">()</span>
+
+    <span class="nd">@property</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">n_cons</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        List of number of constraints for all tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[int]</span>
+<span class="sd">            Number of constraints for each task.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">get_all_n_constraints</span><span class="p">()</span></div>
+
+
+
+<span class="c1"># -------------------------</span>
+<span class="c1"># Example usage and testing</span>
+<span class="c1"># -------------------------</span>
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;MTOP v2.1 - Testing (Cross-platform compatible)&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+
+
+    <span class="c1"># Define test functions</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">obj1</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Single objective: f(x) = sum(x^2)&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">obj2</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Multi-objective: f1 = sum(x^2), f2 = sum((x-1)^2), f3 = sum(x)&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">f1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">f2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">x</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">f3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">f1</span><span class="p">,</span> <span class="n">f2</span><span class="p">,</span> <span class="n">f3</span><span class="p">])</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">con1</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Single constraint: g(x) = sum(x) - 1 &lt;= 0&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">con2</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Two constraints: g1 = x[0] - 0.5, g2 = x[1] - 0.5&quot;&quot;&quot;</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">])</span>
+
+
+    <span class="c1"># Create MTOP instance</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">1. Creating MTOP with tasks using default bounds...&quot;</span><span class="p">)</span>
+    <span class="n">mtop</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">(</span><span class="n">unified_eval_mode</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+
+    <span class="c1"># Add task with explicit bounds</span>
+    <span class="n">idx1</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+        <span class="n">objective_func</span><span class="o">=</span><span class="n">obj1</span><span class="p">,</span>
+        <span class="n">dim</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+        <span class="n">constraint_func</span><span class="o">=</span><span class="n">con1</span><span class="p">,</span>
+        <span class="n">lower_bound</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="mi">5</span><span class="p">,</span> <span class="o">-</span><span class="mi">5</span><span class="p">,</span> <span class="o">-</span><span class="mi">5</span><span class="p">],</span>
+        <span class="n">upper_bound</span><span class="o">=</span><span class="p">[</span><span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">,</span> <span class="mi">5</span><span class="p">]</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">idx1</span><span class="si">}</span><span class="s2">: explicit bounds [-5, 5]&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Add task with default bounds [0, 1]</span>
+    <span class="n">idx2</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+        <span class="n">objective_func</span><span class="o">=</span><span class="n">obj2</span><span class="p">,</span>
+        <span class="n">dim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">constraint_func</span><span class="o">=</span><span class="n">con2</span>
+        <span class="c1"># No bounds provided -&gt; defaults to [0, 1]</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">idx2</span><span class="si">}</span><span class="s2">: default bounds [0, 1]&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Add task with only lower bound (upper defaults to 1)</span>
+    <span class="n">idx3</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+        <span class="n">objective_func</span><span class="o">=</span><span class="n">obj1</span><span class="p">,</span>
+        <span class="n">dim</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+        <span class="n">lower_bound</span><span class="o">=</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="c1"># upper_bound defaults to [1, 1]</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">idx3</span><span class="si">}</span><span class="s2">: lower_bound=[-1,-1], upper_bound defaults to [1,1]&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Add task with scalar bounds</span>
+    <span class="n">idx4</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+        <span class="n">objective_func</span><span class="o">=</span><span class="n">obj1</span><span class="p">,</span>
+        <span class="n">dim</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+        <span class="n">lower_bound</span><span class="o">=-</span><span class="mi">5</span><span class="p">,</span>  <span class="c1"># scalar, broadcasts to [-5, -5, -5, -5, -5]</span>
+        <span class="n">upper_bound</span><span class="o">=</span><span class="mi">5</span>  <span class="c1"># scalar, broadcasts to [5, 5, 5, 5, 5]</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">idx4</span><span class="si">}</span><span class="s2">: scalar bounds -5 and 5 broadcast to all dimensions&quot;</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">mtop</span><span class="p">))</span>
+
+    <span class="c1"># Test evaluation</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">2. Testing evaluation with default bounds...&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Task with default bounds [0, 1]</span>
+    <span class="n">X_default</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([[</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">]])</span>
+    <span class="n">obj_vals</span><span class="p">,</span> <span class="n">con_vals</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">evaluate_task</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">X_default</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">Task 1 (default bounds [0,1]):&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Input X:</span><span class="se">\n</span><span class="si">{</span><span class="n">X_default</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Objectives: </span><span class="si">{</span><span class="n">obj_vals</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  Constraints: </span><span class="si">{</span><span class="n">con_vals</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Verify bounds</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">3. Verifying bounds...&quot;</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mtop</span><span class="o">.</span><span class="n">n_tasks</span><span class="p">):</span>
+        <span class="n">info</span> <span class="o">=</span> <span class="n">mtop</span><span class="o">.</span><span class="n">get_task_info</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: lower=</span><span class="si">{</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;lower_bounds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="si">}</span><span class="s2">, upper=</span><span class="si">{</span><span class="n">info</span><span class="p">[</span><span class="s1">&#39;upper_bounds&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># Test add_tasks with default bounds</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">4. Testing add_tasks with mixed bounds...&quot;</span><span class="p">)</span>
+    <span class="n">mtop2</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+
+    <span class="n">configs</span> <span class="o">=</span> <span class="p">[</span>
+        <span class="p">{</span><span class="s1">&#39;objective_func&#39;</span><span class="p">:</span> <span class="n">obj1</span><span class="p">,</span> <span class="s1">&#39;dim&#39;</span><span class="p">:</span> <span class="mi">3</span><span class="p">},</span>  <span class="c1"># default [0,1]</span>
+        <span class="p">{</span><span class="s1">&#39;objective_func&#39;</span><span class="p">:</span> <span class="n">obj1</span><span class="p">,</span> <span class="s1">&#39;dim&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span> <span class="s1">&#39;lower_bound&#39;</span><span class="p">:</span> <span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="o">-</span><span class="mi">2</span><span class="p">],</span> <span class="s1">&#39;upper_bound&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">]},</span>
+        <span class="p">{</span><span class="s1">&#39;objective_func&#39;</span><span class="p">:</span> <span class="n">obj2</span><span class="p">,</span> <span class="s1">&#39;dim&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">}</span>  <span class="c1"># default [0,1]</span>
+    <span class="p">]</span>
+
+    <span class="n">indices</span> <span class="o">=</span> <span class="n">mtop2</span><span class="o">.</span><span class="n">add_tasks</span><span class="p">(</span><span class="n">configs</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">mtop2</span><span class="p">)</span>
+
+    <span class="c1"># Test tuple-style add_task with default bounds</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">5. Testing tuple-style add_task with default bounds...&quot;</span><span class="p">)</span>
+    <span class="n">mtop4</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+
+    <span class="n">indices</span> <span class="o">=</span> <span class="n">mtop4</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+        <span class="n">objective_func</span><span class="o">=</span><span class="p">(</span><span class="n">obj1</span><span class="p">,</span> <span class="n">obj2</span><span class="p">),</span>
+        <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
+        <span class="c1"># No bounds -&gt; all default to [0, 1]</span>
+    <span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">mtop4</span><span class="p">)</span>
+
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="o">+</span> <span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;All tests completed successfully!&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Cross-platform compatibility verified!&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;=&quot;</span> <span class="o">*</span> <span class="mi">60</span><span class="p">)</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
