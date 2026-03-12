@@ -3,7 +3,7 @@
 Methods
 =======
 
-This chapter introduces the utility modules provided by **DDMTOLab**, including batch experiments, data analysis, performance metrics, and algorithm components. These modules provide standardized testing workflows and rich algorithm building tools.
+This chapter introduces the utility modules provided by **D²MTOLab**, including batch experiments, data analysis, performance metrics, and algorithm components. These modules provide standardized testing workflows and rich algorithm building tools.
 
 Batch Experiments
 -----------------
@@ -261,7 +261,7 @@ Initialize the ``DataAnalyzer`` with configuration options:
 Metric Configuration
 ~~~~~~~~~~~~~~~~~~~~
 
-For problems requiring complex metrics (e.g., multi-objective optimization), provide a ``settings`` configuration dictionary:
+For problems requiring complex metrics (e.g., multiobjective optimization), provide a ``settings`` configuration dictionary:
 
 .. code-block:: python
 
@@ -571,7 +571,7 @@ The reference loading is automatically handled by ``DataAnalyzer`` when settings
 
 2. **Set appropriate n_ref for metrics and visualization:**
 
-   When calculating multi-objective metrics (e.g., IGD), it is recommended to set ``n_ref`` to 1000 (preferably not exceeding 2000). Using too many reference points can result in very large PDF files when visualizing Pareto fronts with the true PF overlay.
+   When calculating multiobjective metrics (e.g., IGD), it is recommended to set ``n_ref`` to 1000 (preferably not exceeding 2000). Using too many reference points can result in very large PDF files when visualizing Pareto fronts with the true PF overlay.
 
    .. code-block:: python
 
@@ -702,14 +702,143 @@ Comparison with DataAnalyzer
      - Development and quick validation
      - Formal experiment analysis
 
+Problem Definition (MTOP)
+-------------------------
+
+.. code-block:: python
+
+    from Methods.mtop import MTOP
+
+The ``MTOP`` (Multitask Optimization Problem) class provides a unified interface for defining single-task and multitask optimization problems with support for objectives, constraints, and variable bounds.
+
+Module Features
+~~~~~~~~~~~~~~~
+
+The ``MTOP`` class offers:
+
+1. **Flexible Task Definition**: Add single or multiple tasks with different dimensions and objectives
+2. **Constraint Support**: Define constraint functions for constrained optimization
+3. **Automatic Vectorization**: Handle both vectorized and non-vectorized objective functions
+4. **Unified Evaluation Mode**: Optionally pad outputs to consistent dimensions across tasks
+5. **Cross-Platform Compatibility**: Pickle-compatible function wrappers for parallel execution
+6. **Selective Evaluation**: Evaluate specific objectives or constraints as needed
+
+Class Initialization
+~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    mtop = MTOP(
+        unified_eval_mode=False,  # Pad outputs to max dimensions
+        fill_value=0.0            # Fill value for padding
+    )
+
+Adding Tasks
+~~~~~~~~~~~~
+
+**Single Task with Default Bounds [0, 1]:**
+
+.. code-block:: python
+
+    def sphere(x):
+        return np.sum(x**2, axis=1)
+
+    mtop = MTOP()
+    idx = mtop.add_task(sphere, dim=3)
+
+**Single Task with Custom Bounds:**
+
+.. code-block:: python
+
+    # Array bounds
+    idx = mtop.add_task(sphere, dim=3, lower_bound=[-5, -5, -5], upper_bound=[5, 5, 5])
+
+    # Scalar bounds (broadcast to all dimensions)
+    idx = mtop.add_task(sphere, dim=5, lower_bound=-5, upper_bound=5)
+
+**Multiple Tasks at Once:**
+
+.. code-block:: python
+
+    def f1(x): return np.sum(x**2, axis=1)
+    def f2(x): return np.sum((x-1)**2, axis=1)
+
+    indices = mtop.add_task(
+        objective_func=(f1, f2),
+        dim=(3, 4),
+        lower_bound=([-1]*3, [-2]*4),
+        upper_bound=([1]*3, [2]*4)
+    )
+
+**Task with Constraints:**
+
+.. code-block:: python
+
+    def constraint(x):
+        return x[:, 0] - 0.5  # g(x) <= 0
+
+    idx = mtop.add_task(sphere, dim=3, constraint_func=constraint)
+
+**Multiobjective Task:**
+
+.. code-block:: python
+
+    def multi_obj(x):
+        f1 = np.sum(x**2, axis=1)
+        f2 = np.sum((x-1)**2, axis=1)
+        return np.column_stack([f1, f2])
+
+    idx = mtop.add_task(multi_obj, dim=3)
+
+Evaluating Tasks
+~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    # Evaluate a single task
+    X = np.random.rand(10, 3)
+    objs, cons = mtop.evaluate_task(0, X)
+
+    # Selective evaluation (evaluate only specific objectives)
+    objs, cons = mtop.evaluate_task(0, X, eval_objectives=[0, 2])
+
+    # Skip constraint evaluation
+    objs, cons = mtop.evaluate_task(0, X, eval_constraints=False)
+
+    # Evaluate multiple tasks
+    X_list = [np.random.rand(10, 3), np.random.rand(10, 4)]
+    objs_list, cons_list = mtop.evaluate_tasks([0, 1], X_list)
+
+Querying Task Information
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+
+    # Get number of tasks
+    n_tasks = mtop.n_tasks
+
+    # Get dimensions for all tasks
+    dims = mtop.dims
+
+    # Get number of objectives/constraints for a task
+    n_obj = mtop.get_n_objectives(0)
+    n_con = mtop.get_n_constraints(0)
+
+    # Get detailed task info
+    info = mtop.get_task_info(0)
+    # Returns: {'dimension', 'n_objectives', 'n_constraints', 'lower_bounds', 'upper_bounds', ...}
+
+    # Print MTOP summary
+    print(mtop)
+
 Animation Generator
 -------------------
 
 .. code-block:: python
 
-    from Methods.optimization_animator import OptimizationAnimator, create_optimization_animation
+    from Methods.animation_generator import AnimationGenerator, create_optimization_animation
 
-The animation generator module provides comprehensive visualization tools for optimization processes, supporting both single-objective and multi-objective optimization with multiple comparison modes.
+The animation generator module provides comprehensive visualization tools for optimization processes, supporting both single-objective and multiobjective optimization with multiple comparison modes.
 
 Module Features
 ~~~~~~~~~~~~~~~
@@ -732,7 +861,7 @@ Visualization Components
 - **Decision Space (Left)**: Parallel coordinate plot showing decision variable evolution
 - **Convergence Curve (Right)**: Best objective value vs. NFEs (Number of Function Evaluations)
 
-**For Multi-Objective Optimization:**
+**For Multiobjective Optimization:**
 
 - **Decision Space (Left)**: Parallel coordinate plot showing decision variable evolution
 - **Objective Space (Right)**: Pareto front evolution
@@ -744,11 +873,21 @@ Visualization Components
 Quick Start
 ~~~~~~~~~~~
 
-**Single File Animation:**
+**Using AnimationGenerator Class:**
 
 .. code-block:: python
 
-    from Methods.optimization_animator import create_optimization_animation
+    from Methods.animation_generator import AnimationGenerator
+
+    # Create generator and run
+    generator = AnimationGenerator(data_path='./Data', save_path='./Results')
+    generator.run()
+
+**Single File Animation (Convenience Function):**
+
+.. code-block:: python
+
+    from Methods.animation_generator import create_optimization_animation
 
     # Generate animation for a single result file
     create_optimization_animation(
@@ -852,25 +991,29 @@ Layout: ``[GA Dec | DE Dec | GA Obj | DE Obj]``
 Class Initialization
 ~~~~~~~~~~~~~~~~~~~~
 
-For advanced usage, directly instantiate the ``OptimizationAnimator`` class:
+Instantiate the ``AnimationGenerator`` class for batch processing:
 
 .. code-block:: python
 
-    from Methods.optimization_animator import OptimizationAnimator
+    from Methods.animation_generator import AnimationGenerator
 
-    animator = OptimizationAnimator(
-        pkl_path='./Data/GA/GA_P1_1.pkl',
-        output_path='./Results/animation.gif',
-        fps=10,
-        dpi=100,
-        merge=0,
-        title='My Optimization',
-        algorithm_order=None,
-        max_nfes=10000
+    generator = AnimationGenerator(
+        data_path='./Data',           # Directory containing .pkl files
+        save_path='./Results',        # Output directory
+        algorithm_order=['GA', 'DE'], # Optional: specify display order
+        title='My Comparison',        # Optional: custom title
+        merge=0,                      # Merge mode (0-3)
+        max_nfes=10000,               # Max function evaluations
+        fps=10,                       # Frames per second
+        dpi=100,                      # Resolution
+        interval=100,                 # Frame interval (ms)
+        format='gif',                 # Output format
+        log_scale=False,              # Log scale for SO
+        file_suffix='.pkl'            # File pattern
     )
 
-    # Generate animation
-    animator.create_animation(interval=100)
+    # Execute the pipeline
+    results = generator.run()
 
 **Parameters:**
 
@@ -881,7 +1024,7 @@ For advanced usage, directly instantiate the ``OptimizationAnimator`` class:
 - ``merge``: Comparison mode (0-3, default: 0)
 - ``title``: Custom title for the animation (optional)
 - ``algorithm_order``: List of algorithm names specifying display order (merge mode only)
-- ``max_nfes``: Maximum NFEs, scalar or list for multi-task problems (default: 100)
+- ``max_nfes``: Maximum NFEs, scalar or list for multitask problems (default: 100)
 
 NFEs Configuration
 ~~~~~~~~~~~~~~~~~~
@@ -902,7 +1045,7 @@ The ``max_nfes`` parameter controls the x-axis scale for convergence curves in s
 
 .. code-block:: python
 
-    # Multi-task problem with different NFEs per task
+    # Multitask problem with different NFEs per task
     create_optimization_animation(
         pkl_path='multi_task_results.pkl',
         max_nfes=[5000, 10000, 15000]  # Task 1: 5000, Task 2: 10000, Task 3: 15000
@@ -910,14 +1053,14 @@ The ``max_nfes`` parameter controls the x-axis scale for convergence curves in s
 
 **Automatic Compatibility:**
 
-The system automatically handles single-task and multi-task scenarios:
+The system automatically handles single-task and multitask scenarios:
 
 .. code-block:: python
 
     # Single-task optimization
     create_optimization_animation('single_task.pkl', max_nfes=1000)
 
-    # Multi-task optimization
+    # Multitask optimization
     create_optimization_animation('multi_task.pkl', max_nfes=[1000, 2000])
 
 Algorithm Order
@@ -1084,18 +1227,18 @@ Complete Example
         format='mp4'
     )
 
-**Multi-Objective Multi-Task Optimization:**
+**Multiobjective Multitask Optimization:**
 
 .. code-block:: python
 
-    # Multi-task with different NFEs
+    # Multitask with different NFEs
     create_optimization_animation(
         pkl_path=['./Data/NSGAII/NSGAII_DTLZ_1.pkl',
                   './Data/MOEAD/MOEAD_DTLZ_1.pkl',
                   './Data/MyAlgo/MyAlgo_DTLZ_1.pkl'],
         output_path='./Animations/MO_comparison.gif',
         merge=3,
-        title='Multi-Objective Comparison',
+        title='Multiobjective Comparison',
         algorithm_order=['NSGA-II', 'MOEA/D', 'MyAlgo'],
         max_nfes=[5000, 8000, 10000],  # Different NFEs for 3 tasks
         fps=12,
@@ -1281,9 +1424,9 @@ Performance Metrics
 
 .. code-block:: python
 
-    from Methods.metrics import IGD, HV
+    from Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spacing, Spread
 
-The performance metrics module provides implementations of optimization algorithm evaluation metrics with a unified interface design for easy extension.
+The performance metrics module provides comprehensive implementations of optimization algorithm evaluation metrics with a unified interface design.
 
 Module Features
 ~~~~~~~~~~~~~~~
@@ -1294,10 +1437,48 @@ The metric module follows these design principles:
 2. **Direction Indicator**: Each metric has a ``sign`` attribute (``-1`` for minimization, ``1`` for maximization)
 3. **Callable Support**: Metric instances support functional calling (``__call__`` method)
 
+Available Metrics
+~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 10 75
+
+   * - Metric
+     - Sign
+     - Description
+   * - ``IGD``
+     - -1
+     - Inverted Generational Distance. Measures convergence and diversity by averaging distances from Pareto front points to nearest obtained solutions.
+   * - ``GD``
+     - -1
+     - Generational Distance. Measures convergence by averaging distances from obtained solutions to the nearest Pareto front points.
+   * - ``IGDp``
+     - -1
+     - Inverted Generational Distance Plus. A modified IGD that only penalizes dominated portions, making it Pareto-compliant.
+   * - ``HV``
+     - +1
+     - Hypervolume. Measures the volume of objective space dominated by the obtained solutions. Supports 2D/3D exact calculation and Monte Carlo for higher dimensions.
+   * - ``DeltaP``
+     - -1
+     - Averaged Hausdorff Distance. Maximum of GD and IGD, measuring both convergence and diversity.
+   * - ``Spacing``
+     - -1
+     - Spacing metric. Measures the standard deviation of nearest neighbor distances, indicating solution uniformity.
+   * - ``Spread``
+     - -1
+     - Spread metric. Measures distribution uniformity relative to extreme points of the Pareto front.
+   * - ``FR``
+     - +1
+     - Feasible Rate. Proportion of feasible solutions in the population (for constrained optimization).
+   * - ``CV``
+     - -1
+     - Constraint Violation. Sum of constraint violations for the best solution (for constrained optimization).
+
 Metric Interface
 ~~~~~~~~~~~~~~~~
 
-All metric classes should follow this template:
+All metric classes follow this template:
 
 .. code-block:: python
 
@@ -1318,25 +1499,72 @@ All metric classes should follow this template:
             """Support instance as function call"""
             return self.calculate(*args, **kwargs)
 
-Usage Example: IGD
-~~~~~~~~~~~~~~~~~~
+Usage Examples
+~~~~~~~~~~~~~~
 
-IGD (Inverted Generational Distance) is a common metric for evaluating solution set quality in multi-objective optimization:
+**Multiobjective Metrics (IGD, GD, HV, etc.):**
 
 .. code-block:: python
 
-    from Methods.metrics import IGD
+    from Methods.metrics import IGD, HV, GD, IGDp, DeltaP, Spacing, Spread
+    import numpy as np
 
-    # Create metric instance
+    # Obtained solutions and true Pareto front
+    objs = np.random.rand(100, 2)  # 100 solutions, 2 objectives
+    pf = np.random.rand(1000, 2)   # True Pareto front
+
+    # IGD (requires Pareto front)
     igd = IGD()
+    igd_value = igd(objs, pf)
 
-    # Calculate metric value
-    igd_value = igd.calculate(objs, pf)  # Method 1
-    igd_value = igd(objs, pf)            # Method 2 (functional call)
+    # GD (requires Pareto front)
+    gd = GD()
+    gd_value = gd(objs, pf)
 
-    # Query metric properties
-    print(f"Metric name: {igd.name}")    # Output: IGD
-    print(f"Direction: {igd.sign}")      # Output: -1 (minimize)
+    # IGD+ (Pareto-compliant version)
+    igdp = IGDp()
+    igdp_value = igdp(objs, pf)
+
+    # HV (requires Pareto front or reference point)
+    hv = HV()
+    hv_value = hv(objs, pf=pf)  # With Pareto front for normalization
+    hv_value = hv(objs, reference=np.array([2.0, 2.0]))  # With reference point
+
+    # Averaged Hausdorff Distance
+    deltap = DeltaP()
+    deltap_value = deltap(objs, pf)
+
+    # Spacing (only requires obtained solutions)
+    spacing = Spacing()
+    spacing_value = spacing(objs)
+
+    # Spread (requires Pareto front)
+    spread = Spread()
+    spread_value = spread(objs, pf)
+
+**Constrained Optimization Metrics (FR, CV):**
+
+.. code-block:: python
+
+    from Methods.metrics import FR, CV
+    import numpy as np
+
+    # Constraint values (n_solutions x n_constraints)
+    # Constraint satisfied when cons <= 0
+    cons = np.array([
+        [-0.1, -0.2],  # Feasible (all <= 0)
+        [0.5, -0.1],   # Infeasible
+        [-0.3, 0.2],   # Infeasible
+        [-0.1, -0.5],  # Feasible
+    ])
+
+    # Feasible Rate (proportion of feasible solutions)
+    fr = FR()
+    fr_value = fr(cons)  # Returns 0.5 (2 out of 4 feasible)
+
+    # Constraint Violation (minimum CV in population)
+    cv = CV()
+    cv_value = cv(cons)  # Returns 0.0 (best solution has CV=0)
 
 Algorithm Components
 --------------------
@@ -1357,7 +1585,7 @@ The algorithm utilities module provides a complete toolkit for building optimiza
    * - Function
      - Description
    * - ``initialization``
-     - Initialize multi-task decision variable matrices with Random or LHS sampling
+     - Initialize multitask decision variable matrices with Random or LHS sampling
    * - ``evaluation``
      - Batch evaluate multiple tasks with selective objective/constraint evaluation
    * - ``evaluation_single``
@@ -1397,7 +1625,7 @@ The algorithm utilities module provides a complete toolkit for building optimiza
    * - ``select_by_index``
      - Synchronously select rows from multiple arrays by index
    * - ``par_list``
-     - Convert single parameter to multi-task parameter list
+     - Convert single parameter to multitask parameter list
    * - ``get_algorithm_information``
      - Extract and print algorithm metadata
 
@@ -1408,7 +1636,7 @@ Bayesian Optimization Utilities
 
     from Methods.Algo_Methods.bo_utils import *
 
-The BO utilities module provides core Bayesian optimization functionalities based on BoTorch and GPyTorch, including single-task and multi-task Gaussian process modeling.
+The BO utilities module provides core Bayesian optimization functionalities based on BoTorch and GPyTorch, including single-task and multitask Gaussian process modeling.
 
 .. list-table:: Key Functions in bo_utils
    :header-rows: 1
@@ -1423,13 +1651,13 @@ The BO utilities module provides core Bayesian optimization functionalities base
    * - ``bo_next_point``
      - Get next sampling point via single-task BO (LogEI acquisition)
    * - ``mtgp_build``
-     - Build multi-task Gaussian process model
+     - Build multitask Gaussian process model
    * - ``mtgp_predict``
-     - Predict for specified task using multi-task GP
+     - Predict for specified task using multitask GP
    * - ``mtgp_task_corr``
-     - Extract task correlation matrix from multi-task GP
+     - Extract task correlation matrix from multitask GP
    * - ``mtbo_next_point``
-     - Get next sampling point via multi-task BO
+     - Get next sampling point via multitask BO
 
 Similarity Evaluation
 ~~~~~~~~~~~~~~~~~~~~~
@@ -1456,7 +1684,7 @@ Uniform Point Generation
 
     from Methods.Algo_Methods.uniform_point import *
 
-The uniform point generation module provides various methods for generating uniformly distributed points for multi-objective optimization and decision space sampling.
+The uniform point generation module provides various methods for generating uniformly distributed points for multiobjective optimization and decision space sampling.
 
 .. list-table:: Key Functions in uniform_point
    :header-rows: 1

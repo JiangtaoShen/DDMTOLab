@@ -1,0 +1,589 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Problems.RWO.sopm &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Problems.RWO.sopm</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Problems.RWO.sopm</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
+
+
+<div class="viewcode-block" id="SOPM">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.sopm.SOPM">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SOPM</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implementation of Synchronous Optimal Pulse-width Modulation (SOPM) benchmark</span>
+<span class="sd">    problems for Multi-Task Multi-Objective Optimization (MTMO).</span>
+
+<span class="sd">    These problems involve optimizing switching angles for multilevel inverters</span>
+<span class="sd">    to minimize Total Harmonic Distortion (THD) and maintain desired fundamental</span>
+<span class="sd">    voltage component while satisfying monotonicity constraints on switching angles.</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    [1] Y. Li, W. Gong, &quot;Multiobjective Multitask Optimization with Multiple Knowledge Types and Transfer Adaptation,&quot; IEEE Trans. Evol. Comput., 2024.</span>
+<span class="sd">    [2] A. Kumar et al., &quot;A Benchmark-suite of Real-world Constrained Multi-objective Optimization Problems and Some Baseline Results,&quot; Swarm and Evolutionary Computation, vol. 67, 2021.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    All problems are constrained 2-objective optimization problems where:</span>
+<span class="sd">    - Objective 1: Total Harmonic Distortion (THD)</span>
+<span class="sd">    - Objective 2: Squared deviation from target modulation index</span>
+<span class="sd">    - Constraints: Monotonically decreasing switching angles</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">problem_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_cases&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;3&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_dims&#39;</span><span class="p">:</span> <span class="s1">&#39;[25, 30]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;2&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;[24, 29]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;real_world&#39;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize SOPM MTMO problem suite.&quot;&quot;&quot;</span>
+        <span class="k">pass</span>
+
+<div class="viewcode-block" id="SOPM.P1">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.sopm.SOPM.P1">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">P1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MTOP</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates SOPM MTMO Problem 1: **[3, 5, 7]-level Inverters**.</span>
+
+<span class="sd">        Three tasks optimizing switching angles for different inverter levels.</span>
+
+<span class="sd">        - T1 (3-level): 2-objective, 25-dimensional</span>
+<span class="sd">          * Decision variables: 25 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.32</span>
+<span class="sd">          * Constraints: 24 monotonicity constraints (α_i ≥ α_{i+1})</span>
+
+<span class="sd">        - T2 (5-level): 2-objective, 25-dimensional</span>
+<span class="sd">          * Decision variables: 25 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.32</span>
+<span class="sd">          * Constraints: 24 monotonicity constraints</span>
+
+<span class="sd">        - T3 (7-level): 2-objective, 25-dimensional</span>
+<span class="sd">          * Decision variables: 25 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.36</span>
+<span class="sd">          * Constraints: 24 monotonicity constraints</span>
+
+<span class="sd">        - Relationship: Different inverter levels with similar structure but</span>
+<span class="sd">          different harmonic patterns. Tests knowledge transfer across inverter</span>
+<span class="sd">          configurations.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MTOP</span>
+<span class="sd">            A Multi-Task Multi-Objective Optimization Problem instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="mi">25</span>
+
+        <span class="c1"># Harmonic orders (31 harmonics)</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">43</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span>
+                      <span class="mi">49</span><span class="p">,</span> <span class="mi">53</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">61</span><span class="p">,</span> <span class="mi">65</span><span class="p">,</span> <span class="mi">67</span><span class="p">,</span> <span class="mi">71</span><span class="p">,</span> <span class="mi">73</span><span class="p">,</span> <span class="mi">77</span><span class="p">,</span> <span class="mi">79</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">85</span><span class="p">,</span> <span class="mi">91</span><span class="p">,</span> <span class="mi">95</span><span class="p">,</span> <span class="mi">97</span><span class="p">])</span>
+
+        <span class="c1"># Precompute 1/k^4 sum for normalization</span>
+        <span class="n">k4_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">k</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T1_3level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 1: 3-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 25)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 3-level sign pattern: alternating signs</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="mi">25</span><span class="p">))</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">27</span><span class="p">)</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.32</span>  <span class="c1"># target modulation index</span>
+
+            <span class="c1"># Convert degrees to radians</span>
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD (Objective 1)</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="c1"># Sum over switching angles for this harmonic</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental component deviation (Objective 2)</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T1_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Monotonicity constraints for 3-level inverter</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            cons : ndarray, shape (n_samples, 24)</span>
+<span class="sd">                Constraint violations: g_i = x_i - x_{i+1} + 1e-6</span>
+<span class="sd">                (should be &gt;= 0 for feasibility)</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T2_5level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 2: 5-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 25)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 5-level sign pattern</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+                          <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.32</span>
+
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental deviation</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T2_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Monotonicity constraints for 5-level inverter&quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T3_7level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 3: 7-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 25)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 7-level sign pattern</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+                          <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.36</span>
+
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental deviation</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T3_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Monotonicity constraints for 7-level inverter&quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="c1"># Bounds for all tasks: [0, 90] degrees</span>
+        <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="n">ub</span> <span class="o">=</span> <span class="mf">90.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T1_3level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T1_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T2_5level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T2_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T3_7level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T3_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">problem</span></div>
+
+
+<div class="viewcode-block" id="SOPM.P2">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.sopm.SOPM.P2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">P2</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MTOP</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates SOPM MTMO Problem 2: **[9, 11, 13]-level Inverters**.</span>
+
+<span class="sd">        Three tasks optimizing switching angles for higher-level inverters.</span>
+
+<span class="sd">        - T1 (9-level): 2-objective, 30-dimensional</span>
+<span class="sd">          * Decision variables: 30 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.32</span>
+<span class="sd">          * Constraints: 29 monotonicity constraints</span>
+
+<span class="sd">        - T2 (11-level): 2-objective, 30-dimensional</span>
+<span class="sd">          * Decision variables: 30 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.3333</span>
+<span class="sd">          * Constraints: 29 monotonicity constraints</span>
+
+<span class="sd">        - T3 (13-level): 2-objective, 30-dimensional</span>
+<span class="sd">          * Decision variables: 30 switching angles in [0, 90] degrees</span>
+<span class="sd">          * Target modulation index: m = 0.32</span>
+<span class="sd">          * Constraints: 29 monotonicity constraints</span>
+
+<span class="sd">        - Relationship: Higher-level inverters with more complex harmonic patterns.</span>
+<span class="sd">          Tests scalability and knowledge transfer for increased problem complexity.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MTOP</span>
+<span class="sd">            A Multi-Task Multi-Objective Optimization Problem instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="mi">30</span>
+
+        <span class="c1"># Harmonic orders (31 harmonics)</span>
+        <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">5</span><span class="p">,</span> <span class="mi">7</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">13</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">23</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">29</span><span class="p">,</span> <span class="mi">31</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">37</span><span class="p">,</span> <span class="mi">41</span><span class="p">,</span> <span class="mi">43</span><span class="p">,</span> <span class="mi">47</span><span class="p">,</span>
+                      <span class="mi">49</span><span class="p">,</span> <span class="mi">53</span><span class="p">,</span> <span class="mi">55</span><span class="p">,</span> <span class="mi">59</span><span class="p">,</span> <span class="mi">61</span><span class="p">,</span> <span class="mi">65</span><span class="p">,</span> <span class="mi">67</span><span class="p">,</span> <span class="mi">71</span><span class="p">,</span> <span class="mi">73</span><span class="p">,</span> <span class="mi">77</span><span class="p">,</span> <span class="mi">79</span><span class="p">,</span> <span class="mi">83</span><span class="p">,</span> <span class="mi">85</span><span class="p">,</span> <span class="mi">91</span><span class="p">,</span> <span class="mi">95</span><span class="p">,</span> <span class="mi">97</span><span class="p">])</span>
+
+        <span class="n">k4_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">k</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T1_9level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 1: 9-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 30)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 9-level sign pattern</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+                          <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.32</span>
+
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental deviation</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T1_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Monotonicity constraints for 9-level inverter&quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T2_11level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 2: 11-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 30)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 11-level sign pattern</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span>
+                          <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.3333</span>
+
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental deviation</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T2_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Monotonicity constraints for 11-level inverter&quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T3_13level</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">            Task 3: 13-level inverter optimization</span>
+
+<span class="sd">            Parameters</span>
+<span class="sd">            ----------</span>
+<span class="sd">            x : array-like, shape (n_samples, 30)</span>
+<span class="sd">                Switching angles in degrees [0, 90]</span>
+
+<span class="sd">            Returns</span>
+<span class="sd">            -------</span>
+<span class="sd">            objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">                Objectives: [THD, (fundamental - target)^2]</span>
+<span class="sd">            &quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">n_samples</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="c1"># 13-level sign pattern</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span>
+                          <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+            <span class="n">m</span> <span class="o">=</span> <span class="mf">0.32</span>
+
+            <span class="n">x_rad</span> <span class="o">=</span> <span class="n">x</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">180.0</span>
+            <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+                <span class="c1"># Compute THD</span>
+                <span class="n">thd_sum</span> <span class="o">=</span> <span class="mf">0.0</span>
+                <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">kj</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+                    <span class="n">harmonic_sum</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">kj</span> <span class="o">*</span> <span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                    <span class="n">thd_sum</span> <span class="o">+=</span> <span class="p">(</span><span class="n">harmonic_sum</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">kj</span> <span class="o">**</span> <span class="mi">4</span><span class="p">)</span>
+
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">thd_sum</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">k4_sum</span><span class="p">)</span>
+
+                <span class="c1"># Compute fundamental deviation</span>
+                <span class="n">fundamental</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">cos</span><span class="p">(</span><span class="n">x_rad</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:]))</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">fundamental</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
+
+            <span class="k">return</span> <span class="n">objs</span>
+
+        <span class="k">def</span><span class="w"> </span><span class="nf">T3_constraint</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">            </span><span class="sd">&quot;&quot;&quot;Monotonicity constraints for 13-level inverter&quot;&quot;&quot;</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+            <span class="n">cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+                <span class="n">cons</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1e-6</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">cons</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+            <span class="k">return</span> <span class="n">cons</span>
+
+        <span class="c1"># Bounds for all tasks: [0, 90] degrees</span>
+        <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+        <span class="n">ub</span> <span class="o">=</span> <span class="mf">90.0</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T1_9level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T1_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T2_11level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T2_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">T3_13level</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span> <span class="n">constraint_func</span><span class="o">=</span><span class="n">T3_constraint</span><span class="p">,</span>
+                         <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">problem</span></div>
+</div>
+
+
+
+<span class="c1"># Settings for SOPM MTMO problems</span>
+<span class="n">SETTINGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;metric&#39;</span><span class="p">:</span> <span class="s1">&#39;HV&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;n_pf&#39;</span><span class="p">:</span> <span class="mi">1000</span><span class="p">,</span>
+    <span class="s1">&#39;pf_path&#39;</span><span class="p">:</span> <span class="s1">&#39;./MOReference&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;P1&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;T1&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">2.854987e-01</span><span class="p">,</span> <span class="mf">1.024000e-01</span><span class="p">],</span>
+        <span class="s1">&#39;T2&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">7.342985e-01</span><span class="p">,</span> <span class="mf">1.024000e-01</span><span class="p">],</span>
+        <span class="s1">&#39;T3&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">5.888136e-01</span><span class="p">,</span> <span class="mf">1.296000e-01</span><span class="p">]</span>
+    <span class="p">},</span>
+    <span class="s1">&#39;P2&#39;</span><span class="p">:</span> <span class="p">{</span>
+        <span class="s1">&#39;T1&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">5.217146e-01</span><span class="p">,</span> <span class="mf">1.023999e-01</span><span class="p">],</span>
+        <span class="s1">&#39;T2&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">6.106382e-01</span><span class="p">,</span> <span class="mf">1.110885e-01</span><span class="p">],</span>
+        <span class="s1">&#39;T3&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mf">1.949969e+00</span><span class="p">,</span> <span class="mf">1.107699e+01</span><span class="p">]</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

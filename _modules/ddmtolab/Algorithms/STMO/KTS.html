@@ -1,0 +1,1229 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STMO.KTS &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STMO.KTS</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STMO.KTS</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Kriging-Assisted Two-Archive Search (KTS)</span>
+
+<span class="sd">This module implements KTS for computationally expensive constrained/unconstrained</span>
+<span class="sd">multi-objective optimization. It adaptively switches between two search modes:</span>
+<span class="sd">  Mode 0 (unconstrained/KTA2-style): two-archive CA/DA with convergence/diversity</span>
+<span class="sd">  Mode 1 (constrained/KCCMO-style): SPEA2-based fitness with K-means sampling</span>
+<span class="sd">The switching is based on the correlation between convergence metric Q and</span>
+<span class="sd">constraint violation CV.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Z. Song, H. Wang, and B. Xue. A Kriging-Assisted Two-Archive Evolutionary Algorithm for Expensive Multi-Objective Optimization. IEEE Transactions on Evolutionary Computation, 2024.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Date: 2026.02.17</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">wilcoxon</span><span class="p">,</span> <span class="n">rankdata</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">gp_build</span><span class="p">,</span> <span class="n">gp_predict</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="KTS">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.KTS.KTS">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">KTS</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Kriging-Assisted Two-Archive Search for expensive constrained/unconstrained</span>
+<span class="sd">    multi-objective optimization with adaptive mode switching.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, M]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;[0, C]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="KTS.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.KTS.KTS.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span>
+                 <span class="n">tau</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span> <span class="n">phi</span><span class="o">=-</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">phi1</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">wmax1</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">mu1</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;KTS&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize KTS algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task (default: 11*dim-1)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 200)</span>
+<span class="sd">        n : int or List[int], optional</span>
+<span class="sd">            Population/archive size per task (default: 100)</span>
+<span class="sd">        tau : float, optional</span>
+<span class="sd">            Correlation threshold for mode 0 (default: 0.6)</span>
+<span class="sd">        phi : float, optional</span>
+<span class="sd">            Correlation threshold for mode 1 (default: -0.2)</span>
+<span class="sd">        mu : int, optional</span>
+<span class="sd">            Number of elite solutions for correlation (default: 20)</span>
+<span class="sd">        phi1 : float, optional</span>
+<span class="sd">            Uncertainty sampling fraction (default: 0.1)</span>
+<span class="sd">        wmax1 : int, optional</span>
+<span class="sd">            Inner surrogate evolution generations (default: 10)</span>
+<span class="sd">        mu1 : int, optional</span>
+<span class="sd">            Number of re-evaluated solutions per generation (default: 5)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;KTS&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">200</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tau</span> <span class="o">=</span> <span class="n">tau</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phi</span> <span class="o">=</span> <span class="n">phi</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mu</span> <span class="o">=</span> <span class="n">mu</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phi1</span> <span class="o">=</span> <span class="n">phi1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">wmax1</span> <span class="o">=</span> <span class="n">wmax1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mu1</span> <span class="o">=</span> <span class="n">mu1</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="KTS.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.KTS.KTS.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the KTS algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data_type</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n_objs</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span>
+        <span class="n">n_cons</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_cons</span> <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="s1">&#39;n_cons&#39;</span><span class="p">)</span> <span class="k">else</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">11</span> <span class="o">*</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Initialize with LHS</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Initialize archives for each task</span>
+        <span class="n">CAs</span> <span class="o">=</span> <span class="p">[]</span>   <span class="c1"># Convergence Archives (IBEA-based)</span>
+        <span class="n">DA1s</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># Diversity Archives (ND+Lp)</span>
+        <span class="n">P1s</span> <span class="o">=</span> <span class="p">[]</span>   <span class="c1"># Population 1 (SPEA2, no constraints)</span>
+        <span class="n">P2s</span> <span class="o">=</span> <span class="p">[]</span>   <span class="c1"># Population 2 (SPEA2, with constraints)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">N</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">p_i</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">M</span>
+
+            <span class="c1"># CA: IBEA-based</span>
+            <span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span> <span class="o">=</span> <span class="n">_update_CA</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
+            <span class="n">CAs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span><span class="p">))</span>
+
+            <span class="c1"># DA1: ND + diversity</span>
+            <span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span> <span class="o">=</span> <span class="n">_update_DA</span><span class="p">(</span><span class="kc">None</span><span class="p">,</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">N</span><span class="p">,</span> <span class="n">p_i</span><span class="p">)</span>
+            <span class="n">DA1s</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span><span class="p">))</span>
+
+            <span class="c1"># P1: SPEA2 without constraints</span>
+            <span class="n">con_i</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="n">P1_objs</span><span class="p">,</span> <span class="n">P1_decs</span><span class="p">,</span> <span class="n">P1_cons</span> <span class="o">=</span> <span class="n">_update_P</span><span class="p">(</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="kc">None</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">P1s</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">P1_objs</span><span class="p">,</span> <span class="n">P1_decs</span><span class="p">,</span> <span class="n">P1_cons</span><span class="p">))</span>
+
+            <span class="c1"># P2: SPEA2 with constraints</span>
+            <span class="n">P2_objs</span><span class="p">,</span> <span class="n">P2_decs</span><span class="p">,</span> <span class="n">P2_cons</span> <span class="o">=</span> <span class="n">_update_P</span><span class="p">(</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">con_i</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+            <span class="n">P2s</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">P2_objs</span><span class="p">,</span> <span class="n">P2_decs</span><span class="p">,</span> <span class="n">P2_cons</span><span class="p">))</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">M</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">p_i</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">M</span>
+                <span class="n">N</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">C</span> <span class="o">=</span> <span class="n">n_cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+                <span class="c1"># ===== Determine Search Mode =====</span>
+                <span class="n">search_mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_determine_search_mode</span><span class="p">(</span>
+                    <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">phi</span>
+                <span class="p">)</span>
+
+                <span class="c1"># ===== Build GP models =====</span>
+                <span class="n">obj_models</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+                    <span class="n">model</span> <span class="o">=</span> <span class="n">gp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">][:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">data_type</span><span class="p">)</span>
+                    <span class="n">obj_models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+                <span class="n">con_models</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="k">if</span> <span class="n">C</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                    <span class="n">con_i</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">C</span><span class="p">):</span>
+                        <span class="n">model</span> <span class="o">=</span> <span class="n">gp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">con_i</span><span class="p">[:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">data_type</span><span class="p">)</span>
+                        <span class="n">con_models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+                <span class="c1"># ===== Inner Loop: Surrogate-based Evolution =====</span>
+                <span class="n">CCA_objs</span> <span class="o">=</span> <span class="n">CAs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">CCA_decs</span> <span class="o">=</span> <span class="n">CAs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">CCA_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">CCA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">M</span><span class="p">))</span>
+
+                <span class="c1"># MATLAB: DA = DA1 (mode 0) or P1 (mode 1)</span>
+                <span class="k">if</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">CDA_objs</span> <span class="o">=</span> <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">CDA_decs</span> <span class="o">=</span> <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">CDA_objs</span> <span class="o">=</span> <span class="n">P1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">CDA_decs</span> <span class="o">=</span> <span class="n">P1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">CDA_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">CDA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">M</span><span class="p">))</span>
+
+                <span class="n">CP2_objs</span> <span class="o">=</span> <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">CP2_decs</span> <span class="o">=</span> <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">CP2_cons</span> <span class="o">=</span> <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">if</span> <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+                <span class="n">CP2_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">CP2_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">M</span><span class="p">))</span>
+
+                <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wmax1</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># KTA2-style: crossover-only + mutation-only</span>
+                        <span class="n">parentC_decs</span><span class="p">,</span> <span class="n">parentM_decs</span> <span class="o">=</span> <span class="n">_mating_selection</span><span class="p">(</span>
+                            <span class="n">CCA_objs</span><span class="p">,</span> <span class="n">CCA_decs</span><span class="p">,</span> <span class="n">CDA_objs</span><span class="p">,</span> <span class="n">CDA_decs</span><span class="p">,</span> <span class="n">N</span>
+                        <span class="p">)</span>
+                        <span class="n">off_C</span> <span class="o">=</span> <span class="n">_crossover_only</span><span class="p">(</span><span class="n">parentC_decs</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+                        <span class="n">off_M</span> <span class="o">=</span> <span class="n">_mutation_only</span><span class="p">(</span><span class="n">parentM_decs</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+                        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">off_C</span><span class="p">,</span> <span class="n">off_M</span><span class="p">])</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="c1"># KCCMO-style: full GA on each pool independently</span>
+                        <span class="n">fitness_p2</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">CP2_objs</span><span class="p">,</span> <span class="n">CP2_cons</span><span class="p">)</span>
+                        <span class="n">fitness_da</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">CDA_objs</span><span class="p">)</span>
+                        <span class="n">pool1</span> <span class="o">=</span> <span class="n">_tournament_selection_fitness</span><span class="p">(</span><span class="n">fitness_p2</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+                        <span class="n">pool2</span> <span class="o">=</span> <span class="n">_tournament_selection_fitness</span><span class="p">(</span><span class="n">fitness_da</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+                        <span class="n">off1</span> <span class="o">=</span> <span class="n">_full_ga</span><span class="p">(</span><span class="n">CP2_decs</span><span class="p">[</span><span class="n">pool1</span><span class="p">])</span>
+                        <span class="n">off2</span> <span class="o">=</span> <span class="n">_full_ga</span><span class="p">(</span><span class="n">CDA_decs</span><span class="p">[</span><span class="n">pool2</span><span class="p">])</span>
+                        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">off1</span><span class="p">,</span> <span class="n">off2</span><span class="p">])</span>
+
+                    <span class="c1"># Predict objectives for offspring only</span>
+                    <span class="n">off_objs</span><span class="p">,</span> <span class="n">off_mse</span> <span class="o">=</span> <span class="n">_predict_objectives</span><span class="p">(</span>
+                        <span class="n">off_decs</span><span class="p">,</span> <span class="n">obj_models</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+
+                    <span class="c1"># Predict constraints for offspring if needed</span>
+                    <span class="n">off_cons</span> <span class="o">=</span> <span class="kc">None</span>
+                    <span class="k">if</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">con_models</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">off_cons</span> <span class="o">=</span> <span class="n">_predict_constraints</span><span class="p">(</span>
+                            <span class="n">off_decs</span><span class="p">,</span> <span class="n">con_models</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+
+                    <span class="c1"># Update surrogate CA: CCA + offspring</span>
+                    <span class="n">ca_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CCA_objs</span><span class="p">,</span> <span class="n">off_objs</span><span class="p">])</span>
+                    <span class="n">ca_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CCA_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">])</span>
+                    <span class="n">ca_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CCA_mse</span><span class="p">,</span> <span class="n">off_mse</span><span class="p">])</span>
+                    <span class="n">CCA_objs</span><span class="p">,</span> <span class="n">CCA_decs</span><span class="p">,</span> <span class="n">CCA_mse</span> <span class="o">=</span> <span class="n">_k_update_CA</span><span class="p">(</span>
+                        <span class="n">ca_objs</span><span class="p">,</span> <span class="n">ca_decs</span><span class="p">,</span> <span class="n">ca_mse</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+
+                    <span class="c1"># Update surrogate DA: CDA + offspring</span>
+                    <span class="n">da_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CDA_objs</span><span class="p">,</span> <span class="n">off_objs</span><span class="p">])</span>
+                    <span class="n">da_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CDA_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">])</span>
+                    <span class="n">da_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CDA_mse</span><span class="p">,</span> <span class="n">off_mse</span><span class="p">])</span>
+                    <span class="k">if</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">CDA_objs</span><span class="p">,</span> <span class="n">CDA_decs</span><span class="p">,</span> <span class="n">CDA_mse</span> <span class="o">=</span> <span class="n">_k_update_DA</span><span class="p">(</span>
+                            <span class="n">da_objs</span><span class="p">,</span> <span class="n">da_decs</span><span class="p">,</span> <span class="n">da_mse</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">p_i</span><span class="p">)</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">CDA_objs</span><span class="p">,</span> <span class="n">CDA_decs</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">CDA_mse</span> <span class="o">=</span> <span class="n">_k_update_P</span><span class="p">(</span>
+                            <span class="n">da_objs</span><span class="p">,</span> <span class="n">da_decs</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">da_mse</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span>
+                            <span class="n">is_origin</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                        <span class="c1"># Update surrogate P2: CP2 + offspring</span>
+                        <span class="n">p2_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CP2_objs</span><span class="p">,</span> <span class="n">off_objs</span><span class="p">])</span>
+                        <span class="n">p2_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CP2_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">])</span>
+                        <span class="n">p2_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CP2_mse</span><span class="p">,</span> <span class="n">off_mse</span><span class="p">])</span>
+                        <span class="n">p2_cons</span> <span class="o">=</span> <span class="kc">None</span>
+                        <span class="k">if</span> <span class="n">off_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">CP2_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="n">p2_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CP2_cons</span><span class="p">,</span> <span class="n">off_cons</span><span class="p">])</span>
+                        <span class="k">elif</span> <span class="n">off_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="n">p2_cons</span> <span class="o">=</span> <span class="n">off_cons</span>
+                        <span class="n">CP2_objs</span><span class="p">,</span> <span class="n">CP2_decs</span><span class="p">,</span> <span class="n">CP2_cons</span><span class="p">,</span> <span class="n">CP2_mse</span> <span class="o">=</span> <span class="n">_k_update_P</span><span class="p">(</span>
+                            <span class="n">p2_objs</span><span class="p">,</span> <span class="n">p2_decs</span><span class="p">,</span> <span class="n">p2_cons</span><span class="p">,</span> <span class="n">p2_mse</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span>
+                            <span class="n">is_origin</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+                <span class="c1"># ===== Adaptive Sampling =====</span>
+                <span class="k">if</span> <span class="n">search_mode</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Remove solutions already evaluated (MATLAB: setxor)</span>
+                    <span class="n">keep_ca</span> <span class="o">=</span> <span class="n">_not_in_archive</span><span class="p">(</span><span class="n">CCA_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                    <span class="n">keep_da</span> <span class="o">=</span> <span class="n">_not_in_archive</span><span class="p">(</span><span class="n">CDA_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                    <span class="c1"># KTA2-style sampling</span>
+                    <span class="n">offspring_decs</span> <span class="o">=</span> <span class="n">_adaptive_sampling</span><span class="p">(</span>
+                        <span class="n">CCA_objs</span><span class="p">[</span><span class="n">keep_ca</span><span class="p">],</span> <span class="n">CDA_objs</span><span class="p">[</span><span class="n">keep_da</span><span class="p">],</span>
+                        <span class="n">CCA_decs</span><span class="p">[</span><span class="n">keep_ca</span><span class="p">],</span> <span class="n">CDA_decs</span><span class="p">[</span><span class="n">keep_da</span><span class="p">],</span>
+                        <span class="n">CDA_mse</span><span class="p">[</span><span class="n">keep_da</span><span class="p">],</span> <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">1</span><span class="p">],</span>
+                        <span class="bp">self</span><span class="o">.</span><span class="n">mu1</span><span class="p">,</span> <span class="n">p_i</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">phi1</span>
+                    <span class="p">)</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="c1"># KCCMO-style sampling with K-means</span>
+                    <span class="c1"># MATLAB: KCCMO_sampling(CP2, P2, mu1)</span>
+                    <span class="n">ref_front</span> <span class="o">=</span> <span class="n">_get_best_objs</span><span class="p">(</span><span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">],</span> <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">2</span><span class="p">])</span>
+                    <span class="n">offspring_decs</span> <span class="o">=</span> <span class="n">_kccmo_sampling</span><span class="p">(</span>
+                        <span class="n">CP2_objs</span><span class="p">,</span> <span class="n">CP2_decs</span><span class="p">,</span> <span class="n">CP2_cons</span><span class="p">,</span>
+                        <span class="n">ref_front</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu1</span>
+                    <span class="p">)</span>
+
+                <span class="c1"># Remove duplicates</span>
+                <span class="n">offspring_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">offspring_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="k">if</span> <span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Evaluate</span>
+                    <span class="n">off_objs</span><span class="p">,</span> <span class="n">off_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">offspring_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+                    <span class="c1"># Update all evaluated data</span>
+                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">offspring_decs</span><span class="p">])</span>
+                    <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">])</span>
+                    <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">off_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_cons</span><span class="p">])</span>
+
+                    <span class="c1"># Update real archives</span>
+                    <span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span> <span class="o">=</span> <span class="n">_update_CA</span><span class="p">(</span>
+                        <span class="n">CAs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">,</span> <span class="n">offspring_decs</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+                    <span class="n">CAs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span><span class="p">)</span>
+
+                    <span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span> <span class="o">=</span> <span class="n">_update_DA</span><span class="p">(</span>
+                        <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">,</span> <span class="n">offspring_decs</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">p_i</span><span class="p">)</span>
+                    <span class="n">DA1s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span><span class="p">)</span>
+
+                    <span class="n">off_cons_i</span> <span class="o">=</span> <span class="n">off_cons</span> <span class="k">if</span> <span class="n">off_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+                    <span class="n">P1_objs</span><span class="p">,</span> <span class="n">P1_decs</span><span class="p">,</span> <span class="n">P1_cons</span> <span class="o">=</span> <span class="n">_update_P_real</span><span class="p">(</span>
+                        <span class="n">P1s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">,</span> <span class="n">offspring_decs</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                    <span class="n">P1s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">P1_objs</span><span class="p">,</span> <span class="n">P1_decs</span><span class="p">,</span> <span class="n">P1_cons</span><span class="p">)</span>
+
+                    <span class="n">P2_objs</span><span class="p">,</span> <span class="n">P2_decs</span><span class="p">,</span> <span class="n">P2_cons</span> <span class="o">=</span> <span class="n">_update_P_real</span><span class="p">(</span>
+                        <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">,</span> <span class="n">offspring_decs</span><span class="p">,</span> <span class="n">off_cons_i</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                    <span class="n">P2s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">P2_objs</span><span class="p">,</span> <span class="n">P2_decs</span><span class="p">,</span> <span class="n">P2_cons</span><span class="p">)</span>
+
+                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu1</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+                                     <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+                                     <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                     <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_determine_search_mode</span><span class="p">(</span><span class="n">objs_all</span><span class="p">,</span> <span class="n">cons_all</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">tau</span><span class="p">,</span> <span class="n">phi</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Determine search mode based on correlation between convergence Q and CV.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objs_all : np.ndarray</span>
+<span class="sd">            All evaluated objectives</span>
+<span class="sd">        cons_all : np.ndarray or None</span>
+<span class="sd">            All evaluated constraints</span>
+<span class="sd">        mu : int</span>
+<span class="sd">            Number of elite solutions for correlation</span>
+<span class="sd">        tau : float</span>
+<span class="sd">            Threshold for mode 0</span>
+<span class="sd">        phi : float</span>
+<span class="sd">            Threshold for mode 1</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        search_mode : int</span>
+<span class="sd">            0 for unconstrained/KTA2 mode, 1 for constrained/KCCMO mode</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="n">objs_all</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Compute constraint violation</span>
+        <span class="k">if</span> <span class="n">cons_all</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">cons_all</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="c1"># No constraints → always mode 0</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="n">cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cons_all</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># If all feasible, mode 0</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">cv</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">):</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="c1"># Compute convergence metric Q using IBEA indicator</span>
+        <span class="n">Q</span> <span class="o">=</span> <span class="n">_cal_Q</span><span class="p">(</span><span class="n">objs_all</span><span class="p">)</span>
+
+        <span class="c1"># Sort Q descending and take last mu+1 (best convergence) — MATLAB:</span>
+        <span class="c1"># [Q, index] = sort(Q,&#39;descend&#39;); CV = CV(index);</span>
+        <span class="c1"># coef = corrcoef(Q(end-mu:end), CV(end-mu:end))</span>
+        <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">Q</span><span class="p">)[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">Q_sorted</span> <span class="o">=</span> <span class="n">Q</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span>
+        <span class="n">cv_sorted</span> <span class="o">=</span> <span class="n">cv</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span>
+        <span class="n">n_elite</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+        <span class="n">Q_elite</span> <span class="o">=</span> <span class="n">Q_sorted</span><span class="p">[</span><span class="o">-</span><span class="n">n_elite</span><span class="p">:]</span>
+        <span class="n">cv_elite</span> <span class="o">=</span> <span class="n">cv_sorted</span><span class="p">[</span><span class="o">-</span><span class="n">n_elite</span><span class="p">:]</span>
+
+        <span class="c1"># Correlation coefficient</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">Q_elite</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">cv_elite</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">r_coef</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">corrcoef</span><span class="p">(</span><span class="n">Q_elite</span><span class="p">,</span> <span class="n">cv_elite</span><span class="p">)[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">r_coef</span><span class="p">):</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="c1"># Mode switching</span>
+        <span class="k">if</span> <span class="n">r_coef</span> <span class="o">&lt;</span> <span class="n">phi</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">1</span>
+        <span class="k">elif</span> <span class="n">r_coef</span> <span class="o">&gt;=</span> <span class="n">tau</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span></div>
+
+
+
+<span class="c1"># =============================================================================</span>
+<span class="c1"># Helper Functions</span>
+<span class="c1"># =============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cal_Q</span><span class="p">(</span><span class="n">objs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute convergence metric Q for each solution using IBEA indicator.</span>
+
+<span class="sd">    Q(i) = 1/F(i) where F(i) is the IBEA fitness.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Objective values, shape (N, M)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Q : np.ndarray</span>
+<span class="sd">        Convergence metric, shape (N,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fitness</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">ibea_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">kappa</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+    <span class="n">Q</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="mf">1e-10</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Q</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cal_fitness_spea2_ref</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">ref_objs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Modified SPEA2 fitness using distance to reference front instead of density.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pop_objs : np.ndarray</span>
+<span class="sd">        Objectives, shape (N, M)</span>
+<span class="sd">    pop_cons : np.ndarray or None</span>
+<span class="sd">        Constraints, shape (N, C)</span>
+<span class="sd">    ref_objs : np.ndarray</span>
+<span class="sd">        Reference Pareto front objectives</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    fitness : np.ndarray</span>
+<span class="sd">        Fitness values, shape (N,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">)</span>
+
+    <span class="n">dominate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">q</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">p</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">cv</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">cv</span><span class="p">[</span><span class="n">q</span><span class="p">]:</span>
+                <span class="n">dominate</span><span class="p">[</span><span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">elif</span> <span class="n">cv</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">cv</span><span class="p">[</span><span class="n">q</span><span class="p">]:</span>
+                <span class="n">dominate</span><span class="p">[</span><span class="n">q</span><span class="p">,</span> <span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">any_less</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">q</span><span class="p">])</span>
+                <span class="n">any_greater</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">q</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">any_less</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">any_greater</span><span class="p">:</span>
+                    <span class="n">dominate</span><span class="p">[</span><span class="n">p</span><span class="p">,</span> <span class="n">q</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="k">elif</span> <span class="n">any_greater</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">any_less</span><span class="p">:</span>
+                    <span class="n">dominate</span><span class="p">[</span><span class="n">q</span><span class="p">,</span> <span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="n">S</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dominate</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span>
+    <span class="n">R</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+        <span class="n">dominators</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">dominate</span><span class="p">[:,</span> <span class="n">p</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">R</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">S</span><span class="p">[</span><span class="n">dominators</span><span class="p">])</span>
+
+    <span class="c1"># Distance to reference front (min Euclidean distance)</span>
+    <span class="n">dist_to_ref</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">ref_objs</span><span class="p">)</span>
+    <span class="n">min_dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dist_to_ref</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">min_dist</span> <span class="o">+</span> <span class="mf">2.0</span><span class="p">)</span>
+
+    <span class="n">fitness</span> <span class="o">=</span> <span class="n">R</span> <span class="o">+</span> <span class="n">D</span>
+    <span class="k">return</span> <span class="n">fitness</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_predict_objectives</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">obj_models</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Predict objectives and MSE using GP models.&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+    <span class="n">pop_mse</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+        <span class="n">pred</span><span class="p">,</span> <span class="n">std</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">obj_models</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+        <span class="n">pop_objs</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">pop_mse</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">std</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span> <span class="o">**</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_mse</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_predict_constraints</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">con_models</span><span class="p">,</span> <span class="n">C</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Predict constraints using GP models.&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">pop_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">C</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">C</span><span class="p">):</span>
+        <span class="n">pred</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">con_models</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+        <span class="n">pop_cons</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">pop_cons</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mating_selection</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span><span class="p">,</span> <span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KTA2-style mating selection from CA and DA.</span>
+
+<span class="sd">    Returns parents for crossover and mutation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">CA_n</span> <span class="o">=</span> <span class="n">CA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">DA_n</span> <span class="o">=</span> <span class="n">DA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">half_N</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">N</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+
+    <span class="c1"># Select from CA with dominance comparison</span>
+    <span class="n">idx1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">CA_n</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">half_N</span><span class="p">)</span>
+    <span class="n">idx2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">CA_n</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">half_N</span><span class="p">)</span>
+
+    <span class="n">any_less</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">CA_objs</span><span class="p">[</span><span class="n">idx2</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">any_greater</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">CA_objs</span><span class="p">[</span><span class="n">idx2</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">dominate</span> <span class="o">=</span> <span class="n">any_less</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span> <span class="o">-</span> <span class="n">any_greater</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="n">selected_CA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">dominate</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="n">idx1</span><span class="p">,</span> <span class="n">idx2</span><span class="p">)</span>
+    <span class="n">selected_DA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">DA_n</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">half_N</span><span class="p">)</span>
+
+    <span class="n">parentC_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CA_decs</span><span class="p">[</span><span class="n">selected_CA</span><span class="p">],</span> <span class="n">DA_decs</span><span class="p">[</span><span class="n">selected_DA</span><span class="p">]])</span>
+
+    <span class="c1"># Mutation parents from CA</span>
+    <span class="n">parentM_decs</span> <span class="o">=</span> <span class="n">CA_decs</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">CA_n</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">N</span><span class="p">)]</span>
+
+    <span class="k">return</span> <span class="n">parentC_decs</span><span class="p">,</span> <span class="n">parentM_decs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_tournament_selection_fitness</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="n">n_select</span><span class="p">,</span> <span class="n">tournament_size</span><span class="o">=</span><span class="mi">2</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Binary tournament selection (lower fitness is better).&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+    <span class="n">selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_select</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_select</span><span class="p">):</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">tournament_size</span><span class="p">)</span>
+        <span class="n">selected</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">candidates</span><span class="p">])]</span>
+    <span class="k">return</span> <span class="n">selected</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_update_CA</span><span class="p">(</span><span class="n">CA</span><span class="p">,</span> <span class="n">new_objs</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">max_size</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update Convergence Archive using IBEA fitness.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">CA</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">CA_objs</span> <span class="o">=</span> <span class="n">new_objs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">CA_decs</span> <span class="o">=</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">CA_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CA</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
+        <span class="n">CA_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CA</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="n">CA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">CA_objs</span><span class="p">,</span> <span class="n">CA_decs</span>
+
+    <span class="n">fitness</span><span class="p">,</span> <span class="n">I</span><span class="p">,</span> <span class="n">C</span> <span class="o">=</span> <span class="n">ibea_fitness</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">kappa</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+
+    <span class="n">choose</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">))</span>
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="n">fit_values</span> <span class="o">=</span> <span class="n">fitness</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+        <span class="n">min_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">fit_values</span><span class="p">)</span>
+        <span class="n">to_remove</span> <span class="o">=</span> <span class="n">choose</span><span class="p">[</span><span class="n">min_idx</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">fitness</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">I</span><span class="p">[</span><span class="n">to_remove</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">/</span> <span class="mf">0.05</span><span class="p">)</span>
+
+        <span class="n">choose</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">min_idx</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">CA_objs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">CA_decs</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_update_DA</span><span class="p">(</span><span class="n">DA</span><span class="p">,</span> <span class="n">new_objs</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">max_size</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update Diversity Archive with non-dominated sorting and Lp truncation.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">DA</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">DA_objs</span> <span class="o">=</span> <span class="n">new_objs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">DA_decs</span> <span class="o">=</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">DA_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">DA</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
+        <span class="n">DA_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">DA</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="n">DA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">DA_objs</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="n">nd_mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span>
+    <span class="n">DA_objs</span> <span class="o">=</span> <span class="n">DA_objs</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+    <span class="n">DA_decs</span> <span class="o">=</span> <span class="n">DA_decs</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="n">DA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">DA_objs</span><span class="p">,</span> <span class="n">DA_decs</span>
+
+    <span class="c1"># Select extreme solutions</span>
+    <span class="n">choose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">m</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">DA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]):</span>
+        <span class="n">choose</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">DA_objs</span><span class="p">[:,</span> <span class="n">m</span><span class="p">])]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">choose</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">DA_objs</span><span class="p">[:,</span> <span class="n">m</span><span class="p">])]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="n">chosen_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">to_remove</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">chosen_idx</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">-</span> <span class="n">max_size</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="n">choose</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">DA_objs</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">DA_objs</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span> <span class="o">**</span> <span class="n">p</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_size</span><span class="p">:</span>
+            <span class="n">remaining</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">chosen</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">remaining</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">min_dists</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dist</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">(</span><span class="n">remaining</span><span class="p">,</span> <span class="n">chosen</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">min_dists</span><span class="p">)</span>
+            <span class="n">choose</span><span class="p">[</span><span class="n">remaining</span><span class="p">[</span><span class="n">best</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">return</span> <span class="n">DA_objs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">DA_decs</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_update_P</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    SPEA2-based population update.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pop_objs : np.ndarray</span>
+<span class="sd">        Objectives</span>
+<span class="sd">    pop_decs : np.ndarray</span>
+<span class="sd">        Decisions</span>
+<span class="sd">    pop_cons : np.ndarray or None</span>
+<span class="sd">        Constraints</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Target size</span>
+<span class="sd">    is_origin : bool</span>
+<span class="sd">        If True, include constraints in fitness</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    selected_objs, selected_decs, selected_cons : np.ndarray</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">is_origin</span> <span class="ow">and</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">)</span>
+
+    <span class="n">n_pop</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Select solutions with fitness &lt; 1 (non-dominated in SPEA2 sense)</span>
+    <span class="n">next_mask</span> <span class="o">=</span> <span class="n">fitness</span> <span class="o">&lt;</span> <span class="mf">1.0</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="c1"># Not enough: take top N by fitness</span>
+        <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">sorted_idx</span><span class="p">[:</span><span class="nb">min</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">n_pop</span><span class="p">)]</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="c1"># Too many: truncate by distance</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">candidates</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">out_cons</span> <span class="o">=</span> <span class="n">pop_cons</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span> <span class="k">if</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">out_cons</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_update_P_real</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">new_objs</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">new_cons</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update real population P with new solutions.&quot;&quot;&quot;</span>
+    <span class="n">P_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">P</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
+    <span class="n">P_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">P</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">is_origin</span> <span class="ow">and</span> <span class="n">P</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">new_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">P_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">P</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">new_cons</span><span class="p">])</span>
+    <span class="k">elif</span> <span class="n">is_origin</span> <span class="ow">and</span> <span class="n">P</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">P_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">P</span><span class="p">[</span><span class="mi">2</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">new_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">P</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">P_cons</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">return</span> <span class="n">_update_P</span><span class="p">(</span><span class="n">P_objs</span><span class="p">,</span> <span class="n">P_decs</span><span class="p">,</span> <span class="n">P_cons</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_k_update_CA</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_mse</span><span class="p">,</span> <span class="n">max_size</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update predicted CA using IBEA fitness.&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">pop_mse</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="n">fitness</span><span class="p">,</span> <span class="n">I</span><span class="p">,</span> <span class="n">C</span> <span class="o">=</span> <span class="n">ibea_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">kappa</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+
+    <span class="n">choose</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">))</span>
+    <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="n">fit_values</span> <span class="o">=</span> <span class="n">fitness</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+        <span class="n">min_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">fit_values</span><span class="p">)</span>
+        <span class="n">to_remove</span> <span class="o">=</span> <span class="n">choose</span><span class="p">[</span><span class="n">min_idx</span><span class="p">]</span>
+
+        <span class="k">if</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+            <span class="n">fitness</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">I</span><span class="p">[</span><span class="n">to_remove</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">/</span> <span class="mf">0.05</span><span class="p">)</span>
+
+        <span class="n">choose</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">min_idx</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">pop_mse</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_k_update_DA</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_mse</span><span class="p">,</span> <span class="n">max_size</span><span class="p">,</span> <span class="n">p</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Update predicted DA with ND sort + Lp truncation.&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">min_vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">max_vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">range_vals</span> <span class="o">=</span> <span class="n">max_vals</span> <span class="o">-</span> <span class="n">min_vals</span>
+    <span class="n">range_vals</span><span class="p">[</span><span class="n">range_vals</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">pop_objs_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">pop_objs</span> <span class="o">-</span> <span class="n">min_vals</span><span class="p">)</span> <span class="o">/</span> <span class="n">range_vals</span>
+
+    <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="n">nd_mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span>
+
+    <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+    <span class="n">pop_decs</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+    <span class="n">pop_mse</span> <span class="o">=</span> <span class="n">pop_mse</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+    <span class="n">pop_objs_norm</span> <span class="o">=</span> <span class="n">pop_objs_norm</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_mse</span>
+
+    <span class="n">M</span> <span class="o">=</span> <span class="n">pop_objs_norm</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="n">choose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">select</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">M</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">select</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="n">choose</span><span class="p">[</span><span class="n">select</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">choose</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_size</span><span class="p">:</span>
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">pop_objs_norm</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">pop_objs_norm</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span> <span class="o">**</span> <span class="n">p</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">max_size</span><span class="p">:</span>
+            <span class="n">remaining</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">chosen</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">remaining</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">break</span>
+            <span class="n">min_dists</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dist</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">(</span><span class="n">remaining</span><span class="p">,</span> <span class="n">chosen</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">min_dists</span><span class="p">)</span>
+            <span class="n">choose</span><span class="p">[</span><span class="n">remaining</span><span class="p">[</span><span class="n">best</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">choose</span><span class="p">],</span> <span class="n">pop_mse</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_k_update_P</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">pop_mse</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">is_origin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Update predicted population P using SPEA2 fitness.</span>
+
+<span class="sd">    Returns (objs, decs, cons, mse) tuple.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">is_origin</span> <span class="ow">and</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">)</span>
+
+    <span class="n">n_pop</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">next_mask</span> <span class="o">=</span> <span class="n">fitness</span> <span class="o">&lt;</span> <span class="mf">1.0</span>
+
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">sorted_idx</span><span class="p">[:</span><span class="nb">min</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">n_pop</span><span class="p">)]</span>
+    <span class="k">elif</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">sel</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">candidates</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="n">sel</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="n">out_cons</span> <span class="o">=</span> <span class="n">pop_cons</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span> <span class="k">if</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">out_cons</span><span class="p">,</span> <span class="n">pop_mse</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_adaptive_sampling</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">DA_objs</span><span class="p">,</span> <span class="n">CA_decs</span><span class="p">,</span> <span class="n">DA_decs</span><span class="p">,</span> <span class="n">DA_mse</span><span class="p">,</span>
+                        <span class="n">real_DA_objs</span><span class="p">,</span> <span class="n">real_DA_decs</span><span class="p">,</span> <span class="n">mu</span><span class="p">,</span> <span class="n">p</span><span class="p">,</span> <span class="n">phi</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KTA2-style adaptive sampling with convergence/uncertainty/diversity strategies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">combined_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">DA_objs</span><span class="p">])</span>
+    <span class="n">ideal_point</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">combined_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">flag</span> <span class="o">=</span> <span class="n">_cal_convergence</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">DA_objs</span><span class="p">,</span> <span class="n">ideal_point</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">flag</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="c1"># Convergence sampling from CA</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="n">CA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">mu</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">CA_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="n">fitness</span><span class="p">,</span> <span class="n">I</span><span class="p">,</span> <span class="n">C</span> <span class="o">=</span> <span class="n">ibea_fitness</span><span class="p">(</span><span class="n">CA_objs</span><span class="p">,</span> <span class="n">kappa</span><span class="o">=</span><span class="mf">0.05</span><span class="p">)</span>
+
+        <span class="n">choose</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">))</span>
+        <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">mu</span><span class="p">:</span>
+            <span class="n">fit_values</span> <span class="o">=</span> <span class="n">fitness</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+            <span class="n">min_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">fit_values</span><span class="p">)</span>
+            <span class="n">to_remove</span> <span class="o">=</span> <span class="n">choose</span><span class="p">[</span><span class="n">min_idx</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+                <span class="n">fitness</span> <span class="o">+=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">I</span><span class="p">[</span><span class="n">to_remove</span><span class="p">,</span> <span class="p">:]</span> <span class="o">/</span> <span class="n">C</span><span class="p">[</span><span class="n">to_remove</span><span class="p">]</span> <span class="o">/</span> <span class="mf">0.05</span><span class="p">)</span>
+
+            <span class="n">choose</span><span class="o">.</span><span class="n">pop</span><span class="p">(</span><span class="n">min_idx</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">CA_decs</span><span class="p">[</span><span class="n">choose</span><span class="p">]</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">pd_pred</span> <span class="o">=</span> <span class="n">_pure_diversity</span><span class="p">(</span><span class="n">DA_objs</span><span class="p">)</span>
+        <span class="n">pd_real</span> <span class="o">=</span> <span class="n">_pure_diversity</span><span class="p">(</span><span class="n">real_DA_objs</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">pd_pred</span> <span class="o">&lt;</span> <span class="n">pd_real</span><span class="p">:</span>
+            <span class="c1"># Uncertainty sampling</span>
+            <span class="n">DA_n</span> <span class="o">=</span> <span class="n">DA_mse</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">subset_size</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">phi</span> <span class="o">*</span> <span class="n">DA_n</span><span class="p">)))</span>
+            <span class="n">chosen</span> <span class="o">=</span> <span class="p">[]</span>
+
+            <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">mu</span><span class="p">):</span>
+                <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">DA_n</span><span class="p">)</span>
+                <span class="n">subset_idx</span> <span class="o">=</span> <span class="n">perm</span><span class="p">[:</span><span class="n">subset_size</span><span class="p">]</span>
+                <span class="n">n_obj_cols</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">DA_mse</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">DA_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+                <span class="n">uncertainty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">DA_mse</span><span class="p">[</span><span class="n">subset_idx</span><span class="p">,</span> <span class="p">:</span><span class="n">n_obj_cols</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="n">subset_idx</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">uncertainty</span><span class="p">)]</span>
+                <span class="n">chosen</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">best</span><span class="p">)</span>
+
+            <span class="k">return</span> <span class="n">DA_decs</span><span class="p">[</span><span class="n">chosen</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># Diversity sampling</span>
+            <span class="n">all_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">DA_objs</span><span class="p">,</span> <span class="n">real_DA_objs</span><span class="p">])</span>
+            <span class="n">min_vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">max_vals</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">range_vals</span> <span class="o">=</span> <span class="n">max_vals</span> <span class="o">-</span> <span class="n">min_vals</span>
+            <span class="n">range_vals</span><span class="p">[</span><span class="n">range_vals</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+            <span class="n">DA_Nor</span> <span class="o">=</span> <span class="p">(</span><span class="n">real_DA_objs</span> <span class="o">-</span> <span class="n">min_vals</span><span class="p">)</span> <span class="o">/</span> <span class="n">range_vals</span>
+            <span class="n">DA_Nor_pre</span> <span class="o">=</span> <span class="p">(</span><span class="n">DA_objs</span> <span class="o">-</span> <span class="n">min_vals</span><span class="p">)</span> <span class="o">/</span> <span class="n">range_vals</span>
+
+            <span class="n">N_real</span> <span class="o">=</span> <span class="n">DA_Nor</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">Pop</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">DA_Nor</span><span class="p">,</span> <span class="n">DA_Nor_pre</span><span class="p">])</span>
+            <span class="n">Pop_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">real_DA_decs</span><span class="p">,</span> <span class="n">DA_decs</span><span class="p">])</span>
+            <span class="n">NN</span> <span class="o">=</span> <span class="n">Pop</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+            <span class="n">choose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">NN</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+            <span class="n">choose</span><span class="p">[:</span><span class="n">N_real</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">target_size</span> <span class="o">=</span> <span class="n">N_real</span> <span class="o">+</span> <span class="n">mu</span>
+
+            <span class="n">diff</span> <span class="o">=</span> <span class="n">Pop</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">Pop</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:]</span>
+            <span class="n">dist_matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span> <span class="o">**</span> <span class="n">p</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">p</span><span class="p">)</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">dist_matrix</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+            <span class="n">offspring</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">target_size</span><span class="p">:</span>
+                <span class="n">remaining</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">chosen_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">choose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">remaining</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="k">break</span>
+                <span class="n">min_dists</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dist_matrix</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ix_</span><span class="p">(</span><span class="n">remaining</span><span class="p">,</span> <span class="n">chosen_idx</span><span class="p">)],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">min_dists</span><span class="p">)</span>
+                <span class="n">choose</span><span class="p">[</span><span class="n">remaining</span><span class="p">[</span><span class="n">best</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+                <span class="n">offspring</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Pop_dec</span><span class="p">[</span><span class="n">remaining</span><span class="p">[</span><span class="n">best</span><span class="p">]])</span>
+
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">offspring</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">DA_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
+                                       <span class="n">size</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">mu</span><span class="p">,</span> <span class="n">DA_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">DA_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">offspring</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_kccmo_sampling</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">ref_objs</span><span class="p">,</span> <span class="n">mu1</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    KCCMO-style sampling using K-means clustering and fitness selection.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pop_objs : np.ndarray</span>
+<span class="sd">        Population objectives</span>
+<span class="sd">    pop_decs : np.ndarray</span>
+<span class="sd">        Population decisions</span>
+<span class="sd">    pop_cons : np.ndarray or None</span>
+<span class="sd">        Population constraints</span>
+<span class="sd">    ref_objs : np.ndarray</span>
+<span class="sd">        Reference front objectives (from CA)</span>
+<span class="sd">    mu1 : int</span>
+<span class="sd">        Number of solutions to select</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    selected_decs : np.ndarray</span>
+<span class="sd">        Selected decision variables</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">n_clusters</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">mu1</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="n">mu1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="c1"># Compute fitness using reference front</span>
+    <span class="k">if</span> <span class="n">ref_objs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">ref_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">_cal_fitness_spea2_ref</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">ref_objs</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">)</span>
+
+    <span class="c1"># K-means clustering on objectives</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.cluster</span><span class="w"> </span><span class="kn">import</span> <span class="n">KMeans</span>
+        <span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="n">n_clusters</span><span class="p">,</span> <span class="n">n_init</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">kmeans</span><span class="o">.</span><span class="n">fit_predict</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">)</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="c1"># Fallback: simple K-means</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">_simple_kmeans</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">n_clusters</span><span class="p">)</span>
+
+    <span class="c1"># Select best from each cluster</span>
+    <span class="n">selected</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_clusters</span><span class="p">):</span>
+        <span class="n">cluster_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">labels</span> <span class="o">==</span> <span class="n">c</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">cluster_idx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">continue</span>
+        <span class="n">best_in_cluster</span> <span class="o">=</span> <span class="n">cluster_idx</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">cluster_idx</span><span class="p">])]</span>
+        <span class="n">selected</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">best_in_cluster</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">selected</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">min</span><span class="p">(</span><span class="n">mu1</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_simple_kmeans</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Simple K-means fallback if sklearn unavailable.&quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+    <span class="n">centers</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
+        <span class="n">new_labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">labels</span><span class="p">,</span> <span class="n">new_labels</span><span class="p">):</span>
+            <span class="k">break</span>
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">new_labels</span>
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+            <span class="n">members</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">labels</span> <span class="o">==</span> <span class="n">c</span><span class="p">]</span>
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">members</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">centers</span><span class="p">[</span><span class="n">c</span><span class="p">]</span> <span class="o">=</span> <span class="n">members</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">labels</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cal_convergence</span><span class="p">(</span><span class="n">pop_obj1</span><span class="p">,</span> <span class="n">pop_obj2</span><span class="p">,</span> <span class="n">z_min</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Wilcoxon signed-rank test comparing CA vs DA convergence.</span>
+<span class="sd">    Returns 1 if CA converges significantly better.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N1</span> <span class="o">=</span> <span class="n">pop_obj1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">N2</span> <span class="o">=</span> <span class="n">pop_obj2</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">N1</span> <span class="o">!=</span> <span class="n">N2</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_obj1</span><span class="p">,</span> <span class="n">pop_obj2</span><span class="p">])</span> <span class="o">-</span> <span class="n">z_min</span>
+        <span class="n">denominator</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">z_min</span>
+        <span class="n">denominator</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">denominator</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">pop_obj</span> <span class="o">/</span> <span class="n">denominator</span>
+
+        <span class="n">distance1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">[:</span><span class="n">N1</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+        <span class="n">distance2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">[</span><span class="n">N1</span><span class="p">:],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
+
+        <span class="n">diff</span> <span class="o">=</span> <span class="n">distance1</span> <span class="o">-</span> <span class="n">distance2</span>
+        <span class="n">abs_diff</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">diff</span><span class="p">)</span>
+        <span class="n">eps_tol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">finfo</span><span class="p">(</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">eps</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">distance1</span><span class="p">)</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">distance2</span><span class="p">))</span>
+        <span class="n">nonzero</span> <span class="o">=</span> <span class="n">abs_diff</span> <span class="o">&gt;</span> <span class="n">eps_tol</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">nonzero</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">return</span> <span class="mi">0</span>
+
+        <span class="n">diff_nz</span> <span class="o">=</span> <span class="n">diff</span><span class="p">[</span><span class="n">nonzero</span><span class="p">]</span>
+        <span class="n">abs_diff_nz</span> <span class="o">=</span> <span class="n">abs_diff</span><span class="p">[</span><span class="n">nonzero</span><span class="p">]</span>
+
+        <span class="n">ranks</span> <span class="o">=</span> <span class="n">rankdata</span><span class="p">(</span><span class="n">abs_diff_nz</span><span class="p">)</span>
+        <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ranks</span><span class="p">[</span><span class="n">diff_nz</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">_</span><span class="p">,</span> <span class="n">p_value</span> <span class="o">=</span> <span class="n">wilcoxon</span><span class="p">(</span><span class="n">distance1</span><span class="p">[</span><span class="n">nonzero</span><span class="p">],</span> <span class="n">distance2</span><span class="p">[</span><span class="n">nonzero</span><span class="p">])</span>
+
+        <span class="n">flag</span> <span class="o">=</span> <span class="mi">1</span> <span class="k">if</span> <span class="n">p_value</span> <span class="o">&lt;=</span> <span class="mf">0.05</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">ranks</span><span class="p">)</span> <span class="o">-</span> <span class="n">r1</span>
+
+        <span class="k">if</span> <span class="n">flag</span> <span class="o">==</span> <span class="mi">1</span> <span class="ow">and</span> <span class="p">(</span><span class="n">r1</span> <span class="o">-</span> <span class="n">r2</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">flag</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">return</span> <span class="n">flag</span>
+    <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mi">0</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_pure_diversity</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pure diversity using maximum spanning tree with Minkowski(0.1) distance.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.0</span>
+
+    <span class="n">C</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">D</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_obj</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;minkowski&#39;</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+    <span class="n">score</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">J</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">i_node</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+            <span class="n">j_node</span> <span class="o">=</span> <span class="n">J</span><span class="p">[</span><span class="n">i_node</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">D</span><span class="p">[</span><span class="n">j_node</span><span class="p">,</span> <span class="n">i_node</span><span class="p">]</span> <span class="o">!=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">:</span>
+                <span class="n">D</span><span class="p">[</span><span class="n">j_node</span><span class="p">,</span> <span class="n">i_node</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+            <span class="k">if</span> <span class="n">D</span><span class="p">[</span><span class="n">i_node</span><span class="p">,</span> <span class="n">j_node</span><span class="p">]</span> <span class="o">!=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">:</span>
+                <span class="n">D</span><span class="p">[</span><span class="n">i_node</span><span class="p">,</span> <span class="n">j_node</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+
+            <span class="n">P</span> <span class="o">=</span> <span class="n">C</span><span class="p">[</span><span class="n">i_node</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">while</span> <span class="ow">not</span> <span class="n">P</span><span class="p">[</span><span class="n">j_node</span><span class="p">]:</span>
+                <span class="n">new_P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">C</span><span class="p">[</span><span class="n">P</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="n">P</span><span class="p">,</span> <span class="n">new_P</span><span class="p">):</span>
+                    <span class="k">break</span>
+                <span class="n">P</span> <span class="o">=</span> <span class="n">new_P</span>
+
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">P</span><span class="p">[</span><span class="n">j_node</span><span class="p">]:</span>
+                <span class="k">break</span>
+
+        <span class="n">C</span><span class="p">[</span><span class="n">i_node</span><span class="p">,</span> <span class="n">j_node</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">C</span><span class="p">[</span><span class="n">j_node</span><span class="p">,</span> <span class="n">i_node</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">D</span><span class="p">[</span><span class="n">i_node</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+        <span class="n">score</span> <span class="o">+=</span> <span class="n">d</span><span class="p">[</span><span class="n">i_node</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">score</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_crossover_only</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;SBX crossover only (no mutation).&quot;&quot;&quot;</span>
+    <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="n">parents</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">parents</span><span class="p">)</span>
+    <span class="n">num_pairs</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">2</span>
+
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_pairs</span><span class="p">):</span>
+        <span class="n">offdec1</span><span class="p">,</span> <span class="n">offdec2</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">num_pairs</span> <span class="o">+</span> <span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
+        <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">offdecs</span><span class="p">,</span> <span class="n">offdec1</span><span class="p">,</span> <span class="n">offdec2</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">n</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">offdec1</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
+        <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">offdecs</span><span class="p">,</span> <span class="n">offdec1</span><span class="p">))</span>
+
+    <span class="k">return</span> <span class="n">offdecs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mutation_only</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Polynomial mutation only (no crossover).&quot;&quot;&quot;</span>
+    <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="n">offdecs</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">mum</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">offdecs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_full_ga</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Full GA: SBX crossover followed by polynomial mutation.&quot;&quot;&quot;</span>
+    <span class="n">off</span> <span class="o">=</span> <span class="n">_crossover_only</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">off</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+        <span class="n">off</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">off</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">mu</span><span class="o">=</span><span class="n">mum</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">off</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_not_in_archive</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">archive_decs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Return boolean mask of rows in new_decs NOT present in archive_decs.&quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">archive_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">archive_decs</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mf">1e-5</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_best_objs</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Get non-dominated feasible objectives (MATLAB: Population.best.objs).</span>
+
+<span class="sd">    Returns the Pareto front of feasible solutions, or all objectives if</span>
+<span class="sd">    no feasible solutions exist.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">pop_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">feasible</span> <span class="o">=</span> <span class="n">cv</span> <span class="o">&lt;</span> <span class="mf">1e-10</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">feasible</span><span class="p">):</span>
+            <span class="n">feas_objs</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">feasible</span><span class="p">]</span>
+            <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">feas_objs</span><span class="p">,</span> <span class="n">feas_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">feas_objs</span><span class="p">[</span><span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]</span>
+    <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

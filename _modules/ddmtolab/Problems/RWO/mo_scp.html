@@ -1,0 +1,421 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Problems.RWO.mo_scp &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Problems.RWO.mo_scp</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Problems.RWO.mo_scp</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">scipy.io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pkgutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
+
+
+<div class="viewcode-block" id="MO_SCP">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.mo_scp.MO_SCP">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MO_SCP</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implementation of Multi-Objective Sensor Coverage Problem (MO_SCP) for</span>
+<span class="sd">    Multi-Task Multi-Objective Optimization.</span>
+
+<span class="sd">    This problem extends the single-objective SCP to bi-objective optimization,</span>
+<span class="sd">    balancing coverage maximization against sensor deployment costs. Each task</span>
+<span class="sd">    corresponds to a different number of sensors with variable-length dimensions.</span>
+
+<span class="sd">    Objectives:</span>
+<span class="sd">    - f1: Inverted coverage percentage (minimize uncovered area)</span>
+<span class="sd">    - f2: Total sensor cost (number of sensors + sensing costs)</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    [1] Y. Li et al., &quot;Transfer Search Directions Among Decomposed Subtasks for Evolutionary Multitasking in Multiobjective Optimization,&quot; GECCO, 2024.</span>
+<span class="sd">    [2] Y. Li et al., &quot;Evolutionary Competitive Multiobjective Multitasking: One-Pass Optimization of Heterogeneous Pareto Solutions,&quot; IEEE TEVC, 2024.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    A : ndarray</span>
+<span class="sd">        Target points to be covered, shape (n_points, 2)</span>
+<span class="sd">    data_dir : str</span>
+<span class="sd">        The directory path for problem data files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">problem_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_cases&#39;</span><span class="p">:</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[4, 5]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_dims&#39;</span><span class="p">:</span> <span class="s1">&#39;[75, 105]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;2&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;real_world&#39;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize MO_SCP problem.&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;data_mo_scp&#39;</span>
+
+        <span class="c1"># Load target points data</span>
+        <span class="n">data_bytes</span> <span class="o">=</span> <span class="n">pkgutil</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="s1">&#39;ddmtolab.Problems.RWO&#39;</span><span class="p">,</span>
+                                      <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data_dir</span><span class="si">}</span><span class="s1">/SCP_Adata2.mat&#39;</span><span class="p">)</span>
+        <span class="n">mat_file</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">data_bytes</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">loadmat</span><span class="p">(</span><span class="n">mat_file</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">]</span>  <span class="c1"># Target points matrix</span>
+
+<div class="viewcode-block" id="MO_SCP.P1">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.mo_scp.MO_SCP.P1">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">P1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nmin</span><span class="o">=</span><span class="mi">28</span><span class="p">,</span> <span class="n">task_num</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">gap</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MTOP</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates MO_SCP Problem 1: Multi-Objective Sensor Coverage with uniform gap.</span>
+
+<span class="sd">        Creates multiple tasks with different numbers of sensors, where sensor</span>
+<span class="sd">        counts increase uniformly by a fixed gap.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Nmin : int, optional</span>
+<span class="sd">            Minimum number of sensors (default: 28)</span>
+<span class="sd">        task_num : int, optional</span>
+<span class="sd">            Number of tasks to create (default: 5)</span>
+<span class="sd">        gap : int, optional</span>
+<span class="sd">            Gap between consecutive tasks&#39; sensor numbers (default: 1)</span>
+
+<span class="sd">        Task Structure:</span>
+<span class="sd">        - T_i: 2-objective, (Nmin + gap*(i-1))*3 dimensional</span>
+<span class="sd">          * Decision variables: [x1, y1, r1, ..., xk, yk, rk]</span>
+<span class="sd">          * x, y: Sensor positions in [-1, 1]</span>
+<span class="sd">          * r: Sensing radii in [0.1, 0.25]</span>
+<span class="sd">          * Objective 1 (f1): Inverted coverage percentage (0-100)</span>
+<span class="sd">          * Objective 2 (f2): Total cost = sensor_count + 10*sum(r²)</span>
+
+<span class="sd">        - Relationship: Tasks with increasing sensor numbers test transfer</span>
+<span class="sd">          learning across different problem scales.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MTOP</span>
+<span class="sd">            A Multi-Task Multi-Objective Optimization Problem instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+
+        <span class="c1"># Calculate sample range for coverage tolerance</span>
+        <span class="n">rsample</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">task_num</span><span class="p">):</span>
+            <span class="n">num_sensors</span> <span class="o">=</span> <span class="n">Nmin</span> <span class="o">+</span> <span class="n">gap</span> <span class="o">*</span> <span class="n">t</span>
+            <span class="n">dim</span> <span class="o">=</span> <span class="n">num_sensors</span> <span class="o">*</span> <span class="mi">3</span>
+
+            <span class="c1"># Create bounds</span>
+            <span class="n">lb</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+
+            <span class="c1"># Radius bounds: every 3rd variable</span>
+            <span class="n">radius_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">lb</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.1</span>
+            <span class="n">ub</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.25</span>
+
+            <span class="c1"># Create task function with closure</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">create_task_function</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">rs</span><span class="p">):</span>
+                <span class="k">def</span><span class="w"> </span><span class="nf">task_func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_moscp_p1</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">rs</span><span class="p">)</span>
+
+                <span class="k">return</span> <span class="n">task_func</span>
+
+            <span class="n">task_function</span> <span class="o">=</span> <span class="n">create_task_function</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">,</span> <span class="n">rsample</span><span class="p">)</span>
+
+            <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+                <span class="n">task_function</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span>
+                <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span>
+                <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">problem</span></div>
+
+
+<div class="viewcode-block" id="MO_SCP.P2">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.mo_scp.MO_SCP.P2">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">P2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nmin</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">task_num</span><span class="o">=</span><span class="mi">4</span><span class="p">,</span> <span class="n">gap</span><span class="o">=</span><span class="mi">3</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MTOP</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates MO_SCP Problem 2: Multi-Objective Sensor Coverage with larger gap.</span>
+
+<span class="sd">        Creates multiple tasks with different numbers of sensors, where sensor</span>
+<span class="sd">        counts increase with a larger gap. The second objective includes an</span>
+<span class="sd">        additional coupling term for increased task correlation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Nmin : int, optional</span>
+<span class="sd">            Minimum number of sensors (default: 25)</span>
+<span class="sd">        task_num : int, optional</span>
+<span class="sd">            Number of tasks to create (default: 4)</span>
+<span class="sd">        gap : int, optional</span>
+<span class="sd">            Gap between consecutive tasks&#39; sensor numbers (default: 3)</span>
+
+<span class="sd">        Task Structure:</span>
+<span class="sd">        - T_i: 2-objective, (Nmin + gap*(i-1))*3 dimensional</span>
+<span class="sd">          * Decision variables: [x1, y1, r1, ..., xk, yk, rk]</span>
+<span class="sd">          * x, y: Sensor positions in [-1, 1]</span>
+<span class="sd">          * r: Sensing radii in [0.1, 0.25]</span>
+<span class="sd">          * Objective 1 (f1): Inverted coverage percentage (0-100)</span>
+<span class="sd">          * Objective 2 (f2): Total cost + f1/10 (coupled objectives)</span>
+
+<span class="sd">        - Relationship: Larger gaps between tasks with objective coupling</span>
+<span class="sd">          to test transfer learning in more heterogeneous scenarios.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MTOP</span>
+<span class="sd">            A Multi-Task Multi-Objective Optimization Problem instance.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+
+        <span class="c1"># Calculate sample range for coverage tolerance</span>
+        <span class="n">rsample</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">task_num</span><span class="p">):</span>
+            <span class="n">num_sensors</span> <span class="o">=</span> <span class="n">Nmin</span> <span class="o">+</span> <span class="n">gap</span> <span class="o">*</span> <span class="n">t</span>
+            <span class="n">dim</span> <span class="o">=</span> <span class="n">num_sensors</span> <span class="o">*</span> <span class="mi">3</span>
+
+            <span class="c1"># Create bounds</span>
+            <span class="n">lb</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+
+            <span class="c1"># Radius bounds: every 3rd variable</span>
+            <span class="n">radius_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">lb</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.1</span>
+            <span class="n">ub</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.25</span>
+
+            <span class="c1"># Create task function with closure</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">create_task_function</span><span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">rs</span><span class="p">):</span>
+                <span class="k">def</span><span class="w"> </span><span class="nf">task_func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_moscp_p2</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">k</span><span class="p">,</span> <span class="n">rs</span><span class="p">)</span>
+
+                <span class="k">return</span> <span class="n">task_func</span>
+
+            <span class="n">task_function</span> <span class="o">=</span> <span class="n">create_task_function</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">,</span> <span class="n">rsample</span><span class="p">)</span>
+
+            <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+                <span class="n">task_function</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span>
+                <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span>
+                <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">problem</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_moscp_p1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">num_sensors</span><span class="p">,</span> <span class="n">rsample</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate MO_SCP Problem 1 objectives.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        var : array-like, shape (n_samples, dim) or (dim,)</span>
+<span class="sd">            Decision variables</span>
+<span class="sd">        num_sensors : int</span>
+<span class="sd">            Number of sensors</span>
+<span class="sd">        rsample : float</span>
+<span class="sd">            Sample range for coverage tolerance</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">            [f1: inverted coverage %, f2: total cost]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="n">var</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="n">num_sensors</span> <span class="o">*</span> <span class="mi">3</span>
+
+        <span class="n">b</span> <span class="o">=</span> <span class="mi">10</span>  <span class="c1"># Sensing cost weight</span>
+        <span class="n">c0</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Sensor count weight</span>
+
+        <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">var</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">dim</span><span class="p">]</span>
+
+            <span class="c1"># Reshape to (num_sensors, 3)</span>
+            <span class="n">sensors</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span>
+            <span class="n">radii</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span>
+
+            <span class="c1"># Calculate distances</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+
+            <span class="c1"># Check coverage with tolerance</span>
+            <span class="n">is_covered</span> <span class="o">=</span> <span class="p">(</span><span class="n">distances</span> <span class="o">+</span> <span class="n">rsample</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">radii</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">max_is_covered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">is_covered</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># Calculate coverage ratio</span>
+            <span class="n">coverage_ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">max_is_covered</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">)</span>
+
+            <span class="c1"># Objective 1: Inverted coverage percentage</span>
+            <span class="n">f1</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">coverage_ratio</span><span class="p">)</span>
+
+            <span class="c1"># Objective 2: Total cost</span>
+            <span class="n">f2</span> <span class="o">=</span> <span class="n">c0</span> <span class="o">*</span> <span class="n">num_sensors</span> <span class="o">+</span> <span class="n">b</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">radii</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">f1</span><span class="p">,</span> <span class="n">f2</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">objs</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_moscp_p2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">num_sensors</span><span class="p">,</span> <span class="n">rsample</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate MO_SCP Problem 2 objectives (with objective coupling).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        var : array-like, shape (n_samples, dim) or (dim,)</span>
+<span class="sd">            Decision variables</span>
+<span class="sd">        num_sensors : int</span>
+<span class="sd">            Number of sensors</span>
+<span class="sd">        rsample : float</span>
+<span class="sd">            Sample range for coverage tolerance</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        objs : ndarray, shape (n_samples, 2)</span>
+<span class="sd">            [f1: inverted coverage %, f2: total cost + f1/10]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="n">var</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="n">num_sensors</span> <span class="o">*</span> <span class="mi">3</span>
+
+        <span class="n">b</span> <span class="o">=</span> <span class="mi">10</span>  <span class="c1"># Sensing cost weight</span>
+        <span class="n">c0</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Sensor count weight</span>
+
+        <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">var</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">dim</span><span class="p">]</span>
+
+            <span class="c1"># Reshape to (num_sensors, 3)</span>
+            <span class="n">sensors</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span>
+            <span class="n">radii</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span>
+
+            <span class="c1"># Calculate distances</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+
+            <span class="c1"># Check coverage with tolerance</span>
+            <span class="n">is_covered</span> <span class="o">=</span> <span class="p">(</span><span class="n">distances</span> <span class="o">+</span> <span class="n">rsample</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">radii</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">max_is_covered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">is_covered</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># Calculate coverage ratio</span>
+            <span class="n">coverage_ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">max_is_covered</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">)</span>
+
+            <span class="c1"># Objective 1: Inverted coverage percentage</span>
+            <span class="n">f1</span> <span class="o">=</span> <span class="mi">100</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">coverage_ratio</span><span class="p">)</span>
+
+            <span class="c1"># Objective 2: Total cost with coupling term</span>
+            <span class="n">f2</span> <span class="o">=</span> <span class="n">c0</span> <span class="o">*</span> <span class="n">num_sensors</span> <span class="o">+</span> <span class="n">b</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">radii</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">+</span> <span class="n">f1</span> <span class="o">/</span> <span class="mi">10</span>
+
+            <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span><span class="n">f1</span><span class="p">,</span> <span class="n">f2</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">objs</span></div>
+
+
+
+<span class="n">SETTINGS</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s1">&#39;metric&#39;</span><span class="p">:</span> <span class="s1">&#39;HV&#39;</span><span class="p">,</span>
+    <span class="s1">&#39;P1&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;all_tasks&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">80</span><span class="p">,</span> <span class="mi">40</span><span class="p">]},</span>
+    <span class="s1">&#39;P2&#39;</span><span class="p">:</span> <span class="p">{</span><span class="s1">&#39;all_tasks&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">80</span><span class="p">,</span> <span class="mi">40</span><span class="p">]},</span>
+<span class="p">}</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

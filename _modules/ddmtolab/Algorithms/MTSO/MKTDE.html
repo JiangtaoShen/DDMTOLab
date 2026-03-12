@@ -1,0 +1,345 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.MTSO.MKTDE &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.MTSO.MKTDE</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.MTSO.MKTDE</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Meta-Knowledge Transfer-based Differential Evolution (MKTDE)</span>
+
+<span class="sd">This module implements MKTDE for multi-task optimization using centroid-based</span>
+<span class="sd">meta-knowledge transfer between tasks in a multi-population DE framework.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Li, Jian-Yu, et al. &quot;A Meta-Knowledge Transfer-Based Differential</span>
+<span class="sd">        Evolution for Multitask Optimization.&quot; IEEE Transactions on</span>
+<span class="sd">        Evolutionary Computation, 26(4): 719-734, 2022.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen (DDMTOLab adaptation)</span>
+<span class="sd">Date: 2026.02.22</span>
+<span class="sd">Version: 2.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="MKTDE">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MKTDE.MKTDE">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MKTDE</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Meta-Knowledge Transfer-based Differential Evolution.</span>
+
+<span class="sd">    Uses centroid alignment to transform source task solutions into the</span>
+<span class="sd">    target task&#39;s search distribution, creating an extended donor pool for</span>
+<span class="sd">    DE/rand/1/bin. The base vector x1 is selected from the current task</span>
+<span class="sd">    only, while difference vectors x2, x3 come from the combined pool.</span>
+<span class="sd">    Additionally, an elite solution from the source task is transferred</span>
+<span class="sd">    each generation.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;[0, C]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MKTDE.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MKTDE.MKTDE.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MKTDE&#39;</span><span class="p">,</span>
+                 <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize MKTDE algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n : int, optional</span>
+<span class="sd">            Population size per task (default: 100)</span>
+<span class="sd">        max_nfes : int, optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 10000)</span>
+<span class="sd">        F : float, optional</span>
+<span class="sd">            DE mutation scale factor (default: 0.5)</span>
+<span class="sd">        CR : float, optional</span>
+<span class="sd">            DE crossover rate (default: 0.6)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;MKTDE&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">F</span> <span class="o">=</span> <span class="n">F</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">CR</span> <span class="o">=</span> <span class="n">CR</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="MKTDE.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MKTDE.MKTDE.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the MKTDE algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">*</span> <span class="n">nt</span>
+
+        <span class="c1"># Initialize and evaluate in real space</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
+
+        <span class="c1"># Convert to unified space for DE operations (matching MATLAB max-D space)</span>
+        <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_cons</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span>
+            <span class="n">problem</span><span class="o">=</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="o">=</span><span class="n">decs</span><span class="p">,</span> <span class="n">cons</span><span class="o">=</span><span class="n">cons</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;uni&#39;</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="s1">&#39;mid&#39;</span><span class="p">)</span>
+        <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">objs</span>
+        <span class="n">maxD</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">maxC</span> <span class="o">=</span> <span class="n">pop_cons</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                    <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">max_nfes</span><span class="p">:</span>
+            <span class="c1"># Compute centroids in unified space</span>
+            <span class="n">centroids</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+            <span class="c1"># Source task selection (random, different from t)</span>
+            <span class="n">source_tasks</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                <span class="k">while</span> <span class="n">s</span> <span class="o">==</span> <span class="n">t</span><span class="p">:</span>
+                    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                <span class="n">source_tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">s</span><span class="p">)</span>
+
+            <span class="c1"># --- Generation and selection per task ---</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">source_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="n">ct</span><span class="p">,</span> <span class="n">cs</span> <span class="o">=</span> <span class="n">centroids</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">centroids</span><span class="p">[</span><span class="n">s</span><span class="p">]</span>
+
+                <span class="c1"># Meta-knowledge transfer: align source via centroids</span>
+                <span class="n">spop_transformed</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">s</span><span class="p">]</span> <span class="o">-</span> <span class="n">cs</span> <span class="o">+</span> <span class="n">ct</span>
+
+                <span class="c1"># Combined donor pool: current task + transformed source</span>
+                <span class="n">popf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">spop_transformed</span><span class="p">])</span>
+                <span class="n">n_combined</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">popf</span><span class="p">)</span>
+
+                <span class="c1"># DE/rand/1/bin generation</span>
+                <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">maxD</span><span class="p">))</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+                    <span class="c1"># x1 from current task population only</span>
+                    <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+                    <span class="k">while</span> <span class="n">x1</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
+                        <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+                    <span class="c1"># x2, x3 from combined pool</span>
+                    <span class="n">x2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_combined</span><span class="p">)</span>
+                    <span class="k">while</span> <span class="n">x2</span> <span class="o">==</span> <span class="n">i</span> <span class="ow">or</span> <span class="n">x2</span> <span class="o">==</span> <span class="n">x1</span><span class="p">:</span>
+                        <span class="n">x2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_combined</span><span class="p">)</span>
+                    <span class="n">x3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_combined</span><span class="p">)</span>
+                    <span class="k">while</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">i</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x1</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x2</span><span class="p">:</span>
+                        <span class="n">x3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_combined</span><span class="p">)</span>
+
+                    <span class="c1"># DE/rand/1 mutation</span>
+                    <span class="n">v</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x1</span><span class="p">]</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">popf</span><span class="p">[</span><span class="n">x2</span><span class="p">]</span> <span class="o">-</span> <span class="n">popf</span><span class="p">[</span><span class="n">x3</span><span class="p">])</span>
+
+                    <span class="c1"># Binomial crossover</span>
+                    <span class="n">u</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                    <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">maxD</span><span class="p">)</span>
+                    <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">maxD</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span>
+                    <span class="n">mask</span><span class="p">[</span><span class="n">j_rand</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+                    <span class="n">u</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+                    <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+                <span class="c1"># Evaluate offspring (trim to task dimension)</span>
+                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_real</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
+                    <span class="n">problem</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">maxC</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">maxC</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">off_cons_real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">off_cons_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">off_cons_real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">off_cons_real</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="n">n</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+                <span class="c1"># Elitist selection (parents + offspring → best n)</span>
+                <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">])</span>
+                <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_objs_t</span><span class="p">])</span>
+                <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons_t</span><span class="p">])</span>
+                <span class="n">sel</span> <span class="o">=</span> <span class="n">selection_elit</span><span class="p">(</span><span class="n">objs</span><span class="o">=</span><span class="n">merged_objs</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">,</span> <span class="n">cons</span><span class="o">=</span><span class="n">merged_cons</span><span class="p">)</span>
+                <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_decs</span><span class="p">[</span><span class="n">sel</span><span class="p">]</span>
+                <span class="n">pop_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_objs</span><span class="p">[</span><span class="n">sel</span><span class="p">]</span>
+                <span class="n">pop_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_cons</span><span class="p">[</span><span class="n">sel</span><span class="p">]</span>
+
+            <span class="c1"># --- Elite solution transfer ---</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">s</span> <span class="o">=</span> <span class="n">source_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="c1"># Replace last (worst) with first (best) from source task</span>
+                <span class="n">elite_dec</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">s</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+                <span class="n">elite_obj</span><span class="p">,</span> <span class="n">elite_con_real</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
+                    <span class="n">problem</span><span class="p">,</span> <span class="n">elite_dec</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">elite_dec</span>
+                <span class="n">pop_objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">elite_obj</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+                <span class="n">pop_cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+                <span class="k">if</span> <span class="n">maxC</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">elite_con_real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">pop_cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:</span><span class="n">elite_con_real</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> \
+                        <span class="n">elite_con_real</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+            <span class="c1"># Record history in real space</span>
+            <span class="n">real_decs</span><span class="p">,</span> <span class="n">real_cons</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span>
+                <span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="o">=</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">cons</span><span class="o">=</span><span class="n">pop_cons</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;real&#39;</span><span class="p">)</span>
+            <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">real_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span>
+                           <span class="n">all_cons</span><span class="p">,</span> <span class="n">real_cons</span><span class="p">)</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+            <span class="n">max_nfes</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span>
+            <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
+            <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

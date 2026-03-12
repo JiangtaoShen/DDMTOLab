@@ -1,0 +1,297 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Problems.RWO.scp &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Problems.RWO.scp</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Problems.RWO.scp</h1><div class="highlight"><pre>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">scipy.io</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">pkgutil</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">io</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
+
+
+<div class="viewcode-block" id="SCP">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.scp.SCP">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">SCP</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Implementation of the Sensor Coverage Problem (SCP) for Multi-Task Optimization.</span>
+
+<span class="sd">    This problem involves optimizing sensor placements to maximize coverage of target</span>
+<span class="sd">    points while minimizing the number of sensors and their sensing radii. Each task</span>
+<span class="sd">    corresponds to a different number of sensors (variable-length optimization).</span>
+
+<span class="sd">    The problem optimizes sensor positions (x, y) and sensing radii (r) to:</span>
+<span class="sd">    - Maximize coverage of target points</span>
+<span class="sd">    - Minimize number of sensors</span>
+<span class="sd">    - Minimize sensing costs (proportional to r²)</span>
+
+<span class="sd">    References</span>
+<span class="sd">    ----------</span>
+<span class="sd">    [1] M. L. Ryerkerk et al., &quot;Solving Metameric Variable-length Optimization Problems Using Genetic Algorithms,&quot; Genetic Programming and Evolvable Machines, vol. 18, no. 2, pp. 247-277, 2017.</span>
+<span class="sd">    [2] G. Li et al., &quot;Evolutionary Competitive Multitasking Optimization,&quot; IEEE Trans. Evol. Comput., 2022.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Nmin : int</span>
+<span class="sd">        Minimum number of sensors (default: 25)</span>
+<span class="sd">    Nmax : int</span>
+<span class="sd">        Maximum number of sensors (default: 35)</span>
+<span class="sd">    A : ndarray</span>
+<span class="sd">        Target points to be covered, shape (n_points, 2)</span>
+<span class="sd">    data_dir : str</span>
+<span class="sd">        The directory path for problem data files.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">problem_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_cases&#39;</span><span class="p">:</span> <span class="mi">1</span><span class="p">,</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;11&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_dims&#39;</span><span class="p">:</span> <span class="s1">&#39;[75, 105]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;type&#39;</span><span class="p">:</span> <span class="s1">&#39;real_world&#39;</span><span class="p">,</span>
+    <span class="p">}</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Nmin</span><span class="o">=</span><span class="mi">25</span><span class="p">,</span> <span class="n">Nmax</span><span class="o">=</span><span class="mi">35</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize SCP problem.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        Nmin : int</span>
+<span class="sd">            Minimum number of sensors</span>
+<span class="sd">        Nmax : int</span>
+<span class="sd">            Maximum number of sensors</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Nmin</span> <span class="o">=</span> <span class="n">Nmin</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Nmax</span> <span class="o">=</span> <span class="n">Nmax</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">data_dir</span> <span class="o">=</span> <span class="s1">&#39;data_scp&#39;</span>
+
+        <span class="c1"># Load target points data</span>
+        <span class="n">data_bytes</span> <span class="o">=</span> <span class="n">pkgutil</span><span class="o">.</span><span class="n">get_data</span><span class="p">(</span><span class="s1">&#39;ddmtolab.Problems.RWO&#39;</span><span class="p">,</span>
+                                      <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">data_dir</span><span class="si">}</span><span class="s1">/SCP_Adata.mat&#39;</span><span class="p">)</span>
+        <span class="n">mat_file</span> <span class="o">=</span> <span class="n">io</span><span class="o">.</span><span class="n">BytesIO</span><span class="p">(</span><span class="n">data_bytes</span><span class="p">)</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">scipy</span><span class="o">.</span><span class="n">io</span><span class="o">.</span><span class="n">loadmat</span><span class="p">(</span><span class="n">mat_file</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">=</span> <span class="n">data</span><span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">]</span>  <span class="c1"># Target points matrix</span>
+
+<div class="viewcode-block" id="SCP.P1">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Problems.RWO.scp.SCP.P1">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">P1</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">MTOP</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generates SCP Problem 1: Multi-Task Sensor Coverage Optimization.</span>
+
+<span class="sd">        Creates tasks for different numbers of sensors from Nmin to Nmax.</span>
+<span class="sd">        Each task optimizes sensor placements and radii.</span>
+
+<span class="sd">        Task Structure:</span>
+<span class="sd">        - T_i (i sensors): 1-objective, (3*i)-dimensional</span>
+<span class="sd">          * Decision variables: [x1, y1, r1, x2, y2, r2, ..., xi, yi, ri]</span>
+<span class="sd">          * x, y: Sensor positions in [-1, 1]</span>
+<span class="sd">          * r: Sensing radii in [0.1, 0.25]</span>
+<span class="sd">          * Objective: Weighted sum of:</span>
+<span class="sd">            - Coverage penalty: 1000 * (1 - coverage_ratio)</span>
+<span class="sd">            - Sensor count penalty: 1 * number_of_sensors</span>
+<span class="sd">            - Sensing cost: 10 * sum(r²)</span>
+
+<span class="sd">        - Relationship: Variable-length tasks with increasing complexity.</span>
+<span class="sd">          Tests transfer learning across different problem dimensions.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        MTOP</span>
+<span class="sd">            A Multi-Task Optimization Problem instance with (Nmax - Nmin + 1) tasks.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+
+        <span class="c1"># Create tasks for different numbers of sensors</span>
+        <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Nmin</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">Nmax</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
+            <span class="n">dim</span> <span class="o">=</span> <span class="n">k</span> <span class="o">*</span> <span class="mi">3</span>  <span class="c1"># Each sensor has 3 variables: x, y, r</span>
+
+            <span class="c1"># Create bounds</span>
+            <span class="n">lb</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+
+            <span class="c1"># Radius bounds: every 3rd variable (indices 2, 5, 8, ...)</span>
+            <span class="n">radius_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+            <span class="n">lb</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.1</span>
+            <span class="n">ub</span><span class="p">[</span><span class="n">radius_indices</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.25</span>
+
+            <span class="c1"># Create task function with closure over k</span>
+            <span class="k">def</span><span class="w"> </span><span class="nf">create_task_function</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">):</span>
+                <span class="k">def</span><span class="w"> </span><span class="nf">task_func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+                    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_scp</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">num_sensors</span><span class="p">)</span>
+
+                <span class="k">return</span> <span class="n">task_func</span>
+
+            <span class="n">task_function</span> <span class="o">=</span> <span class="n">create_task_function</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+
+            <span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+                <span class="n">task_function</span><span class="p">,</span>
+                <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span>
+                <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span>
+                <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span>
+            <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">problem</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_scp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">var</span><span class="p">,</span> <span class="n">num_sensors</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Evaluate the Sensor Coverage Problem objective function.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        var : array-like, shape (n_samples, dim) or (dim,)</span>
+<span class="sd">            Decision variables representing sensor configurations</span>
+<span class="sd">        num_sensors : int</span>
+<span class="sd">            Number of sensors (k) in this task</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        objs : ndarray, shape (n_samples,)</span>
+<span class="sd">            Objective values for each sample</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">var</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">var</span><span class="p">)</span>
+        <span class="n">n_samples</span> <span class="o">=</span> <span class="n">var</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="n">num_sensors</span> <span class="o">*</span> <span class="mi">3</span>
+
+        <span class="c1"># Problem parameters</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="mi">1000</span>  <span class="c1"># Coverage penalty weight</span>
+        <span class="n">b</span> <span class="o">=</span> <span class="mi">10</span>  <span class="c1"># Sensing cost weight</span>
+        <span class="n">c0</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Sensor count weight</span>
+
+        <span class="n">objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_samples</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_samples</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">var</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:</span><span class="n">dim</span><span class="p">]</span>  <span class="c1"># Ensure correct dimension</span>
+
+            <span class="c1"># Reshape to (num_sensors, 3): each row is [x_i, y_i, r_i]</span>
+            <span class="n">sensors</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">num_sensors</span><span class="p">,</span> <span class="mi">3</span><span class="p">)</span>
+
+            <span class="c1"># Extract positions and radii</span>
+            <span class="n">positions</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="p">:</span><span class="mi">2</span><span class="p">]</span>  <span class="c1"># (num_sensors, 2)</span>
+            <span class="n">radii</span> <span class="o">=</span> <span class="n">sensors</span><span class="p">[:,</span> <span class="mi">2</span><span class="p">]</span>  <span class="c1"># (num_sensors,)</span>
+
+            <span class="c1"># Calculate distances from all target points to all sensors</span>
+            <span class="c1"># distances: (n_targets, num_sensors)</span>
+            <span class="n">distances</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">,</span> <span class="n">positions</span><span class="p">)</span>
+
+            <span class="c1"># Check coverage: is each target covered by each sensor?</span>
+            <span class="c1"># is_covered: (n_targets, num_sensors)</span>
+            <span class="n">is_covered</span> <span class="o">=</span> <span class="n">distances</span> <span class="o">&lt;=</span> <span class="n">radii</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># Check if each target is covered by at least one sensor</span>
+            <span class="n">max_is_covered</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">is_covered</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># (n_targets,)</span>
+
+            <span class="c1"># Calculate coverage ratio</span>
+            <span class="n">coverage_ratio</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">max_is_covered</span><span class="p">)</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">)</span>
+
+            <span class="c1"># Calculate objective</span>
+            <span class="n">coverage_penalty</span> <span class="o">=</span> <span class="n">a</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">coverage_ratio</span><span class="p">)</span>
+            <span class="n">sensor_count_penalty</span> <span class="o">=</span> <span class="n">c0</span> <span class="o">*</span> <span class="n">num_sensors</span>
+            <span class="n">sensing_cost</span> <span class="o">=</span> <span class="n">b</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">radii</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+            <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">coverage_penalty</span> <span class="o">+</span> <span class="n">sensor_count_penalty</span> <span class="o">+</span> <span class="n">sensing_cost</span>
+
+        <span class="k">return</span> <span class="n">objs</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

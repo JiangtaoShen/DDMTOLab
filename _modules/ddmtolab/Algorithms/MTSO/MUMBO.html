@@ -1,0 +1,632 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.MTSO.MUMBO &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.MTSO.MUMBO</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.MTSO.MUMBO</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Multi-task Max-value Bayesian Optimization (MUMBO)</span>
+
+<span class="sd">This module implements MUMBO for expensive multi-task optimization. The algorithm</span>
+<span class="sd">uses an information-theoretic acquisition function based on mutual information</span>
+<span class="sd">between candidate observations and the global optimum value g*. A multi-task</span>
+<span class="sd">Gaussian process provides cross-task knowledge transfer, and the MUMBO acquisition</span>
+<span class="sd">function exploits the bivariate predictive distribution to compute rho (predictive</span>
+<span class="sd">correlation) between each task and the target task. The acquisition value is</span>
+<span class="sd">divided by the evaluation cost of each task, enabling cost-aware task selection.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Moss, Henry B., David S. Leslie, and Paul Rayson. &quot;Mumbo: Multi-task</span>
+<span class="sd">        max-value Bayesian optimization.&quot; Joint European Conference on Machine</span>
+<span class="sd">        Learning and Knowledge Discovery in Databases. Springer, 2020.</span>
+
+<span class="sd">    [2] Wang, Zi, and Stefanie Jegelka. &quot;Max-value entropy search for efficient</span>
+<span class="sd">        Bayesian optimization.&quot; ICML, 2017.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2025.12.18</span>
+<span class="sd">Version: 2.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span><span class="p">,</span> <span class="n">gumbel_r</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.integrate</span><span class="w"> </span><span class="kn">import</span> <span class="n">simpson</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mtgp_build</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="MUMBO">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MUMBO.MUMBO">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MUMBO</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Multi-task Max-value Bayesian Optimization (MUMBO).</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MUMBO.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MUMBO.MUMBO.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">task_cost</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">n_gstar_samples</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_candidates</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">n_quad</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MUMBO&#39;</span><span class="p">,</span>
+                 <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize MUMBO.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance.</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task (default: 50).</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 100).</span>
+<span class="sd">        task_cost : List[float] or None, optional</span>
+<span class="sd">            Evaluation cost for each task. If None, all tasks have equal cost</span>
+<span class="sd">            [1, 1, ..., 1].</span>
+<span class="sd">        n_gstar_samples : int, optional</span>
+<span class="sd">            Number of g* samples from Gumbel distribution (default: 1).</span>
+<span class="sd">        n_candidates : int, optional</span>
+<span class="sd">            Number of random candidates per task for acquisition (default: 20).</span>
+<span class="sd">        n_quad : int, optional</span>
+<span class="sd">            Number of quadrature points for Simpson integration (default: 10).</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True).</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;).</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;MUMBO&#39;).</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">50</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span> <span class="o">=</span> <span class="n">task_cost</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_gstar_samples</span> <span class="o">=</span> <span class="n">n_gstar_samples</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_candidates</span> <span class="o">=</span> <span class="n">n_candidates</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_quad</span> <span class="o">=</span> <span class="n">n_quad</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="MUMBO.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MUMBO.MUMBO.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute MUMBO.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives,</span>
+<span class="sd">            and runtime.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data_type</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">double</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Task evaluation costs</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">task_cost</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">task_cost</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nt</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+
+        <span class="c1"># Initialize samples using Latin Hypercube Sampling</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span>
+                    <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                           <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="c1"># Build multi-task GP with normalized objectives</span>
+            <span class="n">objs_normalized</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;minmax&#39;</span><span class="p">)</span>
+            <span class="n">mtgp</span> <span class="o">=</span> <span class="n">mtgp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+
+            <span class="c1"># Sample g* values from Gumbel extreme-value distribution</span>
+            <span class="n">g_samples</span> <span class="o">=</span> <span class="n">_sample_gstar</span><span class="p">(</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span>
+                                      <span class="n">n_gstar_samples</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_gstar_samples</span><span class="p">)</span>
+
+            <span class="c1"># Select (task, x) pair with highest acquisition/cost ratio</span>
+            <span class="n">best_task</span><span class="p">,</span> <span class="n">best_x</span> <span class="o">=</span> <span class="n">_select_next_point</span><span class="p">(</span>
+                <span class="n">mtgp</span><span class="p">,</span> <span class="n">g_samples</span><span class="p">,</span> <span class="n">active_tasks</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span>
+                <span class="n">n_candidates</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_candidates</span><span class="p">,</span> <span class="n">n_quad</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">n_quad</span>
+            <span class="p">)</span>
+
+            <span class="c1"># Evaluate on selected task</span>
+            <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">best_x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">best_task</span><span class="p">)</span>
+
+            <span class="c1"># Update data</span>
+            <span class="n">decs</span><span class="p">[</span><span class="n">best_task</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">best_task</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">(</span>
+                <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">best_task</span><span class="p">],</span> <span class="n">candidate_np</span><span class="p">),</span>
+                <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">best_task</span><span class="p">],</span> <span class="n">obj</span><span class="p">)</span>
+            <span class="p">)</span>
+            <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">best_task</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+            <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+            <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+</div>
+
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Helper functions</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_task_range</span><span class="p">(</span><span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">double</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Get task index encoding vector consistent with mtgp_build.&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_bivariate_stats_batch</span><span class="p">(</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">candidates_np</span><span class="p">,</span> <span class="n">task_id</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span>
+                            <span class="n">data_type</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">double</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute bivariate GP statistics for a batch of candidates on task z vs</span>
+<span class="sd">    target task z0.</span>
+
+<span class="sd">    For each candidate x_j, computes the joint posterior of (g, y) where</span>
+<span class="sd">    g = f(x, z0) and y = f(x, z) + eps, then extracts mu_g, sigma_g,</span>
+<span class="sd">    sigma_f_noisy, and rho.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained multi-task GP.</span>
+<span class="sd">    candidates_np : np.ndarray</span>
+<span class="sd">        Candidate points, shape (n, d).</span>
+<span class="sd">    task_id : int</span>
+<span class="sd">        Task index z for the candidate evaluation.</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        Dimensionality of each task.</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Number of tasks.</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    mu_g : np.ndarray, shape (n,)</span>
+<span class="sd">    sigma_g : np.ndarray, shape (n,)</span>
+<span class="sd">    sigma_f_noisy : np.ndarray, shape (n,)</span>
+<span class="sd">    rho : np.ndarray, shape (n,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">max_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+    <span class="n">task_range</span> <span class="o">=</span> <span class="n">_get_task_range</span><span class="p">(</span><span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">candidates_np</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Pad candidates to max_dim</span>
+    <span class="k">if</span> <span class="n">candidates_np</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_dim</span><span class="p">:</span>
+        <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">max_dim</span> <span class="o">-</span> <span class="n">candidates_np</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">x_padded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">candidates_np</span><span class="p">,</span> <span class="n">pad</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">x_padded</span> <span class="o">=</span> <span class="n">candidates_np</span>
+
+    <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">x_padded</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>  <span class="c1"># (n, max_dim)</span>
+
+    <span class="n">target_task_val</span> <span class="o">=</span> <span class="n">task_range</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="n">cand_task_val</span> <span class="o">=</span> <span class="n">task_range</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="c1"># Build interleaved input: [x0_target, x0_cand, x1_target, x1_cand, ...]</span>
+    <span class="c1"># Shape: (2*n, max_dim+1)</span>
+    <span class="n">x_target</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">x_t</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">target_task_val</span><span class="p">,</span>
+                                           <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">x_cand</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">x_t</span><span class="p">,</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">cand_task_val</span><span class="p">,</span>
+                                         <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="c1"># Interleave: row 0,1 = pair 0; row 2,3 = pair 1; ...</span>
+    <span class="n">x_joint</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">stack</span><span class="p">([</span><span class="n">x_target</span><span class="p">,</span> <span class="n">x_cand</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Get noise variance</span>
+    <span class="n">noise_tensor</span> <span class="o">=</span> <span class="n">mtgp</span><span class="o">.</span><span class="n">likelihood</span><span class="o">.</span><span class="n">noise</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">noise_tensor</span><span class="o">.</span><span class="n">numel</span><span class="p">()</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">noise_var</span> <span class="o">=</span> <span class="n">noise_tensor</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">noise_var</span> <span class="o">=</span> <span class="n">noise_tensor</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="n">mtgp</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">post</span> <span class="o">=</span> <span class="n">mtgp</span><span class="o">.</span><span class="n">posterior</span><span class="p">(</span><span class="n">x_joint</span><span class="p">)</span>
+        <span class="n">mu_all</span> <span class="o">=</span> <span class="n">post</span><span class="o">.</span><span class="n">mean</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>          <span class="c1"># (2*n,)</span>
+        <span class="n">cov_full</span> <span class="o">=</span> <span class="n">post</span><span class="o">.</span><span class="n">mvn</span><span class="o">.</span><span class="n">covariance_matrix</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>   <span class="c1"># (2*n, 2*n)</span>
+
+    <span class="c1"># Extract per-pair statistics from the block-diagonal-like structure</span>
+    <span class="n">mu_g_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">sigma_g_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">sigma_f_noisy_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">rho_arr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
+        <span class="n">idx0</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">j</span>       <span class="c1"># target</span>
+        <span class="n">idx1</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">j</span> <span class="o">+</span> <span class="mi">1</span>   <span class="c1"># candidate</span>
+
+        <span class="n">mu_g_val</span> <span class="o">=</span> <span class="n">mu_all</span><span class="p">[</span><span class="n">idx0</span><span class="p">]</span>
+        <span class="n">sigma_g_sq</span> <span class="o">=</span> <span class="n">cov_full</span><span class="p">[</span><span class="n">idx0</span><span class="p">,</span> <span class="n">idx0</span><span class="p">]</span>
+        <span class="n">sigma_f_sq</span> <span class="o">=</span> <span class="n">cov_full</span><span class="p">[</span><span class="n">idx1</span><span class="p">,</span> <span class="n">idx1</span><span class="p">]</span>
+        <span class="n">sigma_gf</span> <span class="o">=</span> <span class="n">cov_full</span><span class="p">[</span><span class="n">idx0</span><span class="p">,</span> <span class="n">idx1</span><span class="p">]</span>
+
+        <span class="n">sg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">sigma_g_sq</span><span class="p">,</span> <span class="mf">1e-20</span><span class="p">))</span>
+        <span class="n">sf_noisy</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">sigma_f_sq</span> <span class="o">+</span> <span class="n">noise_var</span><span class="p">,</span> <span class="mf">1e-20</span><span class="p">))</span>
+
+        <span class="n">denom</span> <span class="o">=</span> <span class="n">sg</span> <span class="o">*</span> <span class="n">sf_noisy</span>
+        <span class="k">if</span> <span class="n">denom</span> <span class="o">&lt;</span> <span class="mf">1e-20</span><span class="p">:</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">sigma_gf</span> <span class="o">/</span> <span class="n">denom</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.999</span><span class="p">,</span> <span class="mf">0.999</span><span class="p">)</span>
+
+        <span class="n">mu_g_arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">mu_g_val</span>
+        <span class="n">sigma_g_arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">sg</span>
+        <span class="n">sigma_f_noisy_arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf_noisy</span>
+        <span class="n">rho_arr</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">r</span>
+
+    <span class="k">return</span> <span class="n">mu_g_arr</span><span class="p">,</span> <span class="n">sigma_g_arr</span><span class="p">,</span> <span class="n">sigma_f_noisy_arr</span><span class="p">,</span> <span class="n">rho_arr</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_sample_gstar</span><span class="p">(</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span> <span class="n">n_gstar_samples</span><span class="o">=</span><span class="mi">1</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sample g* values using Gumbel extreme-value distribution.</span>
+
+<span class="sd">    Use mean-field approximation: evaluate GP posterior mean on a large random</span>
+<span class="sd">    grid, then fit a Gumbel distribution to sample potential optimal values.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained multi-task GP.</span>
+<span class="sd">    decs : list[np.ndarray]</span>
+<span class="sd">        Current decision variables per task.</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        Dimensionality per task.</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Number of tasks.</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type.</span>
+<span class="sd">    n_gstar_samples : int</span>
+<span class="sd">        Number of g* samples.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    g_samples : np.ndarray</span>
+<span class="sd">        Array of g* samples, shape (n_gstar_samples,).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">max_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+    <span class="n">target_dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">task_range</span> <span class="o">=</span> <span class="n">_get_task_range</span><span class="p">(</span><span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+    <span class="n">target_task_val</span> <span class="o">=</span> <span class="n">task_range</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+
+    <span class="c1"># Generate random grid: 1000*d points + existing evaluated points</span>
+    <span class="n">n_grid</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mi">1000</span> <span class="o">*</span> <span class="n">target_dim</span><span class="p">,</span> <span class="mi">5000</span><span class="p">)</span>
+    <span class="n">grid_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_grid</span><span class="p">,</span> <span class="n">max_dim</span><span class="p">)</span>
+
+    <span class="c1"># Add existing target task points to grid</span>
+    <span class="n">existing</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">existing</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_dim</span><span class="p">:</span>
+        <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">existing</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">max_dim</span> <span class="o">-</span> <span class="n">existing</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+        <span class="n">existing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">existing</span><span class="p">,</span> <span class="n">pad</span><span class="p">])</span>
+    <span class="n">grid_np</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">grid_np</span><span class="p">,</span> <span class="n">existing</span><span class="p">])</span>
+
+    <span class="c1"># Evaluate GP posterior mean on target task</span>
+    <span class="n">grid_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">grid_np</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">task_col</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">grid_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">),</span> <span class="n">target_task_val</span><span class="p">,</span>
+                          <span class="n">dtype</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+    <span class="n">grid_with_task</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">cat</span><span class="p">([</span><span class="n">grid_t</span><span class="p">,</span> <span class="n">task_col</span><span class="p">],</span> <span class="n">dim</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">mtgp</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">post</span> <span class="o">=</span> <span class="n">mtgp</span><span class="o">.</span><span class="n">posterior</span><span class="p">(</span><span class="n">grid_with_task</span><span class="p">)</span>
+        <span class="n">mu</span> <span class="o">=</span> <span class="n">post</span><span class="o">.</span><span class="n">mean</span><span class="o">.</span><span class="n">squeeze</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="c1"># Fit Gumbel distribution and sample</span>
+    <span class="n">y_max</span> <span class="o">=</span> <span class="n">mu</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
+    <span class="n">y_mean</span> <span class="o">=</span> <span class="n">mu</span><span class="o">.</span><span class="n">mean</span><span class="p">()</span>
+    <span class="n">y_std</span> <span class="o">=</span> <span class="n">mu</span><span class="o">.</span><span class="n">std</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">y_std</span> <span class="o">&lt;</span> <span class="mf">1e-10</span><span class="p">:</span>
+        <span class="n">y_std</span> <span class="o">=</span> <span class="mf">1e-10</span>
+
+    <span class="c1"># Gumbel location/scale from extreme value theory</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">y_max</span>
+    <span class="n">scale</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">y_std</span> <span class="o">*</span> <span class="mf">0.1</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
+    <span class="n">g_samples</span> <span class="o">=</span> <span class="n">gumbel_r</span><span class="o">.</span><span class="n">rvs</span><span class="p">(</span><span class="n">loc</span><span class="o">=</span><span class="n">loc</span><span class="p">,</span> <span class="n">scale</span><span class="o">=</span><span class="n">scale</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">n_gstar_samples</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">g_samples</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_mumbo_acquisition_single</span><span class="p">(</span><span class="n">mu_g</span><span class="p">,</span> <span class="n">sigma_g</span><span class="p">,</span> <span class="n">mu_f</span><span class="p">,</span> <span class="n">sigma_f_noisy</span><span class="p">,</span> <span class="n">rho</span><span class="p">,</span>
+                               <span class="n">g_samples</span><span class="p">,</span> <span class="n">n_quad</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Compute MUMBO acquisition value for a single (x, z) pair.</span>
+
+<span class="sd">    Implements equation (11) from the tex:</span>
+<span class="sd">        alpha = (1/N) sum_{g*} [</span>
+<span class="sd">            rho^2 * gamma * phi(gamma) / (2 * Phi(gamma))</span>
+<span class="sd">            - log Phi(gamma)</span>
+<span class="sd">            + E_{theta ~ ESN}[ log Phi((gamma - rho*theta) / sqrt(1-rho^2)) ]</span>
+<span class="sd">        ]</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mu_g, sigma_g : float</span>
+<span class="sd">        Target task posterior mean and std.</span>
+<span class="sd">    mu_f, sigma_f_noisy : float</span>
+<span class="sd">        Candidate task posterior mean and noisy std.</span>
+<span class="sd">    rho : float</span>
+<span class="sd">        Predictive correlation.</span>
+<span class="sd">    g_samples : np.ndarray</span>
+<span class="sd">        Samples of g*.</span>
+<span class="sd">    n_quad : int</span>
+<span class="sd">        Number of quadrature points for Simpson integration.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    alpha : float</span>
+<span class="sd">        MUMBO acquisition value.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">sigma_g</span> <span class="o">&lt;</span> <span class="mf">1e-20</span><span class="p">:</span>
+        <span class="k">return</span> <span class="mf">0.0</span>
+
+    <span class="n">rho_sq</span> <span class="o">=</span> <span class="n">rho</span> <span class="o">**</span> <span class="mi">2</span>
+    <span class="n">sqrt_1_minus_rho_sq</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">rho_sq</span><span class="p">,</span> <span class="mf">1e-20</span><span class="p">))</span>
+
+    <span class="n">total</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">for</span> <span class="n">g_star</span> <span class="ow">in</span> <span class="n">g_samples</span><span class="p">:</span>
+        <span class="n">gamma</span> <span class="o">=</span> <span class="p">(</span><span class="n">g_star</span> <span class="o">-</span> <span class="n">mu_g</span><span class="p">)</span> <span class="o">/</span> <span class="n">sigma_g</span>
+
+        <span class="n">phi_gamma</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">gamma</span><span class="p">)</span>
+        <span class="n">cdf_gamma</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">gamma</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">cdf_gamma</span> <span class="o">&lt;</span> <span class="mf">1e-30</span><span class="p">:</span>
+            <span class="n">cdf_gamma</span> <span class="o">=</span> <span class="mf">1e-30</span>
+
+        <span class="c1"># First two analytic terms</span>
+        <span class="n">term1</span> <span class="o">=</span> <span class="n">rho_sq</span> <span class="o">*</span> <span class="n">gamma</span> <span class="o">*</span> <span class="n">phi_gamma</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">cdf_gamma</span><span class="p">)</span>
+        <span class="n">term2</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">cdf_gamma</span><span class="p">)</span>
+
+        <span class="c1"># Third term: expectation over ESN distribution via Simpson rule</span>
+        <span class="c1"># ESN mean and variance (eq. 9-10)</span>
+        <span class="n">ratio</span> <span class="o">=</span> <span class="n">phi_gamma</span> <span class="o">/</span> <span class="n">cdf_gamma</span>  <span class="c1"># phi/Phi (inverse Mills ratio)</span>
+        <span class="n">esn_mean</span> <span class="o">=</span> <span class="n">rho</span> <span class="o">*</span> <span class="n">ratio</span>
+        <span class="n">esn_var</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">rho_sq</span> <span class="o">*</span> <span class="n">ratio</span> <span class="o">*</span> <span class="p">(</span><span class="n">gamma</span> <span class="o">+</span> <span class="n">ratio</span><span class="p">)</span>
+        <span class="n">esn_var</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">esn_var</span><span class="p">,</span> <span class="mf">1e-20</span><span class="p">)</span>
+        <span class="n">esn_std</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">esn_var</span><span class="p">)</span>
+
+        <span class="c1"># Integration bounds: mean +/- 4*std</span>
+        <span class="n">lo</span> <span class="o">=</span> <span class="n">esn_mean</span> <span class="o">-</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">esn_std</span>
+        <span class="n">hi</span> <span class="o">=</span> <span class="n">esn_mean</span> <span class="o">+</span> <span class="mf">4.0</span> <span class="o">*</span> <span class="n">esn_std</span>
+        <span class="k">if</span> <span class="n">hi</span> <span class="o">-</span> <span class="n">lo</span> <span class="o">&lt;</span> <span class="mf">1e-15</span><span class="p">:</span>
+            <span class="n">term3</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">theta_grid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">,</span> <span class="n">n_quad</span><span class="p">)</span>
+
+            <span class="c1"># ESN density p(theta) (eq. 7)</span>
+            <span class="n">phi_theta</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">theta_grid</span><span class="p">)</span>
+            <span class="n">arg_inner</span> <span class="o">=</span> <span class="p">(</span><span class="n">gamma</span> <span class="o">-</span> <span class="n">rho</span> <span class="o">*</span> <span class="n">theta_grid</span><span class="p">)</span> <span class="o">/</span> <span class="n">sqrt_1_minus_rho_sq</span>
+            <span class="n">Phi_inner</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">arg_inner</span><span class="p">)</span>
+            <span class="n">esn_density</span> <span class="o">=</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">cdf_gamma</span><span class="p">)</span> <span class="o">*</span> <span class="n">phi_theta</span> <span class="o">*</span> <span class="n">Phi_inner</span>
+
+            <span class="c1"># Integrand: p(theta) * log Phi(...)</span>
+            <span class="n">log_Phi_inner</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">Phi_inner</span><span class="p">,</span> <span class="mf">1e-30</span><span class="p">))</span>
+            <span class="n">integrand</span> <span class="o">=</span> <span class="n">esn_density</span> <span class="o">*</span> <span class="n">log_Phi_inner</span>
+
+            <span class="n">term3</span> <span class="o">=</span> <span class="n">simpson</span><span class="p">(</span><span class="n">integrand</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="n">theta_grid</span><span class="p">)</span>
+
+        <span class="n">total</span> <span class="o">+=</span> <span class="n">term1</span> <span class="o">+</span> <span class="n">term2</span> <span class="o">+</span> <span class="n">term3</span>
+
+    <span class="n">alpha</span> <span class="o">=</span> <span class="n">total</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">g_samples</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="n">alpha</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_next_point</span><span class="p">(</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">g_samples</span><span class="p">,</span> <span class="n">active_tasks</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">,</span>
+                        <span class="n">data_type</span><span class="p">,</span> <span class="n">n_candidates</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">n_quad</span><span class="o">=</span><span class="mi">10</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Select the next (task, x) pair by maximizing alpha/cost.</span>
+
+<span class="sd">    For each active task, generate random candidates in batch, compute MUMBO</span>
+<span class="sd">    acquisition values, and select the (task, x) pair with highest ratio.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Trained multi-task GP.</span>
+<span class="sd">    g_samples : np.ndarray</span>
+<span class="sd">        Samples of g*.</span>
+<span class="sd">    active_tasks : list[int]</span>
+<span class="sd">        Indices of tasks with remaining budget.</span>
+<span class="sd">    dims : list[int]</span>
+<span class="sd">        Dimensionality per task.</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Number of tasks.</span>
+<span class="sd">    task_cost : np.ndarray</span>
+<span class="sd">        Evaluation cost per task.</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type.</span>
+<span class="sd">    n_candidates : int</span>
+<span class="sd">        Number of random candidates per task.</span>
+<span class="sd">    n_quad : int</span>
+<span class="sd">        Number of quadrature points for Simpson integration.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    best_task : int</span>
+<span class="sd">        Selected task index.</span>
+<span class="sd">    best_x : np.ndarray</span>
+<span class="sd">        Selected candidate point, shape (d,).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">best_ratio</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span>
+    <span class="n">best_task</span> <span class="o">=</span> <span class="n">active_tasks</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">best_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">active_tasks</span><span class="p">[</span><span class="mi">0</span><span class="p">]])</span>
+
+    <span class="k">for</span> <span class="n">task_id</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+        <span class="n">dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_candidates</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+
+        <span class="c1"># Batch bivariate stats computation</span>
+        <span class="n">mu_g</span><span class="p">,</span> <span class="n">sigma_g</span><span class="p">,</span> <span class="n">sigma_f_noisy</span><span class="p">,</span> <span class="n">rho</span> <span class="o">=</span> <span class="n">_bivariate_stats_batch</span><span class="p">(</span>
+            <span class="n">mtgp</span><span class="p">,</span> <span class="n">candidates</span><span class="p">,</span> <span class="n">task_id</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">data_type</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Compute acquisition for each candidate</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_candidates</span><span class="p">):</span>
+            <span class="n">alpha</span> <span class="o">=</span> <span class="n">_mumbo_acquisition_single</span><span class="p">(</span>
+                <span class="n">mu_g</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">sigma_g</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="n">sigma_f_noisy</span><span class="p">[</span><span class="n">j</span><span class="p">],</span>
+                <span class="n">rho</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">g_samples</span><span class="p">,</span> <span class="n">n_quad</span><span class="o">=</span><span class="n">n_quad</span>
+            <span class="p">)</span>
+            <span class="n">ratio</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">/</span> <span class="n">task_cost</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">ratio</span> <span class="o">&gt;</span> <span class="n">best_ratio</span><span class="p">:</span>
+                <span class="n">best_ratio</span> <span class="o">=</span> <span class="n">ratio</span>
+                <span class="n">best_task</span> <span class="o">=</span> <span class="n">task_id</span>
+                <span class="n">best_x</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[</span><span class="n">j</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+    <span class="k">return</span> <span class="n">best_task</span><span class="p">,</span> <span class="n">best_x</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

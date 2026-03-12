@@ -1,0 +1,669 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.MTMO.MTEA_DCK &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.MTMO.MTEA_DCK</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.MTMO.MTEA_DCK</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Multi-task Evolutionary Algorithm via Diversity- and Convergence-Oriented Knowledge Transfer (MTEA-DCK)</span>
+
+<span class="sd">This module implements MTEA-DCK for multi-task multi-objective optimization problems.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Y. Li, D. Li, W. Gong, and Q. Gu, &quot;Multiobjective Multitask Optimization via Diversity- and Convergence-Oriented Knowledge Transfer,&quot; IEEE Trans. Syst., Man, Cybern., Syst., vol. 55, no. 3, pp. 2367-2379, 2025.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2026.02.22</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+
+<div class="viewcode-block" id="MTEA_DCK">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTMO.MTEA_DCK.MTEA_DCK">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">MTEA_DCK</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Multi-task Evolutionary Algorithm via Diversity- and Convergence-Oriented Knowledge Transfer.</span>
+
+<span class="sd">    This algorithm features:</span>
+<span class="sd">    - Competitive Swarm Optimizer (CSO) framework with winner/loser pairing</span>
+<span class="sd">    - DE-based generation with diversified knowledge transfer (DKT) via region mapping</span>
+<span class="sd">    - CSO-based generation with convergent knowledge transfer (CKT) via fragment swap</span>
+<span class="sd">    - Adaptive per-individual parameters (F, CR, TRD) with Cauchy/Normal perturbation</span>
+<span class="sd">    - SPEA2 environmental selection</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, M]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;[0, C]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="MTEA_DCK.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTMO.MTEA_DCK.MTEA_DCK.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">Tau</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">TRC0</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MTEA-DCK&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize MTEA-DCK algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n : int or List[int], optional</span>
+<span class="sd">            Population size per task (default: 100)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 10000)</span>
+<span class="sd">        Tau : float, optional</span>
+<span class="sd">            Probability of random parameter reset (default: 0.1)</span>
+<span class="sd">        TRC0 : float, optional</span>
+<span class="sd">            Initial transfer rate for convergent knowledge transfer (default: 0.3)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;MTEA-DCK&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="o">=</span> <span class="n">n</span> <span class="k">if</span> <span class="n">n</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Tau</span> <span class="o">=</span> <span class="n">Tau</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">TRC0</span> <span class="o">=</span> <span class="n">TRC0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="MTEA_DCK.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTMO.MTEA_DCK.MTEA_DCK.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the MTEA-DCK algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, constraints, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">d_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
+        <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Initialize populations in unified d_max space</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">objs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">cons</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">decs_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">d_max</span><span class="p">)</span>
+            <span class="n">objs_t</span><span class="p">,</span> <span class="n">cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs_t</span><span class="p">)</span>
+            <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">objs_t</span><span class="p">)</span>
+            <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cons_t</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="c1"># Compute SPEA2 fitness and initialize per-individual parameters</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">vel</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">F_param</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">CR_param</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">TRD_param</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">fitness</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
+            <span class="n">vel</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">d_max</span><span class="p">)))</span>
+            <span class="n">F_param</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
+            <span class="n">CR_param</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
+            <span class="n">TRD_param</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
+
+        <span class="c1"># Native-space history</span>
+        <span class="n">all_decs</span> <span class="o">=</span> <span class="p">[[</span><span class="n">d</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">()]</span> <span class="k">for</span> <span class="n">t</span><span class="p">,</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">decs</span><span class="p">)]</span>
+        <span class="n">all_objs</span> <span class="o">=</span> <span class="p">[[</span><span class="n">o</span><span class="o">.</span><span class="n">copy</span><span class="p">()]</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">objs</span><span class="p">]</span>
+        <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[</span><span class="n">c</span><span class="o">.</span><span class="n">copy</span><span class="p">()]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cons</span><span class="p">]</span>
+
+        <span class="n">total_nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">total_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">total_nfes</span><span class="p">:</span>
+            <span class="c1"># Winner/Loser tournament for each task</span>
+            <span class="n">winners</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">losers</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">uni_upper</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">uni_lower</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="n">N_t</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="n">half</span> <span class="o">=</span> <span class="n">N_t</span> <span class="o">//</span> <span class="mi">2</span>
+                <span class="n">rnd_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">N_t</span><span class="p">)</span>
+                <span class="n">lose_idx</span> <span class="o">=</span> <span class="n">rnd_idx</span><span class="p">[:</span><span class="n">half</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">win_idx</span> <span class="o">=</span> <span class="n">rnd_idx</span><span class="p">[</span><span class="n">half</span><span class="p">:</span><span class="mi">2</span> <span class="o">*</span> <span class="n">half</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="c1"># Swap: ensure winner has better (lower) fitness</span>
+                <span class="n">swap_mask</span> <span class="o">=</span> <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">win_idx</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">lose_idx</span><span class="p">]</span>
+                <span class="n">temp</span> <span class="o">=</span> <span class="n">win_idx</span><span class="p">[</span><span class="n">swap_mask</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">win_idx</span><span class="p">[</span><span class="n">swap_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">lose_idx</span><span class="p">[</span><span class="n">swap_mask</span><span class="p">]</span>
+                <span class="n">lose_idx</span><span class="p">[</span><span class="n">swap_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">temp</span>
+                <span class="n">winners</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">win_idx</span><span class="p">)</span>
+                <span class="n">losers</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">lose_idx</span><span class="p">)</span>
+                <span class="c1"># Winner region bounds</span>
+                <span class="n">uni_upper</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">win_idx</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+                <span class="n">uni_lower</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">win_idx</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+
+            <span class="n">factor</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">/</span> <span class="n">total_nfes</span>
+
+            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+                <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]:</span>
+                    <span class="k">continue</span>
+
+                <span class="n">N_t</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="n">union_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">losers</span><span class="p">[</span><span class="n">t</span><span class="p">]])</span>
+
+                <span class="c1"># DE generation with diversified KT (from winners)</span>
+                <span class="n">off_de</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation_de</span><span class="p">(</span>
+                    <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
+                    <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">union_idx</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span>
+                    <span class="n">uni_upper</span><span class="p">,</span> <span class="n">uni_lower</span><span class="p">)</span>
+                <span class="n">off_de_decs</span><span class="p">,</span> <span class="n">off_de_V</span><span class="p">,</span> <span class="n">off_de_F</span><span class="p">,</span> <span class="n">off_de_CR</span><span class="p">,</span> <span class="n">off_de_TRD</span> <span class="o">=</span> <span class="n">off_de</span>
+
+                <span class="c1"># Evaluate DE offspring</span>
+                <span class="n">off_de_objs</span><span class="p">,</span> <span class="n">off_de_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
+                    <span class="n">problem</span><span class="p">,</span> <span class="n">off_de_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+
+                <span class="c1"># CSO generation with convergent KT (from losers)</span>
+                <span class="n">off_cso</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation_cso</span><span class="p">(</span>
+                    <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
+                    <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">factor</span><span class="p">)</span>
+                <span class="n">off_cso_decs</span><span class="p">,</span> <span class="n">off_cso_V</span><span class="p">,</span> <span class="n">off_cso_F</span><span class="p">,</span> <span class="n">off_cso_CR</span><span class="p">,</span> <span class="n">off_cso_TRD</span> <span class="o">=</span> <span class="n">off_cso</span>
+
+                <span class="c1"># Evaluate CSO offspring</span>
+                <span class="n">off_cso_objs</span><span class="p">,</span> <span class="n">off_cso_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
+                    <span class="n">problem</span><span class="p">,</span> <span class="n">off_cso_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+
+                <span class="n">n_new</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_de_objs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_cso_objs</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n_new</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n_new</span><span class="p">)</span>
+
+                <span class="c1"># Merge all populations</span>
+                <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_decs</span><span class="p">,</span> <span class="n">off_cso_decs</span><span class="p">])</span>
+                <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_objs</span><span class="p">,</span> <span class="n">off_cso_objs</span><span class="p">])</span>
+                <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_cons</span><span class="p">,</span> <span class="n">off_cso_cons</span><span class="p">])</span>
+                <span class="n">merged_V</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_V</span><span class="p">,</span> <span class="n">off_cso_V</span><span class="p">])</span>
+                <span class="n">merged_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_F</span><span class="p">,</span> <span class="n">off_cso_F</span><span class="p">])</span>
+                <span class="n">merged_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_CR</span><span class="p">,</span> <span class="n">off_cso_CR</span><span class="p">])</span>
+                <span class="n">merged_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_TRD</span><span class="p">,</span> <span class="n">off_cso_TRD</span><span class="p">])</span>
+
+                <span class="c1"># SPEA2 environmental selection</span>
+                <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spea2_select</span><span class="p">(</span><span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">,</span> <span class="n">N_t</span><span class="p">)</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_cons</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_V</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_F</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_CR</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_TRD</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+
+                <span class="c1"># Append native-space history</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span>
+                               <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                               <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+            <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span>
+            <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
+            <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_spea2_select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        SPEA2 environmental selection.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objs : np.ndarray</span>
+<span class="sd">            Objective values, shape (pop_size, n_objs)</span>
+<span class="sd">        cons : np.ndarray</span>
+<span class="sd">            Constraint violations, shape (pop_size, n_cons)</span>
+<span class="sd">        N : int</span>
+<span class="sd">            Number of individuals to select</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Indices of selected individuals</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">fit</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
+        <span class="n">next_mask</span> <span class="o">=</span> <span class="n">fit</span> <span class="o">&lt;</span> <span class="mi">1</span>
+        <span class="n">n_nd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_nd</span> <span class="o">&lt;=</span> <span class="n">N</span><span class="p">:</span>
+            <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fit</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">rank</span><span class="p">[:</span><span class="n">N</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nd_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">selected</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">nd_indices</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generation_de</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
+                       <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">union_idx</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span>
+                       <span class="n">uni_upper</span><span class="p">,</span> <span class="n">uni_lower</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        DE generation with diversified knowledge transfer.</span>
+
+<span class="sd">        For each winner individual, generates an offspring using DE/current-to-rand/1</span>
+<span class="sd">        with optional cross-task diversified knowledge transfer via region mapping</span>
+<span class="sd">        and particle reversal.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        decs : list of np.ndarray</span>
+<span class="sd">            Decision variables per task</span>
+<span class="sd">        vel : list of np.ndarray</span>
+<span class="sd">            Velocities per task</span>
+<span class="sd">        F_param, CR_param, TRD_param : list of np.ndarray</span>
+<span class="sd">            Adaptive parameters per task</span>
+<span class="sd">        winners, losers : list of np.ndarray</span>
+<span class="sd">            Winner and loser indices per task</span>
+<span class="sd">        union_idx : np.ndarray</span>
+<span class="sd">            Union of winner and loser indices for task t</span>
+<span class="sd">        t : int</span>
+<span class="sd">            Current task index</span>
+<span class="sd">        nt : int</span>
+<span class="sd">            Number of tasks</span>
+<span class="sd">        uni_upper, uni_lower : list of np.ndarray</span>
+<span class="sd">            Winner region bounds per task</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        tuple</span>
+<span class="sd">            (off_decs, off_V, off_F, off_CR, off_TRD)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_win</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">task_pool</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">t</span><span class="p">]</span>
+
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_win</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_V</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_win</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+        <span class="n">off_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+        <span class="n">off_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_win</span><span class="p">):</span>
+            <span class="n">wi</span> <span class="o">=</span> <span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="c1"># Adaptive parameter perturbation</span>
+            <span class="n">new_F</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cauchy_rand</span><span class="p">(</span><span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
+            <span class="k">while</span> <span class="n">new_F</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">new_F</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cauchy_rand</span><span class="p">(</span><span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
+            <span class="n">new_F</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">new_F</span><span class="p">)</span>
+            <span class="n">new_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">new_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># Tau-based random reset</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tau</span><span class="p">:</span>
+                <span class="n">new_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tau</span><span class="p">:</span>
+                <span class="n">new_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">Tau</span><span class="p">:</span>
+                <span class="n">new_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+
+            <span class="n">off_F</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_F</span>
+            <span class="n">off_CR</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_CR</span>
+            <span class="n">off_TRD</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_TRD</span>
+
+            <span class="c1"># Select donor indices</span>
+            <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+            <span class="k">while</span> <span class="n">x1</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
+                <span class="n">x1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+            <span class="n">x2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+            <span class="k">while</span> <span class="n">x2</span> <span class="o">==</span> <span class="n">i</span> <span class="ow">or</span> <span class="n">x2</span> <span class="o">==</span> <span class="n">x1</span><span class="p">:</span>
+                <span class="n">x2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_win</span><span class="p">)</span>
+            <span class="n">x3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">union_idx</span><span class="p">))</span>
+            <span class="k">while</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">i</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x1</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x2</span><span class="p">:</span>
+                <span class="n">x3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">union_idx</span><span class="p">))</span>
+
+            <span class="n">w_x1</span> <span class="o">=</span> <span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x1</span><span class="p">]</span>
+            <span class="n">w_x2</span> <span class="o">=</span> <span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x2</span><span class="p">]</span>
+            <span class="n">u_x3</span> <span class="o">=</span> <span class="n">union_idx</span><span class="p">[</span><span class="n">x3</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">new_TRD</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_pool</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Diversified Knowledge Transfer</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="n">task_pool</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">task_pool</span><span class="p">))]</span>
+                <span class="n">src_win_idx</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">winners</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
+                <span class="n">src_i</span> <span class="o">=</span> <span class="n">winners</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">src_win_idx</span><span class="p">]</span>
+
+                <span class="n">diver_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">src_i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">diver_v</span> <span class="o">=</span> <span class="n">vel</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">src_i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+                <span class="c1"># Particle reversal (50% chance)</span>
+                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">:</span>
+                    <span class="n">diver_dec</span> <span class="o">=</span> <span class="p">(</span><span class="n">uni_lower</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">+</span> <span class="n">uni_upper</span><span class="p">[</span><span class="n">k</span><span class="p">])</span> <span class="o">-</span> <span class="n">diver_dec</span>
+                    <span class="n">diver_v</span> <span class="o">=</span> <span class="o">-</span><span class="n">diver_v</span>
+
+                <span class="c1"># Region mapping: source winner region -&gt; target winner region</span>
+                <span class="n">range_k</span> <span class="o">=</span> <span class="n">uni_upper</span><span class="p">[</span><span class="n">k</span><span class="p">]</span> <span class="o">-</span> <span class="n">uni_lower</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
+                <span class="n">range_t</span> <span class="o">=</span> <span class="n">uni_upper</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="n">uni_lower</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+                <span class="n">safe</span> <span class="o">=</span> <span class="n">range_k</span> <span class="o">&gt;</span> <span class="mf">1e-20</span>
+                <span class="n">diver_dec_mapped</span> <span class="o">=</span> <span class="n">diver_dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">diver_dec_mapped</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+                    <span class="p">(</span><span class="n">diver_dec</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">-</span> <span class="n">uni_lower</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">safe</span><span class="p">])</span> <span class="o">/</span> <span class="n">range_k</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span>
+                    <span class="o">*</span> <span class="n">range_t</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">+</span> <span class="n">uni_lower</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">safe</span><span class="p">])</span>
+                <span class="n">diver_dec_mapped</span><span class="p">[</span><span class="o">~</span><span class="n">safe</span><span class="p">]</span> <span class="o">=</span> <span class="n">uni_lower</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="o">~</span><span class="n">safe</span><span class="p">]</span>
+
+                <span class="c1"># Polynomial mutation on mapped dec</span>
+                <span class="n">diver_dec_mapped</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">diver_dec_mapped</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+
+                <span class="c1"># Velocity mapping</span>
+                <span class="n">diver_v_mapped</span> <span class="o">=</span> <span class="n">diver_v</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+                <span class="n">diver_v_mapped</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">=</span> <span class="n">diver_v</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">/</span> <span class="n">range_k</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span> <span class="o">*</span> <span class="n">range_t</span><span class="p">[</span><span class="n">safe</span><span class="p">]</span>
+                <span class="n">diver_v_mapped</span><span class="p">[</span><span class="o">~</span><span class="n">safe</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+                <span class="c1"># DE mutation with diversified source</span>
+                <span class="n">off_dec</span> <span class="o">=</span> <span class="p">(</span><span class="n">diver_dec_mapped</span>
+                           <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x1</span><span class="p">]</span> <span class="o">-</span> <span class="n">diver_dec_mapped</span><span class="p">)</span>
+                           <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x2</span><span class="p">]</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">u_x3</span><span class="p">]))</span>
+                <span class="n">off_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">diver_v_mapped</span>
+                         <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x1</span><span class="p">]</span> <span class="o">-</span> <span class="n">diver_v_mapped</span><span class="p">)</span>
+                         <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x2</span><span class="p">]</span> <span class="o">-</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">u_x3</span><span class="p">]))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Standard DE/current-to-rand/1</span>
+                <span class="n">off_dec</span> <span class="o">=</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span>
+                           <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x1</span><span class="p">]</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">])</span>
+                           <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x2</span><span class="p">]</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">u_x3</span><span class="p">]))</span>
+                <span class="n">off_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span>
+                         <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x1</span><span class="p">]</span> <span class="o">-</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">])</span>
+                         <span class="o">+</span> <span class="n">new_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">w_x2</span><span class="p">]</span> <span class="o">-</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">u_x3</span><span class="p">]))</span>
+
+            <span class="c1"># DE binomial crossover on [Dec; V] together</span>
+            <span class="n">mutant</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">off_dec</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">off_v</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)])</span>
+            <span class="n">parent</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)])</span>
+            <span class="n">crossed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">mutant</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">new_CR</span><span class="p">)</span>
+            <span class="n">off_dec</span> <span class="o">=</span> <span class="n">crossed</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">off_v</span> <span class="o">=</span> <span class="n">crossed</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+            <span class="c1"># Boundary repair (only for Dec, using winner as parent)</span>
+            <span class="n">off_dec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_boundary_repair</span><span class="p">(</span><span class="n">off_dec</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">])</span>
+
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_dec</span>
+            <span class="n">off_V</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_v</span>
+
+        <span class="k">return</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_V</span><span class="p">,</span> <span class="n">off_F</span><span class="p">,</span> <span class="n">off_CR</span><span class="p">,</span> <span class="n">off_TRD</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generation_cso</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
+                        <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">factor</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        CSO generation with convergent knowledge transfer.</span>
+
+<span class="sd">        For each loser individual, generates an offspring using velocity-based</span>
+<span class="sd">        position update toward the paired winner, with optional cross-task</span>
+<span class="sd">        convergent knowledge transfer via fragment swap.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        decs : list of np.ndarray</span>
+<span class="sd">            Decision variables per task</span>
+<span class="sd">        vel : list of np.ndarray</span>
+<span class="sd">            Velocities per task</span>
+<span class="sd">        F_param, CR_param, TRD_param : list of np.ndarray</span>
+<span class="sd">            Adaptive parameters per task</span>
+<span class="sd">        winners, losers : list of np.ndarray</span>
+<span class="sd">            Winner and loser indices per task</span>
+<span class="sd">        t : int</span>
+<span class="sd">            Current task index</span>
+<span class="sd">        nt : int</span>
+<span class="sd">            Number of tasks</span>
+<span class="sd">        factor : float</span>
+<span class="sd">            Progress ratio (sum_nfes / total_nfes)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        tuple</span>
+<span class="sd">            (off_decs, off_V, off_F, off_CR, off_TRD)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_lose</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">losers</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">task_pool</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">t</span><span class="p">]</span>
+        <span class="n">TRC</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">TRC0</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">-</span> <span class="n">factor</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
+
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_lose</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_V</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_lose</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_lose</span><span class="p">)</span>
+        <span class="n">off_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_lose</span><span class="p">)</span>
+        <span class="n">off_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_lose</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_lose</span><span class="p">):</span>
+            <span class="n">li</span> <span class="o">=</span> <span class="n">losers</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">wi</span> <span class="o">=</span> <span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
+
+            <span class="c1"># Parameter learning from winner</span>
+            <span class="n">off_F</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span>
+            <span class="n">off_CR</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span>
+            <span class="n">off_TRD</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span>
+
+            <span class="c1"># Velocity update</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">TRC</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">task_pool</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Convergent Knowledge Transfer</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="n">task_pool</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">task_pool</span><span class="p">))]</span>
+                <span class="n">src_win_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">winners</span><span class="p">[</span><span class="n">k</span><span class="p">]))</span>
+                <span class="n">conver_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">winners</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">src_win_idx</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+                <span class="c1"># Fragment swap: replace some dims with target winner</span>
+                <span class="n">swap_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+                <span class="n">conver_dec</span><span class="p">[</span><span class="n">swap_mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">][</span><span class="n">swap_mask</span><span class="p">]</span>
+
+                <span class="n">new_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">]</span>
+                         <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="p">(</span><span class="n">conver_dec</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">]))</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Standard CSO velocity update toward winner</span>
+                <span class="n">new_v</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">vel</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">]</span>
+                         <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">wi</span><span class="p">]</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">]))</span>
+
+            <span class="c1"># Position update</span>
+            <span class="n">off_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">]</span> <span class="o">+</span> <span class="n">new_v</span>
+
+            <span class="c1"># Boundary repair (using loser as parent)</span>
+            <span class="n">off_dec</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_boundary_repair</span><span class="p">(</span><span class="n">off_dec</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">li</span><span class="p">])</span>
+
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_dec</span>
+            <span class="n">off_V</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">new_v</span>
+
+        <span class="k">return</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_V</span><span class="p">,</span> <span class="n">off_F</span><span class="p">,</span> <span class="n">off_CR</span><span class="p">,</span> <span class="n">off_TRD</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_cauchy_rand</span><span class="p">(</span><span class="n">loc</span><span class="p">,</span> <span class="n">scale</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Generate a Cauchy random number with given location and scale.&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">loc</span> <span class="o">+</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">standard_cauchy</span><span class="p">()</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_de_crossover</span><span class="p">(</span><span class="n">mutant</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">cr</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Binomial crossover for 2xD matrix (Dec and V together).</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        mutant : np.ndarray</span>
+<span class="sd">            Mutant vectors, shape (2, D)</span>
+<span class="sd">        parent : np.ndarray</span>
+<span class="sd">            Parent vectors, shape (2, D)</span>
+<span class="sd">        cr : float</span>
+<span class="sd">            Crossover rate</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Crossed-over vectors, shape (2, D)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n_rows</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">mutant</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_rows</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">cr</span>
+        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">):</span>
+            <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+            <span class="n">mask</span><span class="p">[</span><span class="n">r</span><span class="p">,</span> <span class="n">j_rand</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+        <span class="n">result</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutant</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">result</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_boundary_repair</span><span class="p">(</span><span class="n">dec</span><span class="p">,</span> <span class="n">parent_dec</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Random repair boundary handling.</span>
+
+<span class="sd">        For lower boundary violations, replace with random value in [0, parent].</span>
+<span class="sd">        For upper boundary violations, replace with random value in [parent, 1].</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        dec : np.ndarray</span>
+<span class="sd">            Decision vector to repair</span>
+<span class="sd">        parent_dec : np.ndarray</span>
+<span class="sd">            Parent decision vector for repair reference</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Repaired decision vector in [0, 1]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">dec</span><span class="p">)</span>
+        <span class="n">vio_low</span> <span class="o">=</span> <span class="n">dec</span> <span class="o">&lt;</span> <span class="mi">0</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">vio_low</span><span class="p">):</span>
+            <span class="n">rnd_lower</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="n">parent_dec</span>
+            <span class="n">dec</span><span class="p">[</span><span class="n">vio_low</span><span class="p">]</span> <span class="o">=</span> <span class="n">rnd_lower</span><span class="p">[</span><span class="n">vio_low</span><span class="p">]</span>
+        <span class="n">vio_up</span> <span class="o">=</span> <span class="n">dec</span> <span class="o">&gt;</span> <span class="mi">1</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">vio_up</span><span class="p">):</span>
+            <span class="n">rnd_upper</span> <span class="o">=</span> <span class="n">parent_dec</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">parent_dec</span><span class="p">)</span>
+            <span class="n">dec</span><span class="p">[</span><span class="n">vio_up</span><span class="p">]</span> <span class="o">=</span> <span class="n">rnd_upper</span><span class="p">[</span><span class="n">vio_up</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">dec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

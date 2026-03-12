@@ -1,0 +1,653 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STMO.DirHV_EI &mdash; DDMTOLab 1.0.8 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=aec50437"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STMO.DirHV_EI</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STMO.DirHV_EI</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Expected Direction-based Hypervolume Improvement (DirHV-EI)</span>
+
+<span class="sd">This module implements DirHV-EI for parallel expensive multi/many-objective optimization.</span>
+<span class="sd">It uses GP surrogates with a MOEA/D-GR framework to maximize direction-based hypervolume</span>
+<span class="sd">expected improvement, and a greedy batch selection strategy.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] L. Zhao and Q. Zhang. Hypervolume-guided decomposition for parallel expensive multiobjective optimization. IEEE Transactions on Evolutionary Computation, 2024, 28(2): 432-444.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Date: 2026.02.16</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">pdist</span><span class="p">,</span> <span class="n">squareform</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mo_gp_build</span><span class="p">,</span> <span class="n">mo_gp_predict</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.uniform_point</span><span class="w"> </span><span class="kn">import</span> <span class="n">uniform_point</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<div class="viewcode-block" id="DirHV_EI">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.DirHV_EI.DirHV_EI">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">DirHV_EI</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Expected Direction-based Hypervolume Improvement for parallel expensive</span>
+<span class="sd">    multi/many-objective optimization.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, M]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="DirHV_EI.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.DirHV_EI.DirHV_EI.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">batch_size</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;DirHV-EI&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize DirHV-EI algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task (default: 11*dim-1)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 200)</span>
+<span class="sd">        batch_size : int, optional</span>
+<span class="sd">            Number of true function evaluations per iteration (default: 5)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;DirHV-EI&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">200</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span> <span class="o">=</span> <span class="n">batch_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
+
+
+<div class="viewcode-block" id="DirHV_EI.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.DirHV_EI.DirHV_EI.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the DirHV-EI algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">data_type</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n_objs</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span>
+
+        <span class="c1"># Set default initial samples: 11*dim - 1</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">11</span> <span class="o">*</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Generate initial samples using Latin Hypercube Sampling</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">m</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">dim</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+                <span class="c1"># Determine actual batch size (don&#39;t exceed remaining budget)</span>
+                <span class="n">remaining</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">actual_batch</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">remaining</span><span class="p">)</span>
+
+                <span class="c1"># Scale objectives to [0, 1]</span>
+                <span class="n">ori_objs</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">ymin</span> <span class="o">=</span> <span class="n">ori_objs</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">ymax</span> <span class="o">=</span> <span class="n">ori_objs</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">yrange</span> <span class="o">=</span> <span class="n">ymax</span> <span class="o">-</span> <span class="n">ymin</span>
+                <span class="n">yrange</span><span class="p">[</span><span class="n">yrange</span> <span class="o">&lt;</span> <span class="mf">1e-12</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1e-12</span>
+                <span class="n">train_y</span> <span class="o">=</span> <span class="p">(</span><span class="n">ori_objs</span> <span class="o">-</span> <span class="n">ymin</span><span class="p">)</span> <span class="o">/</span> <span class="n">yrange</span>
+
+                <span class="c1"># Non-dominated solutions (scaled)</span>
+                <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">train_y</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">train_y_nds</span> <span class="o">=</span> <span class="n">train_y</span><span class="p">[</span><span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]</span>
+
+                <span class="c1"># Build GP models for each objective on scaled data</span>
+                <span class="n">models</span> <span class="o">=</span> <span class="n">mo_gp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">train_y</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+
+                <span class="c1"># Optimize DirHV-EI and select batch of candidate points</span>
+                <span class="n">new_decs</span> <span class="o">=</span> <span class="n">_opt_dirhvei</span><span class="p">(</span>
+                    <span class="n">m</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">train_y_nds</span><span class="p">,</span> <span class="n">actual_batch</span><span class="p">,</span> <span class="n">data_type</span>
+                <span class="p">)</span>
+
+                <span class="c1"># Remove duplicates</span>
+                <span class="n">new_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Expensive evaluation</span>
+                    <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+                    <span class="c1"># Update dataset</span>
+                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+                    <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
+
+                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">batch_size</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+                                     <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+                                     <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                     <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+</div>
+
+
+
+<span class="c1"># ==================== Core DirHV-EI Functions ====================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_opt_dirhvei</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">train_y_nds</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Maximize DirHV-EI and select a batch of query points.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    M : int</span>
+<span class="sd">        Number of objectives</span>
+<span class="sd">    D : int</span>
+<span class="sd">        Number of decision variables</span>
+<span class="sd">    models : list</span>
+<span class="sd">        List of trained GP models (one per objective)</span>
+<span class="sd">    train_y_nds : np.ndarray</span>
+<span class="sd">        Scaled non-dominated objective values, shape (n_nds, M)</span>
+<span class="sd">    batch_size : int</span>
+<span class="sd">        Number of points to select</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type for GP prediction</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    new_x : np.ndarray</span>
+<span class="sd">        Selected candidate points, shape (batch_size, D)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Generate reference vectors</span>
+    <span class="n">num_weights</span> <span class="o">=</span> <span class="p">[</span><span class="mi">200</span><span class="p">,</span> <span class="mi">210</span><span class="p">,</span> <span class="mi">295</span><span class="p">,</span> <span class="mi">456</span><span class="p">,</span> <span class="mi">462</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">M</span> <span class="o">&lt;=</span> <span class="mi">3</span><span class="p">:</span>
+        <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">num_weights</span><span class="p">[</span><span class="n">M</span> <span class="o">-</span> <span class="mi">2</span><span class="p">],</span> <span class="n">M</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">M</span> <span class="o">&lt;=</span> <span class="mi">6</span><span class="p">:</span>
+        <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">num_weights</span><span class="p">[</span><span class="n">M</span> <span class="o">-</span> <span class="mi">2</span><span class="p">],</span> <span class="n">M</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;ILD&#39;</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="mi">500</span><span class="p">,</span> <span class="n">M</span><span class="p">)</span>
+
+    <span class="c1"># Utopian point</span>
+    <span class="n">z</span> <span class="o">=</span> <span class="o">-</span><span class="mf">0.01</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">M</span><span class="p">)</span>
+
+    <span class="c1"># Calculate intersection points and direction vectors</span>
+    <span class="n">xis</span><span class="p">,</span> <span class="n">dir_vecs</span> <span class="o">=</span> <span class="n">_get_xis</span><span class="p">(</span><span class="n">train_y_nds</span><span class="p">,</span> <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>
+
+    <span class="c1"># Use MOEA/D-GR to maximize DirHV-EI</span>
+    <span class="n">candidate_x</span><span class="p">,</span> <span class="n">candidate_mean</span><span class="p">,</span> <span class="n">candidate_std</span> <span class="o">=</span> <span class="n">_moead_gr</span><span class="p">(</span>
+        <span class="n">D</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">dir_vecs</span><span class="p">,</span> <span class="n">xis</span><span class="p">,</span> <span class="n">data_type</span>
+    <span class="p">)</span>
+
+    <span class="c1"># Discard duplicate candidates</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">unique_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">candidate_x</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">unique_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">unique_idx</span><span class="p">)</span>
+    <span class="n">candidate_x</span> <span class="o">=</span> <span class="n">candidate_x</span><span class="p">[</span><span class="n">unique_idx</span><span class="p">]</span>
+    <span class="n">candidate_mean</span> <span class="o">=</span> <span class="n">candidate_mean</span><span class="p">[</span><span class="n">unique_idx</span><span class="p">]</span>
+    <span class="n">candidate_std</span> <span class="o">=</span> <span class="n">candidate_std</span><span class="p">[</span><span class="n">unique_idx</span><span class="p">]</span>
+
+    <span class="c1"># Compute DirHV-EI for all candidates against all directions</span>
+    <span class="n">n_candidates</span> <span class="o">=</span> <span class="n">candidate_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">n_dirs</span> <span class="o">=</span> <span class="n">dir_vecs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">DirHVEIs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_candidates</span><span class="p">,</span> <span class="n">n_dirs</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_candidates</span><span class="p">):</span>
+        <span class="n">u_rep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">candidate_mean</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="p">(</span><span class="n">n_dirs</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="n">s_rep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">candidate_std</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="p">(</span><span class="n">n_dirs</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="n">DirHVEIs</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">_get_dirhvei</span><span class="p">(</span><span class="n">u_rep</span><span class="p">,</span> <span class="n">s_rep</span><span class="p">,</span> <span class="n">xis</span><span class="p">)</span>
+
+    <span class="c1"># Greedy batch selection</span>
+    <span class="n">actual_batch</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">n_candidates</span><span class="p">)</span>
+    <span class="n">Qb</span> <span class="o">=</span> <span class="n">_subset_selection</span><span class="p">(</span><span class="n">DirHVEIs</span><span class="p">,</span> <span class="n">actual_batch</span><span class="p">)</span>
+    <span class="n">new_x</span> <span class="o">=</span> <span class="n">candidate_x</span><span class="p">[</span><span class="n">Qb</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">new_x</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_xis</span><span class="p">(</span><span class="n">train_y_nds</span><span class="p">,</span> <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">z</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate intersection points and direction vectors.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    train_y_nds : np.ndarray</span>
+<span class="sd">        Non-dominated objectives (scaled), shape (n, M)</span>
+<span class="sd">    ref_vecs : np.ndarray</span>
+<span class="sd">        Reference vectors, shape (N, M)</span>
+<span class="sd">    z : np.ndarray</span>
+<span class="sd">        Utopian point, shape (M,)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    xis : np.ndarray</span>
+<span class="sd">        Intersection points, shape (N, M)</span>
+<span class="sd">    dir_vecs : np.ndarray</span>
+<span class="sd">        Direction vectors (unit L2 norm), shape (N, M)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="n">ref_vecs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+
+    <span class="c1"># Eq. 25: direction vectors with unit L2 norm</span>
+    <span class="n">temp</span> <span class="o">=</span> <span class="mf">1.1</span> <span class="o">*</span> <span class="n">ref_vecs</span> <span class="o">-</span> <span class="n">z</span>
+    <span class="n">norm_temp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">temp</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+    <span class="n">dir_vecs</span> <span class="o">=</span> <span class="n">temp</span> <span class="o">/</span> <span class="n">norm_temp</span>
+
+    <span class="c1"># Eq. 11: intersection points</span>
+    <span class="n">div_dir</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">dir_vecs</span>  <span class="c1"># (N, M)</span>
+    <span class="n">train_y_translated</span> <span class="o">=</span> <span class="n">train_y_nds</span> <span class="o">-</span> <span class="n">z</span>  <span class="c1"># (n, M)</span>
+
+    <span class="c1"># G[i,k] = max_j ( (train_y_translated[k,j]) / dir_vecs[i,j] )</span>
+    <span class="n">G</span> <span class="o">=</span> <span class="n">div_dir</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">train_y_translated</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">:</span><span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>  <span class="c1"># (N, n)</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">M</span><span class="p">):</span>
+        <span class="n">G</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">G</span><span class="p">,</span> <span class="n">div_dir</span><span class="p">[:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">train_y_translated</span><span class="p">[:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
+
+    <span class="c1"># Minimum of mTch for each direction vector</span>
+    <span class="n">Lmin</span> <span class="o">=</span> <span class="n">G</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>  <span class="c1"># (N, 1)</span>
+
+    <span class="c1"># Intersection points</span>
+    <span class="n">xis</span> <span class="o">=</span> <span class="n">z</span> <span class="o">+</span> <span class="n">Lmin</span> <span class="o">*</span> <span class="n">dir_vecs</span>  <span class="c1"># (N, M)</span>
+
+    <span class="k">return</span> <span class="n">xis</span><span class="p">,</span> <span class="n">dir_vecs</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_moead_gr</span><span class="p">(</span><span class="n">D</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">dir_vecs</span><span class="p">,</span> <span class="n">xis</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    MOEA/D with Global Replacement to maximize DirHV-EI over direction vectors.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    D : int</span>
+<span class="sd">        Number of decision variables</span>
+<span class="sd">    models : list</span>
+<span class="sd">        List of GP models</span>
+<span class="sd">    dir_vecs : np.ndarray</span>
+<span class="sd">        Direction vectors, shape (N, M)</span>
+<span class="sd">    xis : np.ndarray</span>
+<span class="sd">        Intersection points, shape (N, M)</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type for GP prediction</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    pop_x : np.ndarray</span>
+<span class="sd">        Candidate solutions, shape (N, D)</span>
+<span class="sd">    pop_mean : np.ndarray</span>
+<span class="sd">        GP predicted means, shape (N, M)</span>
+<span class="sd">    pop_std : np.ndarray</span>
+<span class="sd">        GP predicted standard deviations, shape (N, M)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">max_iter</span> <span class="o">=</span> <span class="mi">50</span>
+    <span class="n">pop_size</span> <span class="o">=</span> <span class="n">dir_vecs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Neighbourhood</span>
+    <span class="n">T</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">pop_size</span> <span class="o">/</span> <span class="mi">10</span><span class="p">)))</span>
+    <span class="n">dist_mat</span> <span class="o">=</span> <span class="n">squareform</span><span class="p">(</span><span class="n">pdist</span><span class="p">(</span><span class="n">dir_vecs</span><span class="p">))</span>
+    <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dist_mat</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">T</span><span class="p">]</span>
+
+    <span class="c1"># Initial population via LHS in [0, 1]^D</span>
+    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>  <span class="c1"># LHS approx</span>
+
+    <span class="c1"># GP prediction for initial population</span>
+    <span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span> <span class="o">=</span> <span class="n">_gp_evaluate</span><span class="p">(</span><span class="n">pop_x</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+
+    <span class="c1"># DirHV-EI for each individual on its own direction</span>
+    <span class="n">pop_dirhvei</span> <span class="o">=</span> <span class="n">_get_dirhvei</span><span class="p">(</span><span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span><span class="p">,</span> <span class="n">xis</span><span class="p">)</span>
+
+    <span class="c1"># Main optimization loop</span>
+    <span class="k">for</span> <span class="n">gen</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pop_size</span><span class="p">):</span>
+            <span class="c1"># Select parents</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.8</span><span class="p">:</span>
+                <span class="n">P</span> <span class="o">=</span> <span class="n">B</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">B</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])]</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">P</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+
+            <span class="c1"># Generate offspring via DE + polynomial mutation</span>
+            <span class="n">off_x</span> <span class="o">=</span> <span class="n">_operator_de</span><span class="p">(</span><span class="n">pop_x</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">pop_x</span><span class="p">[</span><span class="n">P</span><span class="p">[</span><span class="mi">0</span><span class="p">]:</span><span class="n">P</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span>
+                                 <span class="n">pop_x</span><span class="p">[</span><span class="n">P</span><span class="p">[</span><span class="mi">1</span><span class="p">]:</span><span class="n">P</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
+            <span class="n">off_x</span> <span class="o">=</span> <span class="n">off_x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+            <span class="c1"># GP prediction for offspring</span>
+            <span class="n">off_mean</span><span class="p">,</span> <span class="n">off_std</span> <span class="o">=</span> <span class="n">_gp_evaluate</span><span class="p">(</span><span class="n">off_x</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+
+            <span class="c1"># Compute DirHV-EI of offspring for all directions</span>
+            <span class="n">off_mean_rep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">off_mean</span><span class="p">,</span> <span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">off_std_rep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">off_std</span><span class="p">,</span> <span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">off_dirhveis</span> <span class="o">=</span> <span class="n">_get_dirhvei</span><span class="p">(</span><span class="n">off_mean_rep</span><span class="p">,</span> <span class="n">off_std_rep</span><span class="p">,</span> <span class="n">xis</span><span class="p">)</span>
+
+            <span class="c1"># Global Replacement: find best matching subproblem</span>
+            <span class="n">best_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">off_dirhveis</span><span class="p">)</span>
+
+            <span class="c1"># Replacement neighbourhood</span>
+            <span class="n">P_replace</span> <span class="o">=</span> <span class="n">B</span><span class="p">[</span><span class="n">best_index</span><span class="p">]</span>
+            <span class="c1"># Update solutions where offspring is better</span>
+            <span class="n">improve_mask</span> <span class="o">=</span> <span class="n">pop_dirhvei</span><span class="p">[</span><span class="n">P_replace</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">off_dirhveis</span><span class="p">[</span><span class="n">P_replace</span><span class="p">]</span>
+            <span class="n">off_indices</span> <span class="o">=</span> <span class="n">P_replace</span><span class="p">[</span><span class="n">improve_mask</span><span class="p">]</span>
+
+            <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_indices</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">pop_x</span><span class="p">[</span><span class="n">off_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_x</span>
+                <span class="n">pop_mean</span><span class="p">[</span><span class="n">off_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_mean</span>
+                <span class="n">pop_std</span><span class="p">[</span><span class="n">off_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_std</span>
+                <span class="n">pop_dirhvei</span><span class="p">[</span><span class="n">off_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_dirhveis</span><span class="p">[</span><span class="n">off_indices</span><span class="p">]</span>
+
+    <span class="k">return</span> <span class="n">pop_x</span><span class="p">,</span> <span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_gp_evaluate</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Predict GP posterior mean and std for candidate solutions.</span>
+
+<span class="sd">    gp_predict returns original objectives (it negates internally to undo the</span>
+<span class="sd">    training-time negation). We use those directly as the GP mean predictions.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    X : np.ndarray</span>
+<span class="sd">        Candidate solutions, shape (N, D)</span>
+<span class="sd">    models : list</span>
+<span class="sd">        List of GP models</span>
+<span class="sd">    data_type : torch.dtype</span>
+<span class="sd">        Data type</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    u : np.ndarray</span>
+<span class="sd">        Predicted means, shape (N, M)</span>
+<span class="sd">    s : np.ndarray</span>
+<span class="sd">        Predicted standard deviations, shape (N, M)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">gp_predict</span>
+
+    <span class="n">N</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">M</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">)</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+        <span class="n">pred_obj</span><span class="p">,</span> <span class="n">pred_std</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="n">j</span><span class="p">],</span> <span class="n">X</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>
+        <span class="c1"># gp_predict already returns original objectives (negated back)</span>
+        <span class="n">u</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred_obj</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">s</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred_std</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+    <span class="c1"># Ensure non-negative variance</span>
+    <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">s</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_get_dirhvei</span><span class="p">(</span><span class="n">u</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">xis</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Calculate direction-based hypervolume expected improvement (Eq. 23).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    u : np.ndarray</span>
+<span class="sd">        Predicted means, shape (N, M)</span>
+<span class="sd">    sigma : np.ndarray</span>
+<span class="sd">        Predicted standard deviations, shape (N, M)</span>
+<span class="sd">    xis : np.ndarray</span>
+<span class="sd">        Intersection points, shape (N, M)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dirhvei : np.ndarray</span>
+<span class="sd">        DirHV-EI values, shape (N,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="c1"># Avoid division by zero</span>
+    <span class="n">sigma_safe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">sigma</span><span class="p">,</span> <span class="mf">1e-10</span><span class="p">)</span>
+
+    <span class="n">xi_minus_u</span> <span class="o">=</span> <span class="n">xis</span> <span class="o">-</span> <span class="n">u</span>
+    <span class="n">tau</span> <span class="o">=</span> <span class="n">xi_minus_u</span> <span class="o">/</span> <span class="n">sigma_safe</span>
+
+    <span class="c1"># Precompute normal CDF and PDF</span>
+    <span class="n">normcdf_tau</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">tau</span><span class="p">)</span>
+    <span class="n">normpdf_tau</span> <span class="o">=</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">tau</span><span class="p">)</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">xi_minus_u</span> <span class="o">*</span> <span class="n">normcdf_tau</span> <span class="o">+</span> <span class="n">sigma_safe</span> <span class="o">*</span> <span class="n">normpdf_tau</span>  <span class="c1"># (N, M)</span>
+    <span class="n">dirhvei</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">prod</span><span class="p">(</span><span class="n">temp</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>  <span class="c1"># (N,)</span>
+
+    <span class="k">return</span> <span class="n">dirhvei</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_subset_selection</span><span class="p">(</span><span class="n">DirHVEIs</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Greedy batch selection via submodularity (Algorithm 3).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    DirHVEIs : np.ndarray</span>
+<span class="sd">        DirHV-EI matrix, shape (L, N) where L = candidates, N = directions</span>
+<span class="sd">    batch_size : int</span>
+<span class="sd">        Number of points to select</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    Qb : list</span>
+<span class="sd">        Selected candidate indices</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">L</span><span class="p">,</span> <span class="n">N</span> <span class="o">=</span> <span class="n">DirHVEIs</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">Qb</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">DirHVEIs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">)</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">batch_size</span><span class="p">):</span>
+        <span class="c1"># Select candidate with max sum of DirHV-EI across all directions</span>
+        <span class="n">sums</span> <span class="o">=</span> <span class="n">temp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">sums</span><span class="p">)</span>
+        <span class="n">Qb</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+        <span class="n">beta</span> <span class="o">+=</span> <span class="n">temp</span><span class="p">[</span><span class="n">index</span><span class="p">]</span>
+
+        <span class="c1"># Update: [EI_D(x|lambda) - beta]_+</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">DirHVEIs</span> <span class="o">-</span> <span class="n">beta</span>
+        <span class="n">temp</span><span class="p">[</span><span class="n">temp</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">0</span>
+
+    <span class="k">return</span> <span class="n">Qb</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_operator_de</span><span class="p">(</span><span class="n">parent1</span><span class="p">,</span> <span class="n">parent2</span><span class="p">,</span> <span class="n">parent3</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Differential Evolution operator with polynomial mutation.</span>
+
+<span class="sd">    Operates in [0, 1]^D space (DDMTOLab convention).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    parent1, parent2, parent3 : np.ndarray</span>
+<span class="sd">        Parent solutions, shape (1, D)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    offspring : np.ndarray</span>
+<span class="sd">        Generated offspring, shape (1, D)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">CR</span><span class="p">,</span> <span class="n">F</span><span class="p">,</span> <span class="n">proM</span><span class="p">,</span> <span class="n">disM</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">20.0</span>
+    <span class="n">N</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">parent1</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># DE mutation</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">CR</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">parent1</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">offspring</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">parent2</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">-</span> <span class="n">parent3</span><span class="p">[</span><span class="n">site</span><span class="p">])</span>
+
+    <span class="c1"># Clip to bounds [0, 1]</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Polynomial mutation</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">proM</span> <span class="o">/</span> <span class="n">D</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">temp</span><span class="p">):</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">*</span> \
+              <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">val</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mf">1.0</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="n">delta</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">temp</span><span class="p">):</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">+</span> <span class="mf">2.0</span> <span class="o">*</span> <span class="p">(</span><span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> \
+              <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">-</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]))</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">val</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="n">delta</span>
+
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">offspring</span>
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
