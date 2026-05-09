@@ -169,8 +169,8 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 |----------|----------------|
 | **STSO** | CLASSICALSO (8 functions), CEC10_CSO (20 functions) |
 | **STMO** | ZDT (6), DTLZ (9), WFG (9), UF (10), CF (10), MW (14) |
-| **MTSO** | CEC17_MTSO (9), CEC17_MTSO_10D (9), CEC19_MaTSO (many-task), CMT (9), STOP (12), ManyTask_10D (4) |
-| **MTMO** | CEC17_MTMO (9), CEC19_MTMO (10), CEC19_MaTMO (many-task), CEC21_MTMO (10), MTMO_DTLZ, MTMOInstances |
+| **MTSO** | CEC17MTSO (9), CEC17MTSO_10D (9), CEC19MaTSO (many-task), CMT (9), STOP (12), ManyTask_10D (4) |
+| **MTMO** | CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (many-task), CEC21MTMO (10), MTMO_DTLZ, MTMOInstances |
 | **Real-World** | PEPVM, PINN_HPO (12), SOPM, SCP, MO_SCP, PKACP, NN_Training, TSP (6) |
 
 ### Methods
