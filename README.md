@@ -11,9 +11,6 @@
   <a href="https://pypi.org/project/ddmtolab/">
     <img src="https://img.shields.io/pypi/v/ddmtolab.svg" alt="PyPI version">
   </a>
-  <a href="https://pypi.org/project/ddmtolab/">
-    <img src="https://static.pepy.tech/badge/ddmtolab" alt="Total Downloads">
-  </a>
   <a href="https://github.com/JiangtaoShen/DDMTOLab/stargazers">
     <img src="https://img.shields.io/github/stars/JiangtaoShen/DDMTOLab?style=social" alt="GitHub Stars">
   </a>
