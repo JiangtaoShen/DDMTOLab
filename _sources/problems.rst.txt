@@ -666,6 +666,11 @@ Multitask Single-Objective (MTSO)
      - 50
      - 1 / 0
      - STOP benchmark: Single-objective transfer optimization problems
+   * - ``ManyTask_10D``
+     - 3-5
+     - 10
+     - 1 / 0
+     - Many-task optimization benchmark (4 problems): Varying similarity and task counts
 
 **Usage Example:**
 
