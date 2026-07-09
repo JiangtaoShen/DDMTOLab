@@ -28,7 +28,7 @@ import glob
 
 # Try to import nd_sort from external package
 try:
-    from Methods.Algo_Methods.algo_utils import nd_sort
+    from ddmtolab.Methods.Algo_Methods.algo_utils import nd_sort
 
     ND_SORT_AVAILABLE = True
 except ImportError:
@@ -98,8 +98,6 @@ try:
 except ImportError:
     FFMPEG_AVAILABLE = False
 
-warnings.filterwarnings('ignore')
-
 # Default color palette for plots (consistent with data_analysis.py)
 DEFAULT_COLORS = [
     '#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd',
@@ -109,6 +107,21 @@ DEFAULT_COLORS = [
 
 # Default markers for plots
 DEFAULT_MARKERS = ['o', 's', '^', 'v', 'D', 'p', '*', 'h', '<', '>', 'X', 'P', 'd', '8', 'H']
+
+
+def _cached_best_curve(owner, key, objs_list):
+    """Return per-generation best objective values, cached on ``owner``.
+
+    Re-drawing the convergence curve every animation frame would otherwise
+    recompute the whole curve from generation 0 (O(gen^2) over the animation).
+    """
+    cache = getattr(owner, '_best_curve_cache', None)
+    if cache is None:
+        cache = {}
+        owner._best_curve_cache = cache
+    if key not in cache:
+        cache[key] = np.array([np.min(o) for o in objs_list])
+    return cache[key]
 
 
 def _calculate_legend_fontsize(n_algorithms: int) -> int:
@@ -1132,19 +1145,14 @@ class _LegacyAnimator:
 
     def _plot_convergence_curve(self, ax, task_id, current_gen):
         """Plot convergence curve for single-objective optimization (merge=0)."""
-        best_objs = []
-        nfes_list = []
-
         max_nfes = self.max_nfes_per_task[task_id]
         n_gens = self.n_generations[task_id]
 
-        for gen in range(current_gen + 1):
-            objs = self.all_objs[task_id][gen]
-            best_obj = np.min(objs)
-            best_objs.append(best_obj)
-            # Calculate NFEs: uniformly distribute over max_nfes
-            nfes = int((gen / (n_gens - 1)) * max_nfes) if n_gens > 1 else max_nfes
-            nfes_list.append(nfes)
+        full_curve = _cached_best_curve(self, ('m0', task_id), self.all_objs[task_id])
+        best_objs = full_curve[:current_gen + 1]
+        # Calculate NFEs: uniformly distribute over max_nfes
+        nfes_list = [int((gen / (n_gens - 1)) * max_nfes) if n_gens > 1 else max_nfes
+                     for gen in range(current_gen + 1)]
 
         ax.plot(nfes_list, best_objs, '-', color=DEFAULT_COLORS[0],
                 linewidth=2.0, marker='o', markersize=6, alpha=0.7)
@@ -1162,18 +1170,14 @@ class _LegacyAnimator:
         current_gen = int((current_frame / self.max_gen) * max_gen_algo)
         current_gen = min(current_gen, max_gen_algo - 1)
 
-        best_objs = []
-        nfes_list = []
-
         max_nfes = self.max_nfes_per_task[task_id]
 
-        for gen in range(current_gen + 1):
-            objs = self.all_objs[algo_idx][task_id][gen]
-            best_obj = np.min(objs)
-            best_objs.append(best_obj)
-            # Calculate NFEs: uniformly distribute over max_nfes
-            nfes = int((gen / (max_gen_algo - 1)) * max_nfes) if max_gen_algo > 1 else max_nfes
-            nfes_list.append(nfes)
+        full_curve = _cached_best_curve(self, (algo_idx, task_id),
+                                        self.all_objs[algo_idx][task_id])
+        best_objs = full_curve[:current_gen + 1]
+        # Calculate NFEs: uniformly distribute over max_nfes
+        nfes_list = [int((gen / (max_gen_algo - 1)) * max_nfes) if max_gen_algo > 1 else max_nfes
+                     for gen in range(current_gen + 1)]
 
         # Adaptive line parameters based on number of algorithms
         markersize, linewidth = _get_adaptive_line_params(self.n_algorithms)
@@ -1199,18 +1203,14 @@ class _LegacyAnimator:
         current_gen = int((current_frame / self.max_gen) * max_gen_algo)
         current_gen = min(current_gen, max_gen_algo - 1)
 
-        best_objs = []
-        nfes_list = []
-
         max_nfes = self.max_nfes_per_task[task_id]
 
-        for gen in range(current_gen + 1):
-            objs = self.all_objs[algo_idx][task_id][gen]
-            best_obj = np.min(objs)
-            best_objs.append(best_obj)
-            # Calculate NFEs: uniformly distribute over max_nfes
-            nfes = int((gen / (max_gen_algo - 1)) * max_nfes) if max_gen_algo > 1 else max_nfes
-            nfes_list.append(nfes)
+        full_curve = _cached_best_curve(self, (algo_idx, task_id),
+                                        self.all_objs[algo_idx][task_id])
+        best_objs = full_curve[:current_gen + 1]
+        # Calculate NFEs: uniformly distribute over max_nfes
+        nfes_list = [int((gen / (max_gen_algo - 1)) * max_nfes) if max_gen_algo > 1 else max_nfes
+                     for gen in range(current_gen + 1)]
 
         # Use consistent line parameters for individual plots
         ax.plot(nfes_list, best_objs, '-', linewidth=2.0, marker='o', markersize=6, color=color, alpha=0.7)

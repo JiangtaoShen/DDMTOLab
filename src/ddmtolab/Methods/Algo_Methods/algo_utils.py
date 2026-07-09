@@ -315,7 +315,7 @@ def select_by_index(index: np.ndarray, *arrays: Optional[np.ndarray]) -> Union[n
     """
     results = []
     for arr in arrays:
-        if arr is None:  # 这一行必须在 arr.ndim 之前检查
+        if arr is None:  # must be checked before accessing arr.ndim
             results.append(None)
         elif arr.ndim == 1:
             results.append(arr[index])
@@ -849,6 +849,9 @@ def ga_generation(parents: np.ndarray, muc: float, mum: float) -> np.ndarray:
     """
     n, d = parents.shape
     offdecs = np.zeros((0, d))
+    # Copy before shuffling: shuffling the caller's population in place would
+    # desynchronize decision rows from their objective/constraint rows
+    parents = parents.copy()
     np.random.shuffle(parents)
     num_pairs = n // 2
 
@@ -1243,7 +1246,8 @@ def tournament_selection(
     N : int
         Number of individuals to select
     *fitness_arrays : np.ndarray
-        One or more arrays of fitness values. Higher fitness is considered better.
+        One or more arrays of fitness values, compared lexicographically
+        (first array is the primary key). Lower values are considered better.
     rng : np.random.Generator, optional
         NumPy random number generator. If None, a new default RNG is created.
 

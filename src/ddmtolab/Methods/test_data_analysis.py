@@ -886,7 +886,9 @@ class TestDataAnalyzer:
                 else:
                     # Multi-objective
                     if self.settings is None:
-                        # Default to simple dominated hypervolume approximation
+                        # Crude fallback scalarization: minimum objective-sum.
+                        # Not a real multi-objective metric — provide settings
+                        # with a metric/reference for meaningful values.
                         metric_value = np.min(np.sum(objs_gen, axis=1))
                         sign = -1
                     else:
@@ -900,8 +902,10 @@ class TestDataAnalyzer:
                             sign = metric_instance.sign
                         elif metric_name == 'HV':
                             metric_instance = HV()
+                            if reference is None:
+                                metric_value = np.nan
                             # If reference is 1D or single row, treat as ref point; otherwise as PF
-                            if reference.ndim == 1 or reference.shape[0] == 1:
+                            elif reference.ndim == 1 or reference.shape[0] == 1:
                                 ref_point = reference.flatten()
                                 metric_value = metric_instance.calculate(objs_gen, reference=ref_point)
                             else:

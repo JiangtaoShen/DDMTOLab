@@ -130,19 +130,15 @@ class IGDp:
         n_pf, m = pf.shape
         n = objs.shape[0]
 
-        delta = np.zeros(n_pf)
-
-        for i in range(n_pf):
-            # For each reference point, compute modified distance to all obtained points
-            # max(objs - pf[i], 0): only count positive differences (dominated components)
-            diff = objs - pf[i]  # (n, m)
-            diff = np.maximum(diff, 0)  # (n, m)
-
-            # Euclidean distance for each obtained point
-            distances = np.sqrt(np.sum(diff ** 2, axis=1))  # (n,)
-
-            # Minimum distance to this reference point
-            delta[i] = np.min(distances)
+        # Vectorized IGD+: for each reference point, the modified distance
+        # max(objs - pf[i], 0) only counts dominated components. Chunk over
+        # the reference set to bound peak memory at ~chunk*n*m floats.
+        delta = np.empty(n_pf)
+        chunk = max(1, 2_000_000 // max(n * m, 1))
+        for start in range(0, n_pf, chunk):
+            end = min(start + chunk, n_pf)
+            diff = np.maximum(objs[None, :, :] - pf[start:end, None, :], 0)  # (c, n, m)
+            delta[start:end] = np.min(np.sqrt(np.sum(diff ** 2, axis=2)), axis=1)
 
         # IGD+ = average of minimum modified distances
         return float(np.mean(delta))
@@ -189,21 +185,27 @@ class HV:
 
         n, m = objs.shape
 
-        # Normalization
+        # Normalization (guard against zero range in any objective)
         if pf is not None:
             fmin = np.minimum(np.min(objs, axis=0), np.zeros(m))
             fmax = np.max(pf, axis=0)
-            objs_norm = (objs - fmin) / ((fmax - fmin) * 1.1)
-            valid_mask = np.all(objs_norm <= 1, axis=1)
-            objs_filtered = objs_norm[valid_mask]
+            denom = (fmax - fmin) * 1.1
+            denom = np.where(denom <= 0, 1.0, denom)
+            objs_norm = (objs - fmin) / denom
             ref_point_norm = np.ones(m)
+            valid_mask = np.all(objs_norm <= ref_point_norm, axis=1)
+            objs_filtered = objs_norm[valid_mask]
         else:
             fmin = np.minimum(np.min(objs, axis=0), np.zeros(m))
-            fmax = reference
-            objs_norm = (objs - fmin) / ((fmax - fmin) * 1.1)
-            valid_mask = np.all(objs_norm <= 1, axis=1)
-            objs_filtered = objs_norm[valid_mask]
+            fmax = np.asarray(reference, dtype=float)
+            denom = (fmax - fmin) * 1.1
+            denom = np.where(denom <= 0, 1.0, denom)
+            objs_norm = (objs - fmin) / denom
+            # A point equal to the reference maps to 1/1.1; keep the filter
+            # consistent with the reference box so no point lies outside it
             ref_point_norm = np.ones(m) / 1.1
+            valid_mask = np.all(objs_norm <= ref_point_norm, axis=1)
+            objs_filtered = objs_norm[valid_mask]
 
         if objs_filtered.shape[0] == 0:
             return 0.0
@@ -302,17 +304,24 @@ class HV:
         S.append(cell)
         return S
 
-    def _monte_carlo_hv(self, objs: np.ndarray, ref_point: np.ndarray) -> float:
-        n_samples = int(1e6)
+    def _monte_carlo_hv(self, objs: np.ndarray, ref_point: np.ndarray,
+                        n_samples: int = 1_000_000,
+                        seed: int = 0) -> float:
+        """Monte Carlo HV estimate for m >= 4.
+
+        Uses a dedicated seeded generator so results are reproducible and the
+        global NumPy RNG state is left untouched.
+        """
+        rng = np.random.default_rng(seed)
         m = objs.shape[1]
         min_vals = np.min(objs, axis=0)
         max_vals = ref_point
-        samples = np.random.uniform(low=min_vals, high=max_vals, size=(n_samples, m))
+        samples = rng.uniform(low=min_vals, high=max_vals, size=(n_samples, m))
         dominated = np.zeros(n_samples, dtype=bool)
         for i in range(objs.shape[0]):
             dominated |= np.all(samples >= objs[i], axis=1)
         volume_box = np.prod(max_vals - min_vals)
-        return volume_box * (np.sum(dominated) / n_samples)
+        return float(volume_box * (np.sum(dominated) / n_samples))
 
 
 class FR:

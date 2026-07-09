@@ -2,6 +2,7 @@ import os
 import time
 import csv
 import shutil
+import traceback
 import yaml
 from datetime import datetime
 from typing import Type, Dict, Any, List
@@ -25,6 +26,21 @@ class BatchExperiment:
     - Printing experiment configuration summaries to console.
     - Optional folder clearing before experiments.
     - Saving and loading experiment configuration from YAML files.
+
+    .. warning::
+        ``run()`` uses ``ProcessPoolExecutor``. On Windows (and macOS), which
+        use the ``spawn`` start method, the calling script **must** wrap the
+        call in an ``if __name__ == '__main__':`` guard. Calling ``run()`` at
+        module top level re-imports the script in every worker process and
+        spawns processes recursively.
+
+    Example
+    -------
+    >>> if __name__ == '__main__':
+    ...     batch_exp = BatchExperiment(base_path='./Data', clear_folder=True)
+    ...     batch_exp.add_problem(problem_creator, 'P1')
+    ...     batch_exp.add_algorithm(GA, 'GA', n=100, max_nfes=10000)
+    ...     batch_exp.run(n_runs=5, max_workers=6)
 
     Author: Jiangtao Shen
     Email: j.shen5@exeter.ac.uk
@@ -342,7 +358,8 @@ class BatchExperiment:
 
         except Exception as e:
             status = "Failed"
-            error_msg = str(e)
+            # Keep the full traceback so failed runs remain diagnosable
+            error_msg = f"{e}\n{traceback.format_exc()}"
 
         # Calculate execution duration
         exp_end_time = time.time()
@@ -498,7 +515,9 @@ class BatchExperiment:
         print(f"\n⏰ Total time: {elapsed_time:.2f} seconds ({elapsed_time / 60:.2f} minutes)")
         if n_skipped > 0:
             print(f"⏩ Skipped: {n_skipped}, Executed: {total_remaining}")
-        print(f"💥 Parallel speedup: {total_remaining / max_workers / (elapsed_time / 60):.2f}x")
+        if elapsed_time > 0 and max_workers:
+            throughput = total_remaining / max_workers / (elapsed_time / 60)
+            print(f"💥 Throughput: {throughput:.2f} runs/worker/minute")
         print(f"📊 Timing summary saved to: {csv_path}\n")
         print(f"=" * 60)
         print(f"🎉🎉🎉 All Experiments Completed! 🎉🎉🎉")

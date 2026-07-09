@@ -20,6 +20,7 @@ Version: 2.1
 import os
 import pickle
 import shutil
+import warnings
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union, Callable
 from dataclasses import dataclass, field
@@ -355,7 +356,7 @@ class DataUtils:
 
         # Check if problem exists in settings
         if problem not in settings:
-            print(f"Warning: Problem '{problem}' not found in settings")
+            warnings.warn(f"Problem '{problem}' not found in settings")
             return None
 
         problem_settings = settings[problem]
@@ -367,7 +368,7 @@ class DataUtils:
             # Use the same reference for all tasks
             ref_definition = problem_settings['all_tasks']
         else:
-            print(f"Warning: Task '{task_name}' and 'all_tasks' not found for problem '{problem}'")
+            warnings.warn(f"Task '{task_name}' and 'all_tasks' not found for problem '{problem}'")
             return None
 
         # Case 1: Callable function
@@ -386,22 +387,22 @@ class DataUtils:
                 elif num_params == 3:
                     # func(N, M, D)
                     if D is None:
-                        print(f"Warning: D not provided for {problem}_{task_name}, using 0")
+                        warnings.warn(f"D not provided for {problem}_{task_name}, using 0")
                         D = 0
                     return ref_definition(N, M, D)
                 elif num_params >= 4:
                     # func(N, M, D, C)
                     if D is None:
-                        print(f"Warning: D not provided for {problem}_{task_name}, using 0")
+                        warnings.warn(f"D not provided for {problem}_{task_name}, using 0")
                         D = 0
                     return ref_definition(N, M, D, C)
                 else:
-                    print(
-                        f"Warning: Unexpected number of parameters ({num_params}) for reference function {problem}_{task_name}")
+                    warnings.warn(
+                        f"Unexpected number of parameters ({num_params}) for reference function {problem}_{task_name}")
                     return None
 
             except Exception as e:
-                print(f"Warning: Failed to call reference function for {problem}_{task_name}: {e}")
+                warnings.warn(f"Failed to call reference function for {problem}_{task_name}: {e}")
                 return None
 
         # Case 2: String (file path or file name)
@@ -422,7 +423,7 @@ class DataUtils:
             return reference
 
         else:
-            print(f"Warning: Unknown reference definition type for {problem}_{task_name}: {type(ref_definition)}")
+            warnings.warn(f"Unknown reference definition type for {problem}_{task_name}: {type(ref_definition)}")
             return None
 
     @staticmethod
@@ -1254,7 +1255,7 @@ class TableGenerator:
         save_dir = Path(self.config.save_path)
         save_dir.mkdir(parents=True, exist_ok=True)
         output_file = save_dir / f'results_table_{self.config.statistic_type.value}.tex'
-        with open(output_file, 'w') as f:
+        with open(output_file, 'w', encoding='utf-8') as f:
             f.write(latex_str)
         print(f"LaTeX table saved to: {output_file}")
 
@@ -2389,9 +2390,15 @@ class DataAnalyzer:
         problems.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
         # problems.sort()
 
-        first_algo = algorithms[0]
-        first_prob = problems[0]
-        runs = len(runs_dict[first_algo][first_prob])
+        # Use the maximum run count across all combinations; missing runs are
+        # skipped (with a warning) during metric calculation.
+        run_counts = [len(v) for algo_runs in runs_dict.values() for v in algo_runs.values()]
+        runs = max(run_counts) if run_counts else 0
+        if run_counts and min(run_counts) != runs:
+            warnings.warn(
+                f"Uneven run counts across algorithm-problem combinations "
+                f"(min={min(run_counts)}, max={runs}); missing runs will be skipped."
+            )
 
         print(f"Found {len(algorithms)} algorithms: {algorithms}")
         print(f"Found {len(problems)} problems: {problems}")
@@ -2450,6 +2457,13 @@ class DataAnalyzer:
                 for run in range(1, scan.runs + 1):
                     pkl_file = f"{algo}_{prob}_{run}.pkl"
                     pkl_path = self.data_path / algo / pkl_file
+
+                    # Failed/incomplete experiments produce no pkl file; skip
+                    # them instead of aborting the whole analysis.
+                    if not pkl_path.exists():
+                        warnings.warn(f"Missing result file, skipping: {pkl_path}")
+                        pbar.update(1)
+                        continue
 
                     data = DataUtils.load_pickle(pkl_path)
                     metric_values, metric_values_best_bs = self._get_single_run_metric_value(data, prob)
@@ -2559,8 +2573,10 @@ class DataAnalyzer:
                         sign = metric_instance.sign
                     elif metric_name == 'HV':
                         metric_instance = HV()
+                        if reference is None:
+                            metric_value = np.nan
                         # If reference is 1D or single row, treat as ref point; otherwise as PF
-                        if reference.ndim == 1 or reference.shape[0] == 1:
+                        elif reference.ndim == 1 or reference.shape[0] == 1:
                             ref_point = reference.flatten()
                             metric_value = metric_instance.calculate(objs_tgen, reference=ref_point)
                         else:
@@ -2747,14 +2763,15 @@ class DataAnalyzer:
         plot_gen = PlotGenerator(self.plot_config)
 
         for prob_idx, prob in enumerate(problems):
-            first_run_data = best_values[algo_order[0]][prob][1]
+            # Use any available run (run 1 may be missing if it failed)
+            first_run_data = next(iter(best_values[algo_order[0]][prob].values()))
             num_tasks = len(first_run_data)
 
             for task_idx in range(num_tasks):
                 filename = f'Problem{prob_idx + 1}_task{task_idx + 1}.txt'
                 filepath = save_dir / filename
 
-                with open(filepath, 'w') as f:
+                with open(filepath, 'w', encoding='utf-8') as f:
                     for algo in algo_order:
                         selected_run = StatisticsCalculator.select_representative_run(
                             best_values, algo, prob, task_idx,

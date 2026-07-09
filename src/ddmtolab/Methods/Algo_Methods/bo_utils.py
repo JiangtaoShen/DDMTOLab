@@ -1,6 +1,7 @@
 import torch
 import numpy as np
 import gpytorch
+from scipy.spatial.distance import cdist
 from botorch.models import SingleTaskGP, MultiTaskGP
 from botorch.fit import fit_gpytorch_mll
 from botorch.acquisition import LogExpectedImprovement
@@ -163,6 +164,101 @@ def mo_gp_predict(models, x, data_type=torch.float, mse=False):
         return pred_objs
 
 
+def optimize_logei(
+    gp: SingleTaskGP,
+    objs: np.ndarray,
+    dim: int,
+    data_type: torch.dtype = torch.float,
+    num_restarts: int = 5,
+    raw_samples: int = 20
+) -> np.ndarray:
+    """
+    Optimize the Log Expected Improvement acquisition over [0, 1]^dim.
+
+    Parameters
+    ----------
+    gp : SingleTaskGP
+        GP model fitted on negated objectives (maximization convention)
+    objs : np.ndarray
+        Historical objective values used to derive best_f,
+        shape: (n_samples,) or (n_samples, 1)
+    dim : int
+        Dimension of decision variables
+    data_type : torch.dtype, optional
+        Data type for tensors (default: torch.float)
+    num_restarts : int, optional
+        Number of restarts for acquisition optimization (default: 5)
+    raw_samples : int, optional
+        Number of raw samples for acquisition optimization (default: 20)
+
+    Returns
+    -------
+    candidate_np : np.ndarray
+        Next sampling point, shape: (1, dim)
+    """
+    train_Y = torch.tensor(-objs, dtype=data_type)
+    if train_Y.dim() == 1:
+        train_Y = train_Y.unsqueeze(-1)
+    best_f = train_Y.max()
+
+    logEI = LogExpectedImprovement(model=gp, best_f=best_f)
+    bounds = torch.stack([
+        torch.zeros(dim, dtype=data_type),
+        torch.ones(dim, dtype=data_type)
+    ], dim=0)
+    candidate, _ = optimize_acqf(
+        logEI,
+        bounds=bounds,
+        q=1,
+        num_restarts=num_restarts,
+        raw_samples=raw_samples
+    )
+
+    return candidate.detach().cpu().numpy()
+
+
+def select_local_data(
+    decs_t: np.ndarray,
+    objs_t: np.ndarray,
+    nc: int,
+    nr: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Select local surrogate training data: NC nearest to the best + NR most recent.
+
+    Parameters
+    ----------
+    decs_t : np.ndarray
+        Decision variables of one task, shape: (n, dim)
+    objs_t : np.ndarray
+        Objective values of one task, shape: (n,) or (n, 1)
+    nc : int
+        Number of nearest neighbours (around the current best) to keep
+    nr : int
+        Number of most recent samples to keep
+
+    Returns
+    -------
+    selected_idx : np.ndarray
+        Sorted unique indices of the selected training samples
+    nearest_idx : np.ndarray
+        Indices of the NC nearest samples (useful for local search bounds)
+    """
+    n = len(decs_t)
+    best_idx = np.argmin(objs_t.flatten())
+    x_best = decs_t[best_idx]
+
+    nc = min(nc, n)
+    distances = cdist(x_best.reshape(1, -1), decs_t)[0]
+    nearest_idx = np.argsort(distances)[:nc]
+
+    nr = min(nr, n)
+    recent_idx = np.arange(max(0, n - nr), n)
+
+    selected_idx = np.unique(np.concatenate([nearest_idx, recent_idx]))
+    return selected_idx, nearest_idx
+
+
 def bo_next_point(
     dim_i: int,
     decs_i: np.ndarray,
@@ -188,42 +284,9 @@ def bo_next_point(
     candidate_np : np.ndarray
         Next sampling point, shape: (1, dim_i)
     """
-    # Define search bounds [0, 1]^dim_i
-    bounds = torch.stack([
-        torch.zeros(dim_i, dtype=data_type),
-        torch.ones(dim_i, dtype=data_type)
-    ], dim=0)
-
-    # Prepare training data for Gaussian Process
-    train_X = torch.tensor(decs_i, dtype=data_type)
-    train_Y = torch.tensor(-objs_i, dtype=data_type)
-    if train_Y.dim() == 1:
-        train_Y = train_Y.unsqueeze(-1)
-
-    # Build and fit Gaussian Process model
-    gp = SingleTaskGP(
-        train_X=train_X,
-        train_Y=train_Y,
-        # outcome_transform=Standardize(m=1)
-    )
-    mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-    fit_gpytorch_mll(mll)
-
-    # Optimize Log Expected Improvement acquisition function
-    best_f = train_Y.max()
-    logEI = LogExpectedImprovement(model=gp, best_f=best_f)
-    candidate, _ = optimize_acqf(
-        logEI,
-        bounds=bounds,
-        q=1,
-        num_restarts=5,
-        raw_samples=20
-    )
-
-    # Convert to numpy array and return
-    candidate_np = candidate.detach().cpu().numpy()
-
-    return candidate_np
+    # Build and fit the GP, then optimize Log Expected Improvement
+    gp = gp_build(decs_i, objs_i, data_type)
+    return optimize_logei(gp, objs_i, dim_i, data_type)
 
 
 def bo_next_point_lcb(
@@ -265,12 +328,16 @@ def bo_next_point_lcb(
 
     # Prepare training data for Gaussian Process
     train_X = torch.tensor(decs_i, dtype=data_type)
-    train_Y = torch.tensor(-objs_i, dtype=data_type)  # 取负以最大化
+    train_Y = torch.tensor(-objs_i, dtype=data_type)  # negate for maximization
     if train_Y.dim() == 1:
         train_Y = train_Y.unsqueeze(-1)
 
     # Build and fit Gaussian Process model
-    gp = SingleTaskGP(train_X=train_X, train_Y=train_Y)
+    gp = SingleTaskGP(
+        train_X=train_X,
+        train_Y=train_Y,
+        outcome_transform=Standardize(m=1)
+    )
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
     fit_gpytorch_mll(mll)
 
@@ -307,8 +374,6 @@ def mtgp_build(
         List of objective value matrices for each task
     dims : list[int]
         List of dimensionalities for each task
-    std_params : list[dict] | None
-        Standardization parameters for each task. If None, objectives are not standardized.
     data_type : torch.dtype
         Data type for tensors
 

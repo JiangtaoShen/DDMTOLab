@@ -67,13 +67,21 @@ class ObjectiveFunctionWrapper:
         n = X.shape[0]
         try:
             out = self.func(X)  # try vectorized call
-        except Exception:
-            # try per-row
-            rows = []
-            for i in range(n):
-                r = self.func(X[i])
-                rows.append(np.atleast_1d(r))
-            out = np.vstack(rows)
+        except Exception as vec_err:
+            # try per-row; if that also fails, surface the original vectorized
+            # error instead of silently masking a bug in the user's function
+            try:
+                rows = []
+                for i in range(n):
+                    r = self.func(X[i])
+                    rows.append(np.atleast_1d(r))
+                out = np.vstack(rows)
+            except Exception as row_err:
+                raise RuntimeError(
+                    f"Objective function failed for both vectorized and per-row "
+                    f"evaluation. Vectorized error: {vec_err!r}; "
+                    f"per-row error: {row_err!r}"
+                ) from row_err
 
         out = np.asarray(out)
         # Normalize to 2D with n rows
@@ -166,12 +174,21 @@ class ConstraintFunctionWrapper:
         n = X.shape[0]
         try:
             out = self.func(X)
-        except Exception:
-            rows = []
-            for i in range(n):
-                r = self.func(X[i])
-                rows.append(np.atleast_1d(r))
-            out = np.vstack(rows)
+        except Exception as vec_err:
+            # try per-row; if that also fails, surface the original vectorized
+            # error instead of silently masking a bug in the user's function
+            try:
+                rows = []
+                for i in range(n):
+                    r = self.func(X[i])
+                    rows.append(np.atleast_1d(r))
+                out = np.vstack(rows)
+            except Exception as row_err:
+                raise RuntimeError(
+                    f"Constraint function failed for both vectorized and per-row "
+                    f"evaluation. Vectorized error: {vec_err!r}; "
+                    f"per-row error: {row_err!r}"
+                ) from row_err
         out = np.asarray(out)
         # normalize to (n, k_local)
         if out.ndim == 0:
