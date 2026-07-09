@@ -159,7 +159,7 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 | **STMO** | Inexpensive | NSGA_II, NSGA_III, NSGA_II_SDR, SPEA2, MOEA_D, MOEA_DD, MOEA_D_FRRMAB, MOEA_D_STM, RVEA, IBEA, TwoArch2, MSEA, C_TAEA, CCMO |
 | **STMO** | Expensive | ParEGO, K_RVEA, DSAEA_PS, KTA2, REMO, ADSAPSO, CSEA, DISK, DRLSAEA, DirHV_EI, EDN_ARMOEA, EIM_EGO, EM_SAEA, KTS, MGSAEA, MMRAEA, MOEA_D_EGO, MultiObjectiveEGO, PCSAEA, PEA, PIEA, SAEA_DBLL, SSDE, TEA, CPS_MOEA, MCEA_D |
 | **MTSO** | Inexpensive | MFEA, MFEA_II, EMEA, EBS, G_MFEA, MTEA_AD, MKTDE, MTEA_SaO, SREMTO, LCB_EMT, BLKT_DE, DTSKT, EMTO_AI, MFEA_AKT, MFEA_DGD, MFEA_VC, MTDE_ADKT, MTEA_HKTS, MTEA_PAE, MTES_KG, SSLT_DE, TNG_SNES |
-| **MTSO** | Expensive | MTBO, RAMTEA, SELF, EEI_BO_plus, MUMBO, BO_LCB_CKT, BO_LCB_BCKT, MFEA_SSG, SaEF_AKT |
+| **MTSO** | Expensive | MTBO, RAMTEA, SELF, EEI_BO_plus, MUMBO, BO_LCB_CKT, BO_LCB_BCKT, MFEA_SSG, SaEF_AKT, DFMAB_MTO, EMTO_OTL, TATS_BO, TGPBO |
 | **MTMO** | Inexpensive | MO_MFEA, MO_MFEA_II, MO_EMEA, MO_MTEA_SaO, MTDE_MKTA, MTEA_D_DN, EMT_ET, EMT_PD, EMT_GS, MO_MTEA_PAE, MO_SBO, MTEA_D_TSD, MTEA_DCK |
 | **MTMO** | Expensive | ParEGO_KT |
 
@@ -181,6 +181,15 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 - **Performance Metrics**: IGD, GD, IGD+, HV, DeltaP, Spacing, Spread, FR, CV
 - **Animation Generator**: Optimization process visualization
 - **Algorithm Utilities**: Reusable components (initialization, selection, operators)
+
+## 🖥️ GUI (Experimental)
+
+An experimental desktop GUI built with [DearPyGui](https://github.com/hoffstadt/DearPyGui) lives in the [`ui/`](ui/) directory. It is shipped in this repository only (not part of the PyPI package):
+
+```bash
+pip install -r ui/requirements.txt
+python ui/main.py
+```
 
 ## 📚 Documentation
 

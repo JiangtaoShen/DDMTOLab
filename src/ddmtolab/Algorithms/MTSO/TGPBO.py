@@ -22,7 +22,7 @@ Strategy 2 - SSRC-Guided Competitive Knowledge Transfer:
 
 Notes
 -----
-Author: Algorithm Development
+Author: Jiangtao Shen
 Date: 2026.02
 Version: 2.0
 """
@@ -33,13 +33,10 @@ import torch
 from tqdm import tqdm
 from scipy.spatial.distance import cdist
 from scipy.stats import spearmanr
-from botorch.models import SingleTaskGP
-from botorch.fit import fit_gpytorch_mll
-from botorch.acquisition import LogExpectedImprovement
-from botorch.optim import optimize_acqf
-from gpytorch.mlls import ExactMarginalLogLikelihood
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Methods.Algo_Methods.bo_utils import gp_build, gp_predict, bo_next_point
+from ddmtolab.Methods.Algo_Methods.bo_utils import (
+    gp_build, gp_predict, bo_next_point, optimize_logei, select_local_data,
+)
 
 warnings.filterwarnings("ignore")
 
@@ -407,18 +404,7 @@ class TGPBO:
 
     def _select_local_data(self, decs_t, objs_t):
         """Select local data: NC nearest to best + NR most recent."""
-        n = len(decs_t)
-        best_idx = np.argmin(objs_t.flatten())
-        x_best = decs_t[best_idx]
-
-        nc = min(self.NC, n)
-        distances = cdist(x_best.reshape(1, -1), decs_t)[0]
-        nearest_idx = np.argsort(distances)[:nc]
-
-        nr = min(self.NR, n)
-        recent_idx = np.arange(max(0, n - nr), n)
-
-        selected_idx = np.unique(np.concatenate([nearest_idx, recent_idx]))
+        selected_idx, _ = select_local_data(decs_t, objs_t, self.NC, self.NR)
         return decs_t[selected_idx], objs_t[selected_idx]
 
     def _build_gp_and_optimize_ei(self, dim, aug_decs, aug_objs):
@@ -431,28 +417,9 @@ class TGPBO:
         gp : SingleTaskGP
             Fitted GP model (reusable for competition predictions).
         """
-        bounds = torch.stack([
-            torch.zeros(dim, dtype=torch.float),
-            torch.ones(dim, dtype=torch.float)
-        ], dim=0)
-
-        train_X = torch.tensor(aug_decs, dtype=torch.float)
-        train_Y = torch.tensor(-aug_objs, dtype=torch.float)
-        if train_Y.dim() == 1:
-            train_Y = train_Y.unsqueeze(-1)
-
-        gp = SingleTaskGP(train_X=train_X, train_Y=train_Y)
-        mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-        fit_gpytorch_mll(mll)
-
-        best_f = train_Y.max()
-        logEI = LogExpectedImprovement(model=gp, best_f=best_f)
-        candidate, _ = optimize_acqf(
-            logEI, bounds=bounds, q=1,
-            num_restarts=5, raw_samples=20
-        )
-
-        return candidate.detach().cpu().numpy(), gp
+        gp = gp_build(aug_decs, aug_objs, torch.float)
+        candidate = optimize_logei(gp, aug_objs, dim, torch.float)
+        return candidate, gp
 
     def _gp_predict_mean(self, gp, X):
         """Predict mean objective using GP (original minimization scale)."""

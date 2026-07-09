@@ -39,8 +39,8 @@ from tqdm import tqdm
 from botorch.models import SingleTaskGP
 from botorch.fit import fit_gpytorch_mll
 from gpytorch.mlls import ExactMarginalLogLikelihood
-from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
+from ddmtolab.Methods.Algo_Methods.bo_utils import select_local_data
 
 warnings.filterwarnings("ignore")
 
@@ -174,47 +174,6 @@ class GaussianOTModel:
 
 
 # ============================================================================
-# Thompson Sampling Portfolio
-# ============================================================================
-
-class ThompsonSamplingPortfolio:
-    """
-    Thompson Sampling for adaptive infill strategy selection.
-
-    Maintains Beta(alpha, beta) distributions for each (task, strategy) pair.
-    """
-
-    def __init__(self, n_strategies, n_tasks, decay=1.0):
-        self.n_strategies = n_strategies
-        self.n_tasks = n_tasks
-        self.decay = decay
-        self.alpha = np.ones((n_tasks, n_strategies))
-        self.beta_param = np.ones((n_tasks, n_strategies))
-
-    def select(self, task_id):
-        """Select strategy for a task via Thompson Sampling."""
-        samples = np.array([
-            np.random.beta(self.alpha[task_id, s], self.beta_param[task_id, s])
-            for s in range(self.n_strategies)
-        ])
-        return int(np.argmax(samples))
-
-    def update(self, task_id, strategy, reward):
-        """Update Beta distribution parameters based on binary reward."""
-        if self.decay < 1.0:
-            self.alpha[task_id] = 1.0 + self.decay * (self.alpha[task_id] - 1.0)
-            self.beta_param[task_id] = 1.0 + self.decay * (self.beta_param[task_id] - 1.0)
-        if reward > 0:
-            self.alpha[task_id, strategy] += 1.0
-        else:
-            self.beta_param[task_id, strategy] += 1.0
-
-    def get_probabilities(self, task_id):
-        """Get estimated success probability for each strategy."""
-        return self.alpha[task_id] / (self.alpha[task_id] + self.beta_param[task_id])
-
-
-# ============================================================================
 # EMTO-OTL Algorithm
 # ============================================================================
 
@@ -284,7 +243,6 @@ class EMTO_OTL:
                  ot_reg=1e-3, top_ratio=0.3,
                  gen_gap=3,
                  g_values=None,
-                 ts_decay=0.98,
                  ot_top_k=5,
                  ablation_mode=None,
                  save_data=True, save_path='./Data',
@@ -300,7 +258,6 @@ class EMTO_OTL:
         self.top_ratio = top_ratio
         self.gen_gap = gen_gap
         self.g_values = g_values if g_values is not None else [0, 2, 4]
-        self.ts_decay = ts_decay
         self.ot_top_k = ot_top_k
         self.ablation_mode = ablation_mode
         self.save_data = save_data
@@ -449,18 +406,11 @@ class EMTO_OTL:
             Dictionary with keys: gp, y_mean, y_std, lb, ub, dim
             Returns None if GP building fails
         """
-        n = len(decs_t)
         best_idx = np.argmin(objs_t.flatten())
         x_best = decs_t[best_idx]
 
         # Select local training data: NC nearest + NR most recent
-        nc = min(self.NC, n)
-        distances = cdist(x_best.reshape(1, -1), decs_t)[0]
-        nearest_idx = np.argsort(distances)[:nc]
-
-        nr = min(self.NR, n)
-        recent_idx = np.arange(max(0, n - nr), n)
-        selected_idx = np.unique(np.concatenate([nearest_idx, recent_idx]))
+        selected_idx, nearest_idx = select_local_data(decs_t, objs_t, self.NC, self.NR)
 
         train_x = decs_t[selected_idx]
         train_y = objs_t[selected_idx].flatten()

@@ -1,0 +1,72 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package with dev dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+  build-check:
+    name: Build and verify package data
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Build package
+        run: |
+          python -m pip install --upgrade pip build twine
+          python -m build
+
+      - name: Check package metadata
+        run: twine check dist/*
+
+      - name: Verify benchmark data files are included in the wheel
+        run: |
+          python - <<'EOF'
+          import glob
+          import sys
+          import zipfile
+
+          wheel = glob.glob('dist/*.whl')[0]
+          names = zipfile.ZipFile(wheel).namelist()
+          n_mat = sum(n.endswith('.mat') for n in names)
+          n_txt = sum(n.endswith('.txt') for n in names)
+          n_cec21 = sum('data_cec21mtmo' in n for n in names)
+          print(f'{wheel}: {n_mat} .mat, {n_txt} .txt, {n_cec21} cec21mtmo files')
+          # 60 .mat + 600 .txt + 40 extensionless cec21 files must ship
+          if n_mat < 60 or n_txt < 600 or n_cec21 < 40:
+              sys.exit('Benchmark data files are missing from the wheel!')
+          EOF

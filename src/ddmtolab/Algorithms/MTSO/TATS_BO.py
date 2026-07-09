@@ -15,7 +15,7 @@ References
 
 Notes
 -----
-Author: Research Team
+Author: Jiangtao Shen
 Date: 2026.02
 Version: 1.0
 """
@@ -28,13 +28,8 @@ import warnings
 
 from scipy.interpolate import RBFInterpolator
 from scipy.stats import spearmanr
-from botorch.models import SingleTaskGP
-from botorch.fit import fit_gpytorch_mll
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from botorch.acquisition import LogExpectedImprovement
-from botorch.optim import optimize_acqf
-from botorch.models.transforms import Standardize
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
+from ddmtolab.Methods.Algo_Methods.bo_utils import gp_build, optimize_logei
 
 warnings.filterwarnings("ignore")
 
@@ -304,17 +299,9 @@ def _build_rbf(decs, objs):
 
 
 def _build_gp(decs, objs, data_type=torch.double):
-    """Build GP model for precise BO acquisition."""
+    """Build GP model for precise BO acquisition (delegates to bo_utils.gp_build)."""
     try:
-        train_X = torch.tensor(decs, dtype=data_type)
-        train_Y = torch.tensor(-objs, dtype=data_type)
-        if train_Y.dim() == 1:
-            train_Y = train_Y.unsqueeze(-1)
-        gp = SingleTaskGP(train_X=train_X, train_Y=train_Y,
-                          outcome_transform=Standardize(m=1))
-        mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-        fit_gpytorch_mll(mll)
-        return gp
+        return gp_build(decs, objs, data_type)
     except Exception:
         return None
 
@@ -337,14 +324,6 @@ def _compute_task_similarity(decs, objs, dims):
             similarity = 0.7 * abs(corr) + 0.3 * dim_ratio
             sim[i, j] = sim[j, i] = similarity
     return sim
-
-
-def _select_strategy(credits, counts, beta):
-    """UCB-like bandit strategy selection."""
-    total = np.sum(counts)
-    avg_reward = credits / counts
-    exploration = beta * np.sqrt(np.log(total + 1) / counts)
-    return int(np.argmax(avg_reward + exploration))
 
 
 def _select_strategy_constrained(credits, counts, beta, available):
@@ -410,23 +389,11 @@ def _de_surrogate_search(decs, objs, rbf_model, dim, n_pop=50, n_gens=20):
 
 
 def _bo_acquisition(decs, objs, gp_model, dim, data_type=torch.double):
-    """GP-based BO with LogEI acquisition."""
+    """GP-based BO with LogEI acquisition (delegates to bo_utils.optimize_logei)."""
     if gp_model is None:
         return np.random.rand(1, dim)
     try:
-        train_Y = torch.tensor(-objs, dtype=data_type)
-        if train_Y.dim() == 1:
-            train_Y = train_Y.unsqueeze(-1)
-        best_f = train_Y.max()
-        logEI = LogExpectedImprovement(model=gp_model, best_f=best_f)
-        bounds = torch.stack([
-            torch.zeros(dim, dtype=data_type),
-            torch.ones(dim, dtype=data_type)
-        ], dim=0)
-        candidate, _ = optimize_acqf(
-            logEI, bounds=bounds, q=1, num_restarts=5, raw_samples=30
-        )
-        return candidate.detach().cpu().numpy()
+        return optimize_logei(gp_model, objs, dim, data_type, raw_samples=30)
     except Exception:
         return np.random.rand(1, dim)
 

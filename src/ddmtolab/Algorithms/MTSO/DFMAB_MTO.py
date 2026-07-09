@@ -594,6 +594,7 @@ class DFMAB_MTO:
 
             # Step 1 & 2: MAB-1 selects surrogate and builds it
             best_solutions = [None] * nt
+            cv_errs = [np.nan] * nt  # per-task CV error for monitoring
             for i in active_tasks:
                 # MAB-1 model selection (every gen_gap iterations or first iteration)
                 if iteration == 1 or iteration % self.gen_gap == 0:
@@ -617,6 +618,7 @@ class DFMAB_MTO:
                         current_surrogates[i] = fallback
                     cv_err = 1e6
                     mab1_list[i].update_cv(current_model_idx[i], cv_err)
+                cv_errs[i] = cv_err
 
                 # Step 4: Generate self-candidate via CMA-ES minimizing surrogate
                 best_solutions[i] = optimize_surrogate_cmaes(
@@ -680,7 +682,7 @@ class DFMAB_MTO:
 
                 # Record monitoring data
                 monitor['model_selection'][i].append(current_model_idx[i])
-                monitor['cv_errors'][i].append(cv_err)
+                monitor['cv_errors'][i].append(cv_errs[i])
                 monitor['transfer_source'][i].append(selected_source)
                 monitor['improved'][i].append(improved)
                 monitor['best_obj'][i].append(min(best_f_i, new_obj.flatten()[0]))
