@@ -264,7 +264,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -344,7 +346,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if L % 2 != 0:
             raise ValueError('In WFG2 the distance-related parameter (L) must be divisible by 2.')
 
@@ -430,7 +434,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if L % 2 != 0:
             raise ValueError('In WFG3 the distance-related parameter (L) must be divisible by 2.')
 
@@ -522,7 +528,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -594,7 +602,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -666,7 +676,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -738,7 +750,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -815,7 +829,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 
@@ -894,7 +910,9 @@ class WFG:
         if Kp is None:
             Kp = M - 1
 
-        L = 10
+        if D is not None and D <= Kp:
+            raise ValueError(f'D must be greater than Kp (got D={D}, Kp={Kp}).')
+        L = 10 if D is None else D - Kp
         if D is None:
             D = Kp + L
 

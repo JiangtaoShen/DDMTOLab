@@ -144,8 +144,16 @@ class MTEA_AD:
                     if len(kpool) > 10:
                         kpool = np.random.choice(kpool, size=10, replace=False).tolist()
 
-                    # Gather historical population from other tasks
-                    his_pop_dec = np.vstack([decs[k][:, :dims[t]] for k in kpool]) if kpool else np.empty((0, dims[t]))
+                    # Gather historical population from other tasks, aligned to
+                    # this task's dimensionality (truncate or pad with random
+                    # values in [0, 1] when task dims differ)
+                    def _fit_dim(arr, d):
+                        if arr.shape[1] >= d:
+                            return arr[:, :d]
+                        pad = np.random.rand(arr.shape[0], d - arr.shape[1])
+                        return np.hstack([arr, pad])
+
+                    his_pop_dec = np.vstack([_fit_dim(decs[k], dims[t]) for k in kpool]) if kpool else np.empty((0, dims[t]))
 
                     if his_pop_dec.shape[0] > 0:
                         # Learn anomaly detection model and get transfer solutions

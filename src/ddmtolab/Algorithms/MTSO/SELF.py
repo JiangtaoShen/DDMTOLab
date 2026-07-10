@@ -202,23 +202,23 @@ class SELF:
             for i in range(nt):
                 transfer_samples = []
 
-                # Probabilistic transfer based on task correlation
+                # Probabilistic transfer based on task correlation.
+                # Adjust each sample to the target task's dimensionality before
+                # stacking: source tasks may have different dims.
                 for j in range(nt):
                     if i == j:
                         continue
                     if np.random.rand() < abs(task_corr[i][j]):
                         best_idx = np.argmin(pop_objs[j])
-                        transfer_samples.append(pop_decs[j][best_idx])
+                        sample = pop_decs[j][best_idx]
+                        if len(sample) > dims[i]:
+                            sample = sample[:dims[i]]
+                        elif len(sample) < dims[i]:
+                            sample = np.concatenate([sample, np.zeros(dims[i] - len(sample))])
+                        transfer_samples.append(sample)
 
                 if len(transfer_samples) > 0:
                     transfer_samples = np.array(transfer_samples)
-
-                    # Adjust dimensions to match target task
-                    if transfer_samples.shape[1] > dims[i]:
-                        transfer_samples = transfer_samples[:, :dims[i]]
-                    elif transfer_samples.shape[1] < dims[i]:
-                        padding = np.zeros((transfer_samples.shape[0], dims[i] - transfer_samples.shape[1]))
-                        transfer_samples = np.hstack((transfer_samples, padding))
 
                     true_obj, _ = evaluation_single(problem, transfer_samples, i)
 
@@ -234,7 +234,7 @@ class SELF:
                             if len(worse_indices) > 0:
                                 worst_idx = worse_indices[np.argmax(pop_objs[i][worse_indices])]
                                 pop_decs[i][worst_idx] = best_sample[0]
-                                pop_objs[i][worst_idx] = true_obj[0]
+                                pop_objs[i][worst_idx] = best_sample_obj
 
                     decs[i], objs[i] = vstack_groups((decs[i], transfer_samples), (objs[i], true_obj))
 

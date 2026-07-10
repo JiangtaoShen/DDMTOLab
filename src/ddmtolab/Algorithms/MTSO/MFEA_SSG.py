@@ -215,6 +215,10 @@ def generate_with_student(student, elite_data, grid_h, grid_w, grid_dim,
     then denoises in one step. Dimension shuffling (meta-learning inspired) is
     applied before noising and inverse-shuffled after denoising.
     """
+    # Keep the denoising timestep inside the diffusion schedule
+    # (n_diffusion_steps is configurable and may be smaller than the default t)
+    denoise_t = min(denoise_t, len(alpha_bars) - 1)
+
     student.eval()
     with torch.no_grad():
         indices = np.random.randint(0, len(elite_data), size=n_samples)

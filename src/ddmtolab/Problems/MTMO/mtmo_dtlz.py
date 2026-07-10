@@ -78,8 +78,8 @@ class MTMO_DTLZ:
         ub = np.ones(D)
 
         problem = MTOP()
-        problem.add_task(T1, D=D, lower_bound=lb, upper_bound=ub)
-        problem.add_task(T2, D=D, lower_bound=lb, upper_bound=ub)
+        problem.add_task(T1, dim=D, lower_bound=lb, upper_bound=ub)
+        problem.add_task(T2, dim=D, lower_bound=lb, upper_bound=ub)
         return problem
 
 

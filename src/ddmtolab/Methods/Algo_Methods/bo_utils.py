@@ -388,15 +388,15 @@ def mtgp_build(
     train_Y_list = []
     train_i_list = []
 
-    task_range = torch.linspace(0, 1, nt).unsqueeze(-1)
-
+    # Task feature must be integer-valued: BoTorch casts it to long, so
+    # fractional encodings (e.g. linspace) collapse distinct tasks together.
     for i in range(nt):
         task_data = torch.tensor(decs[i], dtype=data_type)
         # Use negative objectives for maximization
         task_obj = torch.tensor(-objs[i], dtype=data_type)
         task_idx = torch.full(
             (task_data.shape[0], 1),
-            task_range[i].item(),
+            float(i),
             dtype=data_type
         )
 
@@ -472,9 +472,8 @@ def mtgp_predict(
         padding = torch.rand(test_X.shape[0], max_dim - dims[task_id], dtype=data_type)
         test_X = torch.cat([test_X, padding], dim=1)
 
-    # Append task index as the last feature
-    task_range = torch.linspace(0, 1, nt)
-    task_idx = torch.full((test_X.shape[0], 1), task_range[task_id].item(), dtype=data_type)
+    # Append task index as the last feature (integer-valued, matching mtgp_build)
+    task_idx = torch.full((test_X.shape[0], 1), float(task_id), dtype=data_type)
     test_X_with_task = torch.cat([test_X, task_idx], dim=1)
 
     # Predict using the trained model
@@ -571,12 +570,12 @@ def mtbo_next_point(
         Next sampling point, shape: (1, dims[task_id])
     """
     # Define search bounds [0, 1]^max_dim with fixed task index
+    # (integer-valued task feature, matching mtgp_build)
     max_dim = max(dims)
     lower_bound = torch.zeros(max_dim + 1, dtype=data_type)
     upper_bound = torch.ones(max_dim + 1, dtype=data_type)
-    task_range = torch.linspace(0, 1, nt)
-    lower_bound[-1] = task_range[task_id].item()
-    upper_bound[-1] = task_range[task_id].item()
+    lower_bound[-1] = float(task_id)
+    upper_bound[-1] = float(task_id)
     bounds = torch.stack([lower_bound, upper_bound], dim=0)
 
     # Compute the best observed value for the current task
