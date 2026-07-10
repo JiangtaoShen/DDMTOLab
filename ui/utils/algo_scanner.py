@@ -36,59 +36,100 @@ def get_param_type(value: Any) -> str:
         return 'any'
 
 
-def parse_init_from_source(source_code: str) -> Dict[str, Dict]:
+def _find_target_init(tree: ast.Module, class_name: Optional[str] = None) -> Optional[ast.FunctionDef]:
+    """
+    Find the __init__ of the algorithm class, not of helper classes.
+
+    Priority: class named class_name -> class with algorithm_information ->
+    first __init__ anywhere (legacy fallback).
+    """
+    classes = [n for n in tree.body if isinstance(n, ast.ClassDef)]
+
+    def init_of(cls_node):
+        for item in cls_node.body:
+            if isinstance(item, ast.FunctionDef) and item.name == '__init__':
+                return item
+        return None
+
+    if class_name:
+        for c in classes:
+            if c.name == class_name:
+                init = init_of(c)
+                if init is not None:
+                    return init
+
+    for c in classes:
+        has_info = any(
+            isinstance(item, ast.Assign) and any(
+                isinstance(t, ast.Name) and t.id == 'algorithm_information'
+                for t in item.targets)
+            for item in c.body
+        )
+        if has_info:
+            init = init_of(c)
+            if init is not None:
+                return init
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == '__init__':
+            return node
+    return None
+
+
+def parse_init_from_source(source_code: str, class_name: Optional[str] = None) -> Dict[str, Dict]:
     """
     Parse __init__ method from source code using AST.
+
+    class_name targets the algorithm's own class so helper classes defined
+    earlier in the file don't shadow it.
+
     Returns dict of {param_name: {type, default, description}}.
     """
     params = {}
-    body_defaults = {}  # Defaults extracted from function body
 
     try:
         tree = ast.parse(source_code)
 
-        for node in ast.walk(tree):
-            if isinstance(node, ast.FunctionDef) and node.name == '__init__':
-                # First, extract defaults from function body
-                # Pattern: self.x = x if x is not None else DEFAULT
-                # Pattern: self.x = DEFAULT if x is None else x
-                body_defaults = _extract_body_defaults(node.body)
+        node = _find_target_init(tree, class_name)
+        if node is not None:
+            # First, extract defaults from function body
+            # Pattern: self.x = x if x is not None else DEFAULT
+            # Pattern: self.x = DEFAULT if x is None else x
+            body_defaults = _extract_body_defaults(node.body)
 
-                # Get arguments
-                args = node.args
+            # Get arguments
+            args = node.args
 
-                # Get default values
-                defaults = args.defaults
-                num_defaults = len(defaults)
-                num_args = len(args.args)
+            # Get default values
+            defaults = args.defaults
+            num_defaults = len(defaults)
+            num_args = len(args.args)
 
-                # Map defaults to arguments (defaults apply to last N arguments)
-                for i, arg in enumerate(args.args):
-                    param_name = arg.arg
+            # Map defaults to arguments (defaults apply to last N arguments)
+            for i, arg in enumerate(args.args):
+                param_name = arg.arg
 
-                    if param_name in EXCLUDE_PARAMS:
-                        continue
+                if param_name in EXCLUDE_PARAMS:
+                    continue
 
-                    # Calculate default index
-                    default_idx = i - (num_args - num_defaults)
+                # Calculate default index
+                default_idx = i - (num_args - num_defaults)
 
-                    if default_idx >= 0 and default_idx < len(defaults):
-                        default_node = defaults[default_idx]
-                        default_value = _eval_ast_node(default_node)
-                    else:
-                        default_value = None
+                if default_idx >= 0 and default_idx < len(defaults):
+                    default_node = defaults[default_idx]
+                    default_value = _eval_ast_node(default_node)
+                else:
+                    default_value = None
 
-                    # If signature default is None, try to get actual default from body
-                    if default_value is None and param_name in body_defaults:
-                        default_value = body_defaults[param_name]
+                # If signature default is None, try to get actual default from body
+                if default_value is None and param_name in body_defaults:
+                    default_value = body_defaults[param_name]
 
-                    params[param_name] = {
-                        'type': get_param_type(default_value),
-                        'default': default_value,
-                        'description': param_name,  # Use param name directly
-                    }
-
-                break
+                params[param_name] = {
+                    'type': get_param_type(default_value),
+                    'default': default_value,
+                    'description': param_name,  # Use param name directly
+                }
     except Exception as e:
         print(f"Error parsing source: {e}")
 
@@ -184,12 +225,12 @@ def _eval_ast_node(node) -> Any:
     return None
 
 
-def scan_algorithm_file(filepath: str) -> Dict[str, Dict]:
+def scan_algorithm_file(filepath: str, class_name: Optional[str] = None) -> Dict[str, Dict]:
     """Scan a single algorithm file and extract parameters."""
     try:
         with open(filepath, 'r', encoding='utf-8') as f:
             source = f.read()
-        return parse_init_from_source(source)
+        return parse_init_from_source(source, class_name=class_name)
     except Exception as e:
         print(f"Error scanning {filepath}: {e}")
         return {}
@@ -235,10 +276,10 @@ def scan_all_algorithms(base_path: str = None) -> Dict[str, Dict[str, Dict]]:
             if py_file.name.startswith('_'):
                 continue
 
-            # Get algorithm name from filename
+            # Get algorithm name from filename (algorithm class shares the name)
             algo_name = py_file.stem
 
-            params = scan_algorithm_file(str(py_file))
+            params = scan_algorithm_file(str(py_file), class_name=algo_name)
             if params:
                 key = f"{category}/{algo_name}"
                 result[key] = params

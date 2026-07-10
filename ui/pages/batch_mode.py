@@ -31,7 +31,8 @@ from utils.backup_manager import BackupManager
 from config.default_params import PROBLEM_PARAMS, FIXED_DIMENSION_SUITES, FIXED_OBJECTIVES_SUITES
 from config.constants import (
     CATEGORIES, ALGO_CATEGORIES, METRICS, TABLE_FORMATS, FIGURE_FORMATS, STATISTIC_TYPES,
-    COLOR_TITLE, COLOR_ERROR, COLOR_SUCCESS, COLOR_SECTION
+    COLOR_TITLE, COLOR_ERROR, COLOR_SUCCESS, COLOR_SECTION,
+    COLOR_LABEL, COLOR_HEADING, COLOR_RESULTS_MUTED,
 )
 from components.dpg_helpers import (
     add_checkbox_group, get_checkbox_selections, update_checkbox_group,
@@ -42,6 +43,11 @@ from components.dpg_helpers import (
     open_file_location as _open_file_location,
     copy_image_to_clipboard as _copy_image_to_clipboard,
     open_algo_source as _open_algo_source,
+    add_section_title, get_panel_theme, get_well_theme, get_toolbar_theme,
+    get_list_btn_theme, get_secondary_btn_theme, get_run_btn_theme,
+    get_stop_btn_theme, get_delete_btn_theme, get_card_theme,
+    get_arrow_btn_theme, get_results_theme, get_results_table_theme,
+    get_light_btn_theme,
 )
 
 # Module state
@@ -85,11 +91,30 @@ def _on_prob_category_change(sender, app_data):
         _on_suite_change(None, suites[0])
     _update_metric_visibility(cat)
 
+    # Problems from the old category cannot run under the new one; clear them
+    if _state["selected_probs"]:
+        _state["selected_probs"] = []
+        _state["prob_names"] = {}
+        _state["prob_params"] = {}
+        _update_prob_params_display()
+
+    # Keep algorithm category compatible with the problem category
+    target_algo_cat = cat if cat in ALGO_CATEGORIES else "MTSO"
+    if dpg.does_item_exist("batch_algo_cat_combo") and \
+            dpg.get_value("batch_algo_cat_combo") != target_algo_cat:
+        dpg.set_value("batch_algo_cat_combo", target_algo_cat)
+        _on_algo_category_change(None, target_algo_cat)
+
 
 def _on_algo_category_change(sender, app_data):
     """Update algorithm list when algorithm category changes."""
     cat = app_data
     _state["current_algo_category"] = cat
+    # Algorithms from the old category cannot run under the new one; clear them
+    if _state["selected_algos"]:
+        _state["selected_algos"] = []
+        _state["algo_names"] = {}
+        _update_algo_params_display()
     _update_algo_list_display()
 
 
@@ -112,16 +137,38 @@ def _on_prob_click(sender, app_data, user_data):
     _update_prob_params_display()
 
 
+def _reindex_after_removal(d: dict, removed_idx: int) -> dict:
+    """Shift index-keyed dict entries down after removing an item at removed_idx."""
+    result = {}
+    for k, v in d.items():
+        if k < removed_idx:
+            result[k] = v
+        elif k > removed_idx:
+            result[k - 1] = v
+    return result
+
+
+def _swap_index_entries(d: dict, i: int, j: int):
+    """Swap two index-keyed dict entries in place, without creating None entries."""
+    vi, vj = d.get(i), d.get(j)
+    if vj is None:
+        d.pop(i, None)
+    else:
+        d[i] = vj
+    if vi is None:
+        d.pop(j, None)
+    else:
+        d[j] = vi
+
+
 def _remove_prob(sender, app_data, user_data):
     """Remove problem from selected list by index."""
     idx = user_data
     if 0 <= idx < len(_state["selected_probs"]):
         _state["selected_probs"].pop(idx)
-        # Clean up params for this index
-        if idx in _state["prob_names"]:
-            del _state["prob_names"][idx]
-        if idx in _state["prob_params"]:
-            del _state["prob_params"][idx]
+        # Re-key names/params so later entries stay attached to their problems
+        _state["prob_names"] = _reindex_after_removal(_state["prob_names"], idx)
+        _state["prob_params"] = _reindex_after_removal(_state["prob_params"], idx)
         _update_prob_params_display()
 
 
@@ -132,11 +179,8 @@ def _move_prob_up(sender, app_data, user_data):
     if idx <= 0 or idx >= len(selected):
         return
     selected[idx], selected[idx - 1] = selected[idx - 1], selected[idx]
-    # Swap names and params
-    names = _state["prob_names"]
-    params = _state["prob_params"]
-    names[idx], names[idx - 1] = names.get(idx - 1), names.get(idx)
-    params[idx], params[idx - 1] = params.get(idx - 1, {}), params.get(idx, {})
+    _swap_index_entries(_state["prob_names"], idx, idx - 1)
+    _swap_index_entries(_state["prob_params"], idx, idx - 1)
     _update_prob_params_display()
 
 
@@ -147,11 +191,8 @@ def _move_prob_down(sender, app_data, user_data):
     if idx < 0 or idx >= len(selected) - 1:
         return
     selected[idx], selected[idx + 1] = selected[idx + 1], selected[idx]
-    # Swap names and params
-    names = _state["prob_names"]
-    params = _state["prob_params"]
-    names[idx], names[idx + 1] = names.get(idx + 1), names.get(idx)
-    params[idx], params[idx + 1] = params.get(idx + 1, {}), params.get(idx, {})
+    _swap_index_entries(_state["prob_names"], idx, idx + 1)
+    _swap_index_entries(_state["prob_params"], idx, idx + 1)
     _update_prob_params_display()
 
 
@@ -168,9 +209,11 @@ def _update_prob_list_display():
         return
 
     methods = get_problem_methods(cat, suite)
+    list_theme = get_list_btn_theme()
     for method in methods:
-        dpg.add_button(label=method, callback=_on_prob_click, user_data=(suite, method),
-                       width=-1, parent="batch_prob_list_container")
+        btn = dpg.add_button(label=method, callback=_on_prob_click, user_data=(suite, method),
+                             width=-1, parent="batch_prob_list_container")
+        dpg.bind_item_theme(btn, list_theme)
 
 
 def _on_prob_name_change(idx: int, new_name: str):
@@ -212,8 +255,8 @@ def _get_prob_params_for_suite(suite: str) -> dict:
         params["M"] = {"type": "int", "default": suite_params["M"].get("default", 3)}
     if "K" in suite_params:
         params["K"] = {"type": "int", "default": suite_params["K"].get("default", 10)}
-    if "L" in suite_params:
-        params["L"] = {"type": "int", "default": suite_params["L"].get("default", 20)}
+    if "Kp" in suite_params:
+        params["Kp"] = {"type": "int", "default": suite_params["Kp"].get("default", 4)}
 
     return params
 
@@ -231,6 +274,7 @@ def _update_prob_params_display():
                      parent="batch_prob_params_container", color=(150, 150, 150))
         return
 
+    arrow_theme = get_arrow_btn_theme()
     for i, (suite, method) in enumerate(selected):
         # Get custom name if set
         default_name = method
@@ -239,10 +283,12 @@ def _update_prob_params_display():
 
         # Up/Down buttons
         with dpg.group(horizontal=True, parent="batch_prob_params_container"):
-            dpg.add_button(label="^", width=20, callback=_move_prob_up, user_data=i,
-                          enabled=(i > 0))
-            dpg.add_button(label="v", width=20, callback=_move_prob_down, user_data=i,
-                          enabled=(i < len(selected) - 1))
+            up_btn = dpg.add_button(label="^", width=24, callback=_move_prob_up, user_data=i,
+                                    enabled=(i > 0))
+            down_btn = dpg.add_button(label="v", width=24, callback=_move_prob_down, user_data=i,
+                                      enabled=(i < len(selected) - 1))
+            dpg.bind_item_theme(up_btn, arrow_theme)
+            dpg.bind_item_theme(down_btn, arrow_theme)
 
         # Collapsing header
         with dpg.collapsing_header(label=f"{header_label}##{suite}_{method}_{i}",
@@ -250,7 +296,7 @@ def _update_prob_params_display():
                                    default_open=(len(selected) == 1)):
             # Name parameter
             with dpg.group(horizontal=True):
-                dpg.add_text("Name:")
+                dpg.add_text("Name:", color=COLOR_LABEL)
                 name_tag = f"batch_prob_name_{suite}_{method}_{i}"
                 dpg.add_input_text(tag=name_tag, default_value=custom_name, width=-1,
                                    callback=lambda s, a, u: _on_prob_name_change(u, a),
@@ -262,11 +308,11 @@ def _update_prob_params_display():
 
             for param_name, param_info in params.items():
                 with dpg.group(horizontal=True):
-                    dpg.add_text(f"{param_name}:")
+                    dpg.add_text(f"{param_name}:", color=COLOR_LABEL)
                     tag = f"batch_prob_param_{suite}_{method}_{i}_{param_name}"
                     default_val = saved_params.get(param_name, param_info['default'])
                     if default_val is None:
-                        default_val = 50 if param_name == "D" else 3 if param_name == "M" else 10
+                        default_val = {"D": 50, "M": 3, "Kp": 4}.get(param_name, 10)
                     dpg.add_input_int(tag=tag, default_value=int(default_val), width=-1, step=0,
                                       callback=lambda s, a, u: _on_prob_param_change(u[0], u[1], a),
                                       user_data=(i, param_name))
@@ -290,6 +336,8 @@ def _remove_algo(sender, app_data, user_data):
     idx = user_data
     if 0 <= idx < len(_state["selected_algos"]):
         _state["selected_algos"].pop(idx)
+        # Re-key custom names so later entries stay attached to their algorithms
+        _state["algo_names"] = _reindex_after_removal(_state["algo_names"], idx)
         _update_algo_params_display()
 
 
@@ -311,9 +359,11 @@ def _update_algo_list_display():
         'n': 'Population', 'max_nfes': 'Max NFEs',
     }
 
+    list_theme = get_list_btn_theme()
     for algo_name in algos:
         btn = dpg.add_button(label=algo_name, callback=_on_algo_click, user_data=algo_name,
                              width=-1, parent="batch_algo_list_container")
+        dpg.bind_item_theme(btn, list_theme)
         # Add tooltip with algorithm information (blue labels)
         info = get_algorithm_info(cat, algo_name)
         if info:
@@ -339,10 +389,7 @@ def _move_algo_up(sender, app_data, user_data):
     if idx <= 0 or idx >= len(selected):
         return
     selected[idx], selected[idx - 1] = selected[idx - 1], selected[idx]
-    # Also swap custom names if they exist
-    names = _state["algo_names"]
-    if idx in names or (idx - 1) in names:
-        names[idx], names[idx - 1] = names.get(idx - 1, selected[idx]), names.get(idx, selected[idx - 1])
+    _swap_index_entries(_state["algo_names"], idx, idx - 1)
     _update_algo_params_display()
 
 
@@ -353,10 +400,7 @@ def _move_algo_down(sender, app_data, user_data):
     if idx < 0 or idx >= len(selected) - 1:
         return
     selected[idx], selected[idx + 1] = selected[idx + 1], selected[idx]
-    # Also swap custom names if they exist
-    names = _state["algo_names"]
-    if idx in names or (idx + 1) in names:
-        names[idx], names[idx + 1] = names.get(idx + 1, selected[idx]), names.get(idx, selected[idx + 1])
+    _swap_index_entries(_state["algo_names"], idx, idx + 1)
     _update_algo_params_display()
 
 
@@ -385,12 +429,15 @@ def _update_algo_params_display():
         header_label = custom_name if custom_name != algo_name else algo_name
 
         # Collapsing header row with algorithm name and controls
+        arrow_theme = get_arrow_btn_theme()
         with dpg.group(horizontal=True, parent="batch_algo_params_container"):
             # Up/Down buttons for reordering
-            dpg.add_button(label="^", width=20, callback=_move_algo_up, user_data=i,
-                          enabled=(i > 0))
-            dpg.add_button(label="v", width=20, callback=_move_algo_down, user_data=i,
-                          enabled=(i < len(selected) - 1))
+            up_btn = dpg.add_button(label="^", width=24, callback=_move_algo_up, user_data=i,
+                                    enabled=(i > 0))
+            down_btn = dpg.add_button(label="v", width=24, callback=_move_algo_down, user_data=i,
+                                      enabled=(i < len(selected) - 1))
+            dpg.bind_item_theme(up_btn, arrow_theme)
+            dpg.bind_item_theme(down_btn, arrow_theme)
 
         # Collapsing header with algorithm name
         with dpg.collapsing_header(label=f"{header_label}##{safe_algo_name}_{i}",
@@ -404,7 +451,7 @@ def _update_algo_params_display():
 
             # Name parameter for renaming
             with dpg.group(horizontal=True):
-                dpg.add_text("Name:")
+                dpg.add_text("Name:", color=COLOR_LABEL)
                 name_tag = f"batch_algo_name_{safe_algo_name}_{i}"
                 dpg.add_input_text(tag=name_tag, default_value=custom_name, width=-1,
                                    callback=lambda s, a, u: _on_algo_name_change(u[0], a),
@@ -445,12 +492,12 @@ def _add_algo_param_input(algo_name: str, param_name: str, param_info: dict, idx
     with dpg.group(horizontal=True):
         # Add [list] hint for vectorizable parameters
         if is_vectorizable:
-            dpg.add_text(f"{param_name}:", color=COLOR_SECTION)
+            dpg.add_text(f"{param_name}:", color=(87, 176, 244))
             # Use text input for vectorizable parameters to allow list input
             default_str = str(default) if default is not None else "100" if param_type == 'int' else "0.5"
             dpg.add_input_text(tag=tag, default_value=default_str, width=-1, hint="e.g. [100,200]")
         else:
-            dpg.add_text(f"{param_name}:")
+            dpg.add_text(f"{param_name}:", color=COLOR_LABEL)
             if param_type == 'int':
                 dpg.add_input_int(tag=tag, default_value=default if default is not None else 100,
                                   width=-1, step=0)
@@ -596,11 +643,10 @@ def _run_clicked(sender, app_data):
                     # Get custom name
                     custom_name = _state["prob_names"].get(i, method)
 
-                    try:
-                        creator, _ = get_problem_creator(prob_cat, suite, method, **prob_params)
-                    except TypeError:
-                        creator, _ = get_problem_creator(prob_cat, suite, method)
-                    batch_exp.add_problem(creator, custom_name)
+                    creator, _, creator_kwargs = get_problem_creator(
+                        prob_cat, suite, method, **prob_params)
+                    # Pass params through: BatchExperiment calls creator(**params)
+                    batch_exp.add_problem(creator, custom_name, **creator_kwargs)
 
                 algo_display_names = []
                 for i, algo_name in enumerate(selected_algos):
@@ -619,6 +665,21 @@ def _run_clicked(sender, app_data):
                     safe_display_name = display_name.replace("/", "-")
                     algo_display_names.append(safe_display_name)
                     batch_exp.add_algorithm(algo_cls, safe_display_name, **algo_kwargs)
+
+                # Fail fast on algorithm-problem mismatches with a clear message
+                from utils.compat import check_algorithm_compatibility
+                algo_infos = [(name, get_algorithm_info(algo_cat, name))
+                              for name in selected_algos]
+                incompat = []
+                for creator, pname, pkwargs in batch_exp.problems:
+                    prob_instance = creator(**pkwargs)
+                    for algo_name, info in algo_infos:
+                        issues = check_algorithm_compatibility(prob_instance, info)
+                        if issues:
+                            incompat.append(f"{algo_name} on {pname}: " + "; ".join(issues))
+                if incompat:
+                    raise RuntimeError(
+                        "Incompatible algorithm/problem combinations:\n" + "\n".join(incompat))
 
                 batch_exp.run(n_runs=n_runs, max_workers=max_workers)
                 _state["stdout_buffer"] = capture.getvalue()
@@ -965,7 +1026,7 @@ def _load_config_from_file(config_path: str):
     _state["prob_names"] = {}
     _state["prob_params"] = {}
 
-    for i, prob_cfg in enumerate(problems):
+    for prob_cfg in problems:
         # Get suite from config or infer from module path
         suite = prob_cfg.get('suite', '')
         if not suite:
@@ -978,18 +1039,20 @@ def _load_config_from_file(config_path: str):
         if not method:
             continue
 
-        # Add to selected problems
+        # Index of the entry we are about to append (skipped entries must not
+        # advance it, or names/params would attach to the wrong problem)
+        idx = len(_state["selected_probs"])
         _state["selected_probs"].append((suite, method))
 
         # Set custom name if different from default
         custom_name = prob_cfg.get('name', method)
         if custom_name != method:
-            _state["prob_names"][i] = custom_name
+            _state["prob_names"][idx] = custom_name
 
         # Set parameters
         params = prob_cfg.get('params', {})
         if params:
-            _state["prob_params"][i] = params.copy()
+            _state["prob_params"][idx] = params.copy()
 
     # Update suite combo to first problem's suite (for the problem list display)
     if _state["selected_probs"]:
@@ -1014,34 +1077,30 @@ def _load_config_from_file(config_path: str):
     _state["algo_names"] = {}
 
     algorithms = config.get('algorithms', [])
-    for i, algo_cfg in enumerate(algorithms):
+    resolved_algos = []  # (selected_idx, display_name, config_entry)
+    for algo_cfg in algorithms:
         # Find algorithm display name from module and class
         algo_module = algo_cfg.get('module', '')
         algo_class = algo_cfg.get('class', '')
         _, algo_display_name = find_algorithm_category_and_name(algo_module, algo_class)
 
         if algo_display_name:
+            idx = len(_state["selected_algos"])
             _state["selected_algos"].append(algo_display_name)
+            resolved_algos.append((idx, algo_display_name, algo_cfg))
             # Set custom name if different from display name
             custom_name = algo_cfg.get('name', algo_display_name)
             if custom_name != algo_display_name:
-                _state["algo_names"][i] = custom_name
+                _state["algo_names"][idx] = custom_name
 
     _update_algo_params_display()
 
     # Apply algorithm parameters after display is updated
-    for i, algo_cfg in enumerate(algorithms):
-        algo_module = algo_cfg.get('module', '')
-        algo_class = algo_cfg.get('class', '')
-        _, algo_display_name = find_algorithm_category_and_name(algo_module, algo_class)
-
-        if not algo_display_name:
-            continue
-
+    for idx, algo_display_name, algo_cfg in resolved_algos:
         params = algo_cfg.get('parameters', {})
         safe_algo_name = algo_display_name.replace("/", "-")
         for param_name, value in params.items():
-            tag = f"batch_algo_param_{safe_algo_name}_{i}_{param_name}"
+            tag = f"batch_algo_param_{safe_algo_name}_{idx}_{param_name}"
             if dpg.does_item_exist(tag):
                 if isinstance(value, list):
                     dpg.set_value(tag, str(value))
@@ -1114,29 +1173,16 @@ def _display_analysis_results(save_path: str, merge_columns: int = 0):
 
     with dpg.group(horizontal=True, parent="batch_results_area"):
         dpg.add_spacer(width=-1)
-        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=150)
-        # Apply dark text theme to button
-        with dpg.theme() as btn_theme:
-            with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (200, 200, 200))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (160, 160, 160))
-        dpg.bind_item_theme(btn, btn_theme)
+        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=160)
+        dpg.bind_item_theme(btn, get_light_btn_theme())
 
     dpg.add_spacer(height=5, parent="batch_results_area")
 
     # Excel/LaTeX tables
-    dpg.add_text("Statistical Tables", parent="batch_results_area", color=COLOR_TITLE)
-    dpg.add_separator(parent="batch_results_area")
+    add_section_title("Statistical Tables", parent="batch_results_area", light=True)
 
-    # Create a theme for table - header row needs white text on dark background
-    with dpg.theme() as table_theme:
-        with dpg.theme_component(dpg.mvTable):
-            dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (70, 70, 70))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 255, 255))  # White text for header
-        with dpg.theme_component(dpg.mvTableRow):
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))  # Dark text for rows
+    # Table theme: dark header row with white text, dark rows on white
+    table_theme = get_results_table_theme()
 
     excel_files = sorted(results_dir.glob("*.xlsx")) + sorted(results_dir.glob("*.xls"))
     if excel_files:
@@ -1203,15 +1249,9 @@ def _display_analysis_results(save_path: str, merge_columns: int = 0):
                     copy_btn = dpg.add_button(
                         label="Copy",
                         callback=lambda s, a, u: copy_text_to_clipboard(u),
-                        user_data=content, width=50,
+                        user_data=content, width=60,
                     )
-                    with dpg.theme() as copy_btn_theme:
-                        with dpg.theme_component(dpg.mvButton):
-                            dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                            dpg.add_theme_color(dpg.mvThemeCol_Button, (200, 200, 200))
-                            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180))
-                            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (160, 160, 160))
-                    dpg.bind_item_theme(copy_btn, copy_btn_theme)
+                    dpg.bind_item_theme(copy_btn, get_light_btn_theme())
                 # Calculate height based on line count (approx 18px per line)
                 line_count = content.count('\n') + 1
                 text_height = line_count * 18 + 10
@@ -1253,8 +1293,7 @@ def _display_analysis_results(save_path: str, merge_columns: int = 0):
     # 1. Display convergence images (merged: 1 per row full width; non-merged: adaptive)
     if convergence_images:
         dpg.add_spacer(height=10, parent="batch_results_area")
-        dpg.add_text("Convergence Plots", parent="batch_results_area", color=COLOR_TITLE)
-        dpg.add_separator(parent="batch_results_area")
+        add_section_title("Convergence Plots", parent="batch_results_area", light=True)
         for i in range(0, len(convergence_images), conv_per_row):
             row_files = convergence_images[i:i+conv_per_row]
             with dpg.group(horizontal=True, parent="batch_results_area"):
@@ -1266,8 +1305,7 @@ def _display_analysis_results(save_path: str, merge_columns: int = 0):
     # 2. Display ND Solutions (adaptive per row)
     if nd_images:
         dpg.add_spacer(height=10, parent="batch_results_area")
-        dpg.add_text("Non-Dominated Solutions", parent="batch_results_area", color=COLOR_TITLE)
-        dpg.add_separator(parent="batch_results_area")
+        add_section_title("Non-Dominated Solutions", parent="batch_results_area", light=True)
         for i in range(0, len(nd_images), nd_per_row):
             row_files = nd_images[i:i+nd_per_row]
             with dpg.group(horizontal=True, parent="batch_results_area"):
@@ -1279,8 +1317,7 @@ def _display_analysis_results(save_path: str, merge_columns: int = 0):
     # 3. Display runtime images (adaptive per row)
     if runtime_images:
         dpg.add_spacer(height=10, parent="batch_results_area")
-        dpg.add_text("Runtime Comparison", parent="batch_results_area", color=COLOR_TITLE)
-        dpg.add_separator(parent="batch_results_area")
+        add_section_title("Runtime Comparison", parent="batch_results_area", light=True)
         for i in range(0, len(runtime_images), per_row):
             row_files = runtime_images[i:i+per_row]
             with dpg.group(horizontal=True, parent="batch_results_area"):
@@ -1418,132 +1455,96 @@ def create(parent, base_path: str = "./tests"):
 
     with dpg.group(horizontal=True, parent=parent):
         # Left panel - Problem Selection (Column 1)
-        with dpg.child_window(width=250, tag="batch_problem_panel"):
-            dpg.add_text("Problem Selection", color=COLOR_TITLE)
-            dpg.add_separator()
+        with dpg.child_window(width=258, tag="batch_problem_panel") as _left_panel:
+            add_section_title("Problem Selection")
+            dpg.add_spacer(height=4)
 
-            dpg.add_text("Category", color=COLOR_SUCCESS)
+            dpg.add_text("CATEGORY", color=COLOR_LABEL)
             dpg.add_combo(CATEGORIES, default_value="STSO", tag="batch_prob_cat_combo",
                           callback=_on_prob_category_change, width=-1)
 
             dpg.add_spacer(height=5)
-            dpg.add_text("Suite", color=COLOR_SUCCESS)
+            dpg.add_text("SUITE", color=COLOR_LABEL)
             initial_suites = get_problem_suites("STSO")
             dpg.add_combo(initial_suites,
                           default_value=initial_suites[0] if initial_suites else "",
                           tag="batch_suite_combo", callback=_on_suite_change, width=-1)
 
             dpg.add_spacer(height=5)
-            with dpg.child_window(tag="batch_prob_list_container", height=150, border=True):
+            with dpg.child_window(tag="batch_prob_list_container", height=150, border=True) as _prob_list:
                 # Will be populated by _update_prob_list_display
                 pass
+            dpg.bind_item_theme(_prob_list, get_well_theme())
 
             # Selected Problems with parameters
-            dpg.add_spacer(height=10)
-            dpg.add_text("Selected Problems", color=COLOR_TITLE)
-            dpg.add_separator()
-            with dpg.child_window(tag="batch_prob_params_container", height=-1, border=False):
-                dpg.add_text("Click problems above to add", color=(150, 150, 150))
+            dpg.add_spacer(height=12)
+            add_section_title("Selected Problems")
+            dpg.add_spacer(height=2)
+            with dpg.child_window(tag="batch_prob_params_container", height=-1, border=False) as _prob_params:
+                dpg.add_text("Click problems above to add", color=COLOR_LABEL)
+            dpg.bind_item_theme(_prob_params, get_card_theme())
+        dpg.bind_item_theme(_left_panel, get_panel_theme())
 
         # Middle panel - Algorithm Selection (Column 2)
-        with dpg.child_window(width=280, tag="batch_algo_panel"):
-            dpg.add_text("Algorithm Selection", color=COLOR_TITLE)
-            dpg.add_separator()
+        with dpg.child_window(width=288, tag="batch_algo_panel") as _mid_panel:
+            add_section_title("Algorithm Selection")
+            dpg.add_spacer(height=4)
 
-            dpg.add_text("Category", color=COLOR_SUCCESS)
+            dpg.add_text("CATEGORY", color=COLOR_LABEL)
             dpg.add_combo(ALGO_CATEGORIES, default_value="STSO", tag="batch_algo_cat_combo",
                           callback=_on_algo_category_change, width=-1)
 
             dpg.add_spacer(height=5)
-            with dpg.child_window(tag="batch_algo_list_container", height=215, border=True):
+            with dpg.child_window(tag="batch_algo_list_container", height=215, border=True) as _algo_list:
                 # Will be populated by _update_algo_list_display
                 pass
+            dpg.bind_item_theme(_algo_list, get_well_theme())
 
             # Algorithm Parameters (dynamic) - includes selected algorithms with delete buttons
-            dpg.add_spacer(height=10)
-            dpg.add_text("Selected Algorithms", color=COLOR_TITLE)
-            dpg.add_separator()
-            with dpg.child_window(tag="batch_algo_params_container", height=-1, border=False):
-                dpg.add_text("Click algorithms above to add", color=(150, 150, 150))
+            dpg.add_spacer(height=12)
+            add_section_title("Selected Algorithms")
+            dpg.add_spacer(height=2)
+            with dpg.child_window(tag="batch_algo_params_container", height=-1, border=False) as _algo_params:
+                dpg.add_text("Click algorithms above to add", color=COLOR_LABEL)
+            dpg.bind_item_theme(_algo_params, get_card_theme())
+        dpg.bind_item_theme(_mid_panel, get_panel_theme())
 
         # Right panel - Settings and Results
-        with dpg.child_window(tag="batch_right_panel"):
-            # Run Options and Buttons at the top
-            with dpg.theme() as _input_align_theme:
-                with dpg.theme_component(dpg.mvAll):
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-
-            with dpg.group(horizontal=True):
-                clean_btn = dpg.add_button(label="Clean Data", callback=_clean_clicked, width=95)
-                dpg.add_spacer(width=4)
-                load_btn = dpg.add_button(label="Load Data", callback=_load_data_clicked, width=90)
-                dpg.add_spacer(width=4)
-                savecfg_btn = dpg.add_button(label="Save Config", callback=_save_config, width=100)
-                dpg.add_spacer(width=4)
-                loadcfg_btn = dpg.add_button(label="Load Config", callback=_load_config, width=100)
-                dpg.add_spacer(width=8)
-                dpg.add_text("Runs")
-                nruns_input = dpg.add_input_int(default_value=3, min_value=1, max_value=100,
-                                  tag="batch_nruns_input", width=50, step=0)
-                dpg.add_spacer(width=4)
-                dpg.add_text("Workers")
-                workers_input = dpg.add_input_int(default_value=6, min_value=1, max_value=32,
-                                  tag="batch_workers_input", width=50, step=0)
-                dpg.add_spacer(width=4)
-                run_btn = dpg.add_button(label="Run", tag="batch_run_btn",
-                                         callback=_run_clicked, width=100)
-                dpg.add_spacer(width=4)
-                stop_btn = dpg.add_button(label="Stop", tag="batch_stop_btn",
-                                          callback=_stop_clicked, width=100)
-            dpg.bind_item_theme(nruns_input, _input_align_theme)
-            dpg.bind_item_theme(workers_input, _input_align_theme)
+        with dpg.child_window(tag="batch_right_panel") as _right_panel:
+            # Toolbar strip at the top (design: #141922 rounded container)
+            with dpg.child_window(height=54, border=True, no_scrollbar=True) as toolbar:
+                with dpg.group(horizontal=True):
+                    clean_btn = dpg.add_button(label="Clean Data", callback=_clean_clicked, width=100)
+                    load_btn = dpg.add_button(label="Load Data", callback=_load_data_clicked, width=96)
+                    savecfg_btn = dpg.add_button(label="Save Config", callback=_save_config, width=106)
+                    loadcfg_btn = dpg.add_button(label="Load Config", callback=_load_config, width=106)
+                    dpg.add_spacer(width=6)
+                    dpg.add_text("Runs", color=COLOR_LABEL)
+                    nruns_input = dpg.add_input_int(default_value=3, min_value=1, max_value=100,
+                                      tag="batch_nruns_input", width=50, step=0)
+                    dpg.add_text("Workers", color=COLOR_LABEL)
+                    workers_input = dpg.add_input_int(default_value=6, min_value=1, max_value=32,
+                                      tag="batch_workers_input", width=50, step=0)
+                    dpg.add_spacer(width=6)
+                    run_btn = dpg.add_button(label="Run", tag="batch_run_btn",
+                                             callback=_run_clicked, width=104)
+                    stop_btn = dpg.add_button(label="Stop", tag="batch_stop_btn",
+                                              callback=_stop_clicked, width=100)
+            dpg.bind_item_theme(toolbar, get_toolbar_theme())
 
             # Secondary buttons (Clean Data, Load Data, Save Config, Load Config)
-            with dpg.theme() as secondary_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (55, 75, 100))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (70, 95, 125))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (85, 115, 150))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (90, 110, 140))
+            secondary_theme = get_secondary_btn_theme()
             dpg.bind_item_theme(clean_btn, secondary_theme)
             dpg.bind_item_theme(load_btn, secondary_theme)
             dpg.bind_item_theme(savecfg_btn, secondary_theme)
             dpg.bind_item_theme(loadcfg_btn, secondary_theme)
 
-            # Primary button (Run)
-            with dpg.theme() as run_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (40, 140, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (55, 165, 90))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (70, 185, 110))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (60, 170, 90))
+            # Primary / danger / delete buttons from the shared refined themes
+            run_theme = get_run_btn_theme()
             dpg.bind_item_theme(run_btn, run_theme)
             _state["run_theme"] = run_theme
-
-            # Danger button (Stop)
-            with dpg.theme() as stop_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (170, 50, 50))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (195, 70, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (215, 95, 95))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (200, 70, 70))
-            dpg.bind_item_theme(stop_btn, stop_theme)
-
-            with dpg.theme() as delete_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (140, 50, 50))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (170, 70, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (200, 90, 90))
-            _state["delete_theme"] = delete_theme
+            dpg.bind_item_theme(stop_btn, get_stop_btn_theme())
+            _state["delete_theme"] = get_delete_btn_theme()
 
             # Apply bold font to Run and Stop buttons
             from main import get_fonts
@@ -1552,12 +1553,10 @@ def create(parent, base_path: str = "./tests"):
                 dpg.bind_item_font(run_btn, _bold)
                 dpg.bind_item_font(stop_btn, _bold)
 
-            dpg.add_spacer(height=2)
-            dpg.add_separator()
+            dpg.add_spacer(height=8)
 
             # Analysis Settings
-            dpg.add_text("Analysis Settings", color=COLOR_TITLE)
-            dpg.add_separator()
+            add_section_title("Analysis Settings")
             dpg.add_spacer(height=3)
 
             # Analysis settings table: 2 rows, 6 columns, vertically aligned
@@ -1619,21 +1618,14 @@ def create(parent, base_path: str = "./tests"):
                         dpg.add_input_int(default_value=3, min_value=0, max_value=6,
                                           tag="batch_mergecols_input", width=40, step=0)
 
-            dpg.add_spacer(height=5)
-            dpg.add_separator()
+            dpg.add_spacer(height=6)
 
-            # Results area (white background)
+            # Results area (light surface)
             with dpg.child_window(tag="batch_results_area") as results_panel:
-                dpg.add_text("No results yet. Configure and run a batch experiment.", color=(100, 100, 100))
-
-        # Apply white background theme to results area with dark text
-        with dpg.theme() as results_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (255, 255, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (245, 245, 245))
-                dpg.add_theme_color(dpg.mvThemeCol_Border, (200, 200, 200))
-        dpg.bind_item_theme(results_panel, results_theme)
+                dpg.add_text("No results yet. Configure and run a batch experiment.",
+                             color=COLOR_RESULTS_MUTED)
+        dpg.bind_item_theme(results_panel, get_results_theme())
+        dpg.bind_item_theme(_right_panel, get_panel_theme())
 
     # Initialize problem and algorithm lists
     _state["current_suite"] = initial_suites[0] if initial_suites else ""

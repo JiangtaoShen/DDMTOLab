@@ -7,6 +7,14 @@ from pathlib import Path
 # when this file is run as __main__
 sys.modules.setdefault('main', sys.modules[__name__])
 
+# Analysis figures are rendered in background threads; interactive matplotlib
+# backends (TkAgg) are not thread-safe, so force the non-interactive Agg.
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+except ImportError:
+    pass
+
 # Setup paths
 _ui_dir = Path(__file__).resolve().parent
 _project_root = _ui_dir.parent
@@ -19,7 +27,12 @@ if str(_ui_dir) not in sys.path:
 import dearpygui.dearpygui as dpg
 from components.dpg_helpers import get_texture_registry, load_image_to_texture
 from pages import test_mode, batch_mode
-from config.constants import WINDOW_WIDTH, WINDOW_HEIGHT, COLOR_TITLE
+from config.constants import (
+    WINDOW_WIDTH, WINDOW_HEIGHT,
+    COLOR_APP_BG, COLOR_PANEL_BG, COLOR_PANEL_BORDER, COLOR_FIELD_BG,
+    COLOR_FIELD_BORDER, COLOR_TOOLBAR_BG, COLOR_CARD_BG,
+    COLOR_TEXT, COLOR_LABEL, COLOR_ACCENT, COLOR_ACCENT2, COLOR_TITLE,
+)
 
 # Store fonts globally
 _fonts = {"default": None, "title": None, "logo": None, "header": None, "section": None, "tab": None, "bold": None, "header_large": None}
@@ -30,49 +43,85 @@ def get_fonts():
     return _fonts
 
 def _create_dark_theme():
-    """Create dark theme."""
+    """Global refined dark theme (claude.ai/design 'DDMTOLab GUI (Refined)')."""
     with dpg.theme() as dark_theme:
         with dpg.theme_component(dpg.mvAll):
-            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, (30, 30, 30))
-            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (40, 40, 40))
-            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, (50, 50, 50))
-            dpg.add_theme_color(dpg.mvThemeCol_Border, (70, 70, 70))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (80, 80, 80))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (95, 95, 95))
-            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, (110, 110, 110))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBg, (40, 40, 40))
-            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, (50, 50, 50))
-            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, (40, 40, 40))
-            dpg.add_theme_color(dpg.mvThemeCol_Header, (60, 60, 60))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (80, 80, 80))
-            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (100, 100, 100))
-            dpg.add_theme_color(dpg.mvThemeCol_Button, (60, 60, 60))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (80, 80, 80))
-            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100))
-            dpg.add_theme_color(dpg.mvThemeCol_Tab, (50, 50, 50))
-            dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (70, 70, 70))
-            dpg.add_theme_color(dpg.mvThemeCol_TabActive, (90, 90, 90))
-            dpg.add_theme_color(dpg.mvThemeCol_Text, (220, 220, 220))
-            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, (100, 180, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, (100, 180, 255))
-            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (130, 200, 255))
-            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
+            # Surfaces
+            dpg.add_theme_color(dpg.mvThemeCol_WindowBg, COLOR_APP_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_ChildBg, COLOR_PANEL_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_PopupBg, (28, 33, 43))
+            dpg.add_theme_color(dpg.mvThemeCol_Border, COLOR_FIELD_BORDER)
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBg, COLOR_TOOLBAR_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_TitleBgActive, COLOR_PANEL_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_MenuBarBg, COLOR_TOOLBAR_BG)
+            # Fields (inputs / combos)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBg, COLOR_FIELD_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (42, 51, 66))
+            dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, (49, 60, 78))
+            # Headers (collapsing headers, combo selection)
+            dpg.add_theme_color(dpg.mvThemeCol_Header, COLOR_CARD_BG)
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (38, 48, 62))
+            dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (44, 56, 73))
+            # Generic buttons (specific buttons get dedicated themes)
+            dpg.add_theme_color(dpg.mvThemeCol_Button, (35, 44, 55))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (44, 55, 69))
+            dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (54, 67, 85))
+            # Tabs (pill-like)
+            dpg.add_theme_color(dpg.mvThemeCol_Tab, (26, 33, 44))
+            dpg.add_theme_color(dpg.mvThemeCol_TabHovered, (36, 50, 68))
+            dpg.add_theme_color(dpg.mvThemeCol_TabActive, (36, 50, 68))
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocused, (26, 33, 44))
+            dpg.add_theme_color(dpg.mvThemeCol_TabUnfocusedActive, (36, 50, 68))
+            # Text and accents
+            dpg.add_theme_color(dpg.mvThemeCol_Text, COLOR_TEXT)
+            dpg.add_theme_color(dpg.mvThemeCol_TextDisabled, (90, 99, 115))
+            dpg.add_theme_color(dpg.mvThemeCol_CheckMark, COLOR_TITLE)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrab, COLOR_TITLE)
+            dpg.add_theme_color(dpg.mvThemeCol_SliderGrabActive, (87, 176, 244))
+            dpg.add_theme_color(dpg.mvThemeCol_PlotHistogram, COLOR_TITLE)  # progress fill
+            # Scrollbars
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarBg, (0, 0, 0, 0))
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, (56, 66, 79))
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, (70, 82, 100))
+            dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, (84, 98, 118))
+            # Shape language
+            dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 7)
             dpg.add_theme_style(dpg.mvStyleVar_WindowRounding, 6)
-            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 10)
+            dpg.add_theme_style(dpg.mvStyleVar_PopupRounding, 8)
+            dpg.add_theme_style(dpg.mvStyleVar_TabRounding, 7)
+            dpg.add_theme_style(dpg.mvStyleVar_GrabRounding, 4)
+            dpg.add_theme_style(dpg.mvStyleVar_ScrollbarSize, 12)
+            dpg.add_theme_style(dpg.mvStyleVar_ScrollbarRounding, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 9, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_ItemSpacing, 8, 6)
+            dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 14, 12)
     return dark_theme
 
 
+def _add_logo_wordmark(parent):
+    """Add the 'D²MTOLab' wordmark next to the logo mark."""
+    with dpg.group(parent=parent):
+        # Nudge the text down so it centers against the 54px mark
+        dpg.add_spacer(height=8)
+        logo_text = dpg.add_text("D²MTOLab", color=(255, 255, 255, 255))
+        if _fonts["logo"]:
+            dpg.bind_item_font(logo_text, _fonts["logo"])
+
+
 def _load_logo(parent):
-    """Load and display the logo from SVG."""
+    """Load and display the logo mark + wordmark (design: mark then D²MTOLab)."""
     from PIL import Image
     import numpy as np
     import io
 
-    svg_logo = _ui_dir / "assets" / "logo_new.svg"
     img = None
 
-    # Try loading from SVG first
-    if svg_logo.exists():
+    # Try loading from SVG first (first existing candidate wins)
+    for svg_name in ("logo_new.svg", "logo.svg"):
+        svg_logo = _ui_dir / "assets" / svg_name
+        if not svg_logo.exists():
+            continue
         try:
             import cairosvg
             png_data = cairosvg.svg2png(url=str(svg_logo), scale=3)
@@ -81,6 +130,7 @@ def _load_logo(parent):
             bbox = img.getbbox()
             if bbox:
                 img = img.crop(bbox)
+            break
         except Exception:
             img = None
 
@@ -97,7 +147,7 @@ def _load_logo(parent):
         try:
             w, h = img.size
 
-            target_height = 60
+            target_height = 54
             if h > target_height:
                 scale = target_height / h
                 w = int(w * scale)
@@ -120,18 +170,30 @@ def _load_logo(parent):
                 raise RuntimeError(f"Parent {parent} does not exist")
 
             dpg.add_image(tex_tag, width=w, height=h, parent=parent)
+            _add_logo_wordmark(parent)
             return
 
         except Exception:
             pass
 
-    logo_text = dpg.add_text("DDMTOLab", color=(50, 120, 200, 255), parent=parent)
-    if _fonts["logo"]:
-        dpg.bind_item_font(logo_text, _fonts["logo"])
+    # Text-only fallback when no mark image is available
+    _add_logo_wordmark(parent)
 
 
-def main():
-    """Main application entry point."""
+def main(smoke_frames: int = 0, on_ready=None):
+    """Main application entry point.
+
+    Parameters
+    ----------
+    smoke_frames : int, optional
+        If > 0, render only this many frames and exit (for automated smoke
+        tests). Can also be set via the DDMTOLAB_UI_SMOKE_FRAMES env var.
+    on_ready : callable, optional
+        Called once after the UI is fully built, before the render loop.
+    """
+    import os
+    smoke_frames = smoke_frames or int(os.environ.get("DDMTOLAB_UI_SMOKE_FRAMES", "0") or 0)
+
     dpg.create_context()
     get_texture_registry()
 
@@ -205,15 +267,19 @@ def main():
     with dpg.window(tag="primary_window"):
         # Header with logo and title
         with dpg.group(horizontal=True, tag="header_group"):
-            dpg.add_spacer(width=10)  # Left margin
+            dpg.add_spacer(width=2)
             _load_logo("header_group")
-            dpg.add_spacer(width=20)
+            dpg.add_spacer(width=10)
+            # Vertical divider between logo and title
+            with dpg.drawlist(width=2, height=40):
+                dpg.draw_line((0, 4), (0, 38), color=(43, 51, 64, 255), thickness=1)
+            dpg.add_spacer(width=10)
             with dpg.group():
                 dpg.add_spacer(height=1)
-                # Gradient title: blue (50,130,220) -> cyan (80,200,235)
+                # Gradient title: accent blue #3f95e6 -> cyan #37c4e8
                 _title_words = ["Data-Driven", " Multitask", " Optimization", " Laboratory"]
-                _c_start = (50, 130, 220)
-                _c_end = (80, 200, 235)
+                _c_start = (63, 149, 230)
+                _c_end = (55, 196, 232)
                 _title_font = _fonts.get("title_stylish") or _fonts.get("header_large") or _fonts.get("header")
                 # Zero-spacing theme for tight word packing
                 with dpg.theme() as _title_spacing_theme:
@@ -230,24 +296,24 @@ def main():
                             dpg.bind_item_font(tw, _title_font)
                 dpg.bind_item_theme(_title_grp, _title_spacing_theme)
 
-        # Accent line under the header
-        accent_w = 1000
-        accent_h = 3
+        # Accent line under the header: blue -> cyan fading out (design: 2px)
+        accent_w = 1500
+        accent_h = 2
         with dpg.drawlist(width=accent_w, height=accent_h, tag="header_accent"):
-            # Gradient accent bar: blue->cyan fading to transparent
             segments = 60
             seg_w = accent_w / segments
             for i in range(segments):
                 t = i / segments
-                alpha = int(255 * (1 - t))
-                cr = int(50 + (80 - 50) * t)
-                cg = int(130 + (200 - 130) * t)
-                cb = int(220 + (235 - 220) * t)
+                # alpha .9 at left, 0 by 70% of the width
+                alpha = int(230 * max(0.0, 1 - t / 0.7))
+                cr = int(63 + (55 - 63) * t)
+                cg = int(149 + (196 - 149) * t)
+                cb = int(230 + (232 - 230) * t)
                 dpg.draw_rectangle(
                     pmin=(i * seg_w, 0), pmax=((i + 1) * seg_w, accent_h),
                     color=(cr, cg, cb, alpha), fill=(cr, cg, cb, alpha),
                 )
-        dpg.add_spacer(height=5)
+        dpg.add_spacer(height=6)
 
         # Main tab bar - use section font (20pt) for tab labels only
         _tab_font = _fonts.get("section")
@@ -271,11 +337,19 @@ def main():
     dpg.show_viewport()
     dpg.set_primary_window("primary_window", True)
 
+    if on_ready is not None:
+        on_ready()
+
     # Main loop
+    frame_count = 0
     while dpg.is_dearpygui_running():
         test_mode.update()
         batch_mode.update()
         dpg.render_dearpygui_frame()
+        if smoke_frames:
+            frame_count += 1
+            if frame_count >= smoke_frames:
+                break
 
     dpg.destroy_context()
 

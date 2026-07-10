@@ -202,6 +202,220 @@ def format_time(seconds: float) -> str:
 
 # ---- Shared theme creators (used by batch_mode and test_mode) ----
 
+from config.constants import (
+    COLOR_PANEL_BG, COLOR_PANEL_BORDER, COLOR_WELL_BG, COLOR_WELL_BORDER,
+    COLOR_TOOLBAR_BG, COLOR_CARD_BG, COLOR_HEADING, COLOR_LIST_TEXT,
+    COLOR_ACCENT, COLOR_ACCENT2, COLOR_RESULTS_TITLE,
+)
+
+_theme_cache = {}
+
+
+def _cached_theme(key, builder):
+    """Build a theme once and reuse it across pages."""
+    tag = _theme_cache.get(key)
+    if tag is None or not dpg.does_item_exist(tag):
+        tag = builder()
+        _theme_cache[key] = tag
+    return tag
+
+
+def add_section_title(text: str, parent=0, light: bool = False):
+    """Add a section title with the design's accent bar (gradient blue->cyan).
+
+    light=True renders the on-white variant used inside the results area.
+    """
+    kwargs = {"parent": parent} if parent else {}
+    with dpg.group(horizontal=True, **kwargs):
+        bar_h = 18
+        with dpg.drawlist(width=4, height=bar_h):
+            if light:
+                dpg.draw_rectangle(pmin=(0, 1), pmax=(3, bar_h - 1),
+                                   color=(47, 143, 224, 255), fill=(47, 143, 224, 255),
+                                   rounding=2)
+            else:
+                half = bar_h // 2
+                dpg.draw_rectangle(pmin=(0, 1), pmax=(3, half),
+                                   color=COLOR_ACCENT, fill=COLOR_ACCENT, rounding=1)
+                dpg.draw_rectangle(pmin=(0, half), pmax=(3, bar_h - 1),
+                                   color=COLOR_ACCENT2, fill=COLOR_ACCENT2, rounding=1)
+        title = dpg.add_text(text, color=COLOR_RESULTS_TITLE if light else COLOR_HEADING)
+        try:
+            from main import get_fonts
+            bold = get_fonts().get("bold")
+            if bold:
+                dpg.bind_item_font(title, bold)
+        except Exception:
+            pass
+    return title
+
+
+def get_panel_theme():
+    """Panel card: #1a1e26 surface, #2b3340 border, radius 10."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvChildWindow):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, COLOR_PANEL_BG)
+                dpg.add_theme_color(dpg.mvThemeCol_Border, COLOR_PANEL_BORDER)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 10)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1)
+                dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 12, 12)
+        return t
+    return _cached_theme("panel", build)
+
+
+def get_well_theme():
+    """Inner list well: #10131a surface, #262e3a border, radius 8."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvChildWindow):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, COLOR_WELL_BG)
+                dpg.add_theme_color(dpg.mvThemeCol_Border, COLOR_WELL_BORDER)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 8)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1)
+                dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 6, 6)
+        return t
+    return _cached_theme("well", build)
+
+
+def get_toolbar_theme():
+    """Toolbar strip: #141922 surface, #262e3a border, radius 9."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvChildWindow):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, COLOR_TOOLBAR_BG)
+                dpg.add_theme_color(dpg.mvThemeCol_Border, COLOR_WELL_BORDER)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 9)
+                dpg.add_theme_style(dpg.mvStyleVar_ChildBorderSize, 1)
+                dpg.add_theme_style(dpg.mvStyleVar_WindowPadding, 9, 8)
+        return t
+    return _cached_theme("toolbar", build)
+
+
+def get_list_btn_theme():
+    """Algorithm/problem list rows: transparent, left-aligned, hover tint."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (0, 0, 0, 0))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (30, 38, 52, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (36, 48, 74, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_Text, COLOR_LIST_TEXT)
+                dpg.add_theme_style(dpg.mvStyleVar_ButtonTextAlign, 0.0, 0.5)
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 6)
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 11, 6)
+                dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 0)
+        return t
+    return _cached_theme("list_btn", build)
+
+
+def _button_theme(key, bg, hover, active, text, border=None, pad=(14, 7), rounding=7):
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvButton):
+                dpg.add_theme_color(dpg.mvThemeCol_Button, bg)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, hover)
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, active)
+                dpg.add_theme_color(dpg.mvThemeCol_Text, text)
+                dpg.add_theme_style(dpg.mvStyleVar_FramePadding, *pad)
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, rounding)
+                if border is not None:
+                    dpg.add_theme_color(dpg.mvThemeCol_Border, border)
+                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
+                else:
+                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 0)
+        return t
+    return _cached_theme(key, build)
+
+
+def get_secondary_btn_theme():
+    """Toolbar secondary: #232c37 with #34404e border."""
+    return _button_theme("btn_secondary", (35, 44, 55, 255), (44, 55, 69, 255),
+                         (54, 67, 85, 255), (199, 206, 222, 255),
+                         border=(52, 64, 78, 255))
+
+
+def get_run_btn_theme():
+    """Primary Run: solid green #2fa15a, white text."""
+    return _button_theme("btn_run", (47, 161, 90, 255), (56, 177, 102, 255),
+                         (42, 145, 80, 255), (255, 255, 255, 255), pad=(24, 7))
+
+
+def get_stop_btn_theme():
+    """Danger Stop: solid red #d1544f, white text."""
+    return _button_theme("btn_stop", (209, 84, 79, 255), (221, 102, 96, 255),
+                         (193, 68, 63, 255), (255, 255, 255, 255), pad=(22, 7))
+
+
+def get_animation_btn_theme():
+    """Animation: amber #c98a3a with dark text."""
+    return _button_theme("btn_anim", (201, 138, 58, 255), (217, 154, 72, 255),
+                         (185, 125, 48, 255), (37, 26, 6, 255), pad=(16, 7))
+
+
+def get_delete_btn_theme():
+    """Delete: outline style, #7a3b3b border, #e0847e text."""
+    return _button_theme("btn_delete", (0, 0, 0, 0), (122, 59, 59, 70),
+                         (122, 59, 59, 120), (224, 132, 126, 255),
+                         border=(122, 59, 59, 255), pad=(7, 7))
+
+
+def get_results_theme():
+    """Light results surface: #fbfbfc with dark text and light table borders."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvAll):
+                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (251, 251, 252))
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (42, 47, 56))
+                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (238, 240, 243))
+                dpg.add_theme_color(dpg.mvThemeCol_FrameBgHovered, (230, 233, 238))
+                dpg.add_theme_color(dpg.mvThemeCol_FrameBgActive, (222, 226, 232))
+                dpg.add_theme_color(dpg.mvThemeCol_Border, (223, 226, 231))
+                dpg.add_theme_color(dpg.mvThemeCol_TableBorderStrong, (226, 229, 234))
+                dpg.add_theme_color(dpg.mvThemeCol_TableBorderLight, (236, 238, 241))
+                dpg.add_theme_color(dpg.mvThemeCol_TableRowBg, (251, 251, 252))
+                dpg.add_theme_color(dpg.mvThemeCol_TableRowBgAlt, (246, 247, 249))
+                dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrab, (203, 208, 216))
+                dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabHovered, (183, 189, 199))
+                dpg.add_theme_color(dpg.mvThemeCol_ScrollbarGrabActive, (166, 173, 185))
+                dpg.add_theme_style(dpg.mvStyleVar_ChildRounding, 9)
+        return t
+    return _cached_theme("results", build)
+
+
+def get_results_table_theme():
+    """Results table: dark #2b3340 header with white text, dark rows on white."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvTable):
+                dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (43, 51, 64))
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (238, 242, 248))
+            with dpg.theme_component(dpg.mvTableRow):
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (42, 47, 56))
+        return t
+    return _cached_theme("results_table", build)
+
+
+def get_light_btn_theme():
+    """On-white button (e.g. Open Results Folder): #eef0f3 with dark text."""
+    return _button_theme("btn_light", (238, 240, 243, 255), (229, 232, 237, 255),
+                         (219, 223, 230, 255), (59, 66, 80, 255),
+                         border=(223, 226, 231, 255), pad=(12, 6))
+
+
+def get_card_theme():
+    """Selected-item collapsing headers: #1e2530 cards."""
+    def build():
+        with dpg.theme() as t:
+            with dpg.theme_component(dpg.mvCollapsingHeader):
+                dpg.add_theme_color(dpg.mvThemeCol_Header, COLOR_CARD_BG)
+                dpg.add_theme_color(dpg.mvThemeCol_HeaderHovered, (38, 48, 62, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_HeaderActive, (44, 56, 73, 255))
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 8)
+        return t
+    return _cached_theme("card", build)
+
+
 _arrow_btn_theme = None
 
 def get_arrow_btn_theme():
@@ -210,10 +424,11 @@ def get_arrow_btn_theme():
     if _arrow_btn_theme is None or not dpg.does_item_exist(_arrow_btn_theme):
         with dpg.theme() as _arrow_btn_theme:
             with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 180, 180))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (150, 150, 150))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (120, 120, 120))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (42, 51, 64, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (52, 63, 79, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (62, 75, 94, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (139, 148, 164, 255))
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 5)
     return _arrow_btn_theme
 
 
@@ -225,10 +440,11 @@ def get_disabled_btn_theme():
     if _disabled_btn_theme is None or not dpg.does_item_exist(_disabled_btn_theme):
         with dpg.theme() as _disabled_btn_theme:
             with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (100, 100, 100))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (100, 100, 100))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (100, 100, 100))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (160, 160, 160))
+                dpg.add_theme_color(dpg.mvThemeCol_Button, (35, 42, 53, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (35, 42, 53, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (35, 42, 53, 255))
+                dpg.add_theme_color(dpg.mvThemeCol_Text, (90, 99, 115, 255))
+                dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 7)
     return _disabled_btn_theme
 
 

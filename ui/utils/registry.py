@@ -13,7 +13,8 @@ from typing import Dict, Type, Any, List, Tuple, Optional
 from utils.problem_scanner import (
     scan_all_problems, get_scanned_problem_suites, get_scanned_problem_methods,
     get_scanned_problem_params, get_problem_class, create_problem_from_scan,
-    is_fixed_dimension_problem,
+    is_fixed_dimension_problem, map_method_kwargs,
+    _filter_kwargs_for_callable,
     get_problem_module_path as get_scanned_problem_module_path,
 )
 from utils.algo_scanner import (
@@ -74,20 +75,25 @@ def create_problem(category: str, suite: str, method: str, **kwargs):
     return create_problem_from_scan(category, suite, method, **kwargs)
 
 
-def get_problem_creator(category: str, suite: str, method: str, **kwargs) -> Tuple[callable, str]:
-    """Return (problem_creator_fn, display_name) for BatchExperiment.add_problem()."""
+def get_problem_creator(category: str, suite: str, method: str, **kwargs) -> Tuple[callable, str, dict]:
+    """Return (problem_creator_fn, display_name, creator_kwargs) for BatchExperiment.add_problem().
+
+    creator_kwargs are the UI parameters mapped to the method's original names
+    and filtered to what the method signature accepts, so they can be passed
+    directly as ``add_problem(creator, name, **creator_kwargs)``.
+    """
     cls = get_problem_class(category, suite)
     if cls is None:
         raise KeyError(f"Problem suite '{suite}' not found in category '{category}'")
 
-    try:
-        instance = cls(**kwargs)
-    except TypeError:
-        instance = cls()
-
+    instance = cls()
     creator = getattr(instance, method)
+
+    mapped = map_method_kwargs(category, suite, method, kwargs)
+    creator_kwargs = _filter_kwargs_for_callable(creator, mapped)
+
     display_name = f"{suite}_{method}"
-    return creator, display_name
+    return creator, display_name, creator_kwargs
 
 
 def get_all_categories() -> List[str]:

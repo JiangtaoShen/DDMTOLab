@@ -28,6 +28,8 @@ from config.default_params import PROBLEM_PARAMS, FIXED_DIMENSION_SUITES, FIXED_
 from config.constants import (
     CATEGORIES, ALGO_CATEGORIES, METRICS, TABLE_FORMATS, FIGURE_FORMATS, STATISTIC_TYPES,
     COLOR_TITLE, COLOR_ERROR, COLOR_SUCCESS, COLOR_SECTION,
+    COLOR_LABEL, COLOR_HEADING, COLOR_RESULTS_BG, COLOR_RESULTS_TEXT,
+    COLOR_RESULTS_MUTED, COLOR_TABLE_HEADER,
 )
 from components.dpg_helpers import (
     load_image_to_texture, show_error_modal, show_info_modal,
@@ -38,6 +40,11 @@ from components.dpg_helpers import (
     open_file_location as _open_file_location,
     copy_image_to_clipboard as _copy_image_to_clipboard,
     open_algo_source as _open_algo_source,
+    add_section_title, get_panel_theme, get_well_theme, get_toolbar_theme,
+    get_list_btn_theme, get_secondary_btn_theme, get_run_btn_theme,
+    get_stop_btn_theme, get_animation_btn_theme, get_delete_btn_theme,
+    get_card_theme, get_arrow_btn_theme, get_results_theme,
+    get_results_table_theme, get_light_btn_theme,
 )
 
 # Module state
@@ -87,10 +94,19 @@ def _on_prob_category_change(sender, app_data):
     _update_problem_params_visibility(cat, suites[0] if suites else "")
     _update_metric_visibility(cat)
 
+    # Keep algorithm category compatible with the problem category
+    target_algo_cat = cat if cat in ALGO_CATEGORIES else "MTSO"
+    if dpg.does_item_exist("test_algo_cat_combo") and \
+            dpg.get_value("test_algo_cat_combo") != target_algo_cat:
+        dpg.set_value("test_algo_cat_combo", target_algo_cat)
+        _on_algo_category_change(None, target_algo_cat)
+
 
 def _on_algo_category_change(sender, app_data):
     """Update algorithm list when algorithm category changes."""
     cat = app_data
+    if cat == _state["current_algo_category"]:
+        return
     _state["current_algo_category"] = cat
     _state["selected_algos"] = []
     _state["algo_id_counter"] = 0
@@ -129,10 +145,10 @@ def _update_problem_params_visibility(cat: str, suite: str):
     # Show M only if it's in params AND not a fixed-objective suite
     show_M = "M" in suite_params and not is_fixed_obj
     show_K = "K" in suite_params
-    show_L = "L" in suite_params
+    show_Kp = "Kp" in suite_params
 
     # Show params group if any parameter should be visible
-    has_any_params = show_D or show_M or show_K or show_L
+    has_any_params = show_D or show_M or show_K or show_Kp
     if dpg.does_item_exist("test_problem_params_group"):
         dpg.configure_item("test_problem_params_group", show=has_any_params)
 
@@ -145,8 +161,23 @@ def _update_problem_params_visibility(cat: str, suite: str):
     if dpg.does_item_exist("test_K_group"):
         dpg.configure_item("test_K_group", show=show_K)
 
-    if dpg.does_item_exist("test_L_group"):
-        dpg.configure_item("test_L_group", show=show_L)
+    if dpg.does_item_exist("test_Kp_group"):
+        dpg.configure_item("test_Kp_group", show=show_Kp)
+
+    # Sync input values to the suite's own defaults so runs match the
+    # problem definitions (e.g., ZDT1 defaults to D=30, not a global 50)
+    defaults = {"D": 50, "M": 3, "K": 10, "Kp": 4}
+    for pname in ("D", "M", "K", "Kp"):
+        tag = f"test_{pname}_input"
+        if not dpg.does_item_exist(tag):
+            continue
+        default = suite_params.get(pname, {}).get("default")
+        if default is None:
+            default = defaults[pname]
+        try:
+            dpg.set_value(tag, int(default))
+        except (TypeError, ValueError):
+            pass
 
 
 def _update_metric_visibility(cat: str):
@@ -196,9 +227,11 @@ def _update_algo_list_display():
         'n': 'Population', 'max_nfes': 'Max NFEs',
     }
 
+    list_theme = get_list_btn_theme()
     for algo_name in algos:
         btn = dpg.add_button(label=algo_name, callback=_on_algo_click, user_data=algo_name,
                              width=-1, parent="test_algo_list_container")
+        dpg.bind_item_theme(btn, list_theme)
         # Add tooltip with algorithm information (blue labels)
         info = get_algorithm_info(cat, algo_name)
         if info:
@@ -260,11 +293,14 @@ def _update_algo_params_display():
         header_label = custom_name
 
         # Up/Down buttons for reordering
+        arrow_theme = get_arrow_btn_theme()
         with dpg.group(horizontal=True, parent="test_algo_params_container"):
-            dpg.add_button(label="^", width=20, callback=_move_algo_up, user_data=algo_id,
-                          enabled=(i > 0))
-            dpg.add_button(label="v", width=20, callback=_move_algo_down, user_data=algo_id,
-                          enabled=(i < len(selected) - 1))
+            up_btn = dpg.add_button(label="^", width=24, callback=_move_algo_up, user_data=algo_id,
+                                    enabled=(i > 0))
+            down_btn = dpg.add_button(label="v", width=24, callback=_move_algo_down, user_data=algo_id,
+                                      enabled=(i < len(selected) - 1))
+            dpg.bind_item_theme(up_btn, arrow_theme)
+            dpg.bind_item_theme(down_btn, arrow_theme)
 
         # Collapsing header with algorithm name
         with dpg.collapsing_header(label=f"{header_label}##{safe_algo_name}_{algo_id}",
@@ -278,7 +314,7 @@ def _update_algo_params_display():
 
             # Name parameter for renaming
             with dpg.group(horizontal=True):
-                dpg.add_text("Name:")
+                dpg.add_text("Name:", color=COLOR_LABEL)
                 name_tag = f"test_algo_name_{algo_id}"
                 dpg.add_input_text(tag=name_tag, default_value=custom_name, width=-1,
                                    callback=lambda s, a, u: _on_algo_name_change(u, a),
@@ -329,13 +365,13 @@ def _add_param_input_with_id(algo_id: int, algo_name: str, param_name: str, para
 
     with dpg.group(horizontal=True):
         if is_vectorizable:
-            dpg.add_text(f"{desc}:", tag=f"{tag}_label", color=COLOR_SECTION)
+            dpg.add_text(f"{desc}:", tag=f"{tag}_label", color=(87, 176, 244))
             # Use text input for vectorizable parameters to allow list input
             default_str = str(default) if default is not None else "100" if param_type == 'int' else "0.5"
             dpg.add_input_text(tag=tag, default_value=default_str, width=-1, hint="e.g. [100,200]",
                                callback=make_callback(algo_id, param_name))
         else:
-            dpg.add_text(f"{desc}:", tag=f"{tag}_label")
+            dpg.add_text(f"{desc}:", tag=f"{tag}_label", color=COLOR_LABEL)
             if param_type == 'int':
                 dpg.add_input_int(tag=tag, default_value=default if default is not None else 100,
                                   width=-1, step=0, callback=make_callback(algo_id, param_name))
@@ -419,13 +455,13 @@ def _run_clicked(sender, app_data):
     if not is_fixed_dim:
         if dpg.does_item_exist("test_D_input") and dpg.is_item_shown("test_D_group"):
             problem_kwargs["D"] = dpg.get_value("test_D_input")
-    # M, K, L are available based on suite params (independent of fixed dimension)
+    # M, K, Kp are available based on suite params (independent of fixed dimension)
     if dpg.does_item_exist("test_M_input") and dpg.is_item_shown("test_M_group"):
         problem_kwargs["M"] = dpg.get_value("test_M_input")
     if dpg.does_item_exist("test_K_input") and dpg.is_item_shown("test_K_group"):
         problem_kwargs["K"] = dpg.get_value("test_K_input")
-    if dpg.does_item_exist("test_L_input") and dpg.is_item_shown("test_L_group"):
-        problem_kwargs["L"] = dpg.get_value("test_L_input")
+    if dpg.does_item_exist("test_Kp_input") and dpg.is_item_shown("test_Kp_group"):
+        problem_kwargs["Kp"] = dpg.get_value("test_Kp_input")
 
     # Get selected algorithms in user-defined order
     selected = _state["selected_algos"]  # List of {id, algo_name, custom_name}
@@ -451,6 +487,8 @@ def _run_clicked(sender, app_data):
     _state["statuses"] = {}
     _state["running"] = True
     _state["results_displayed"] = False
+    _state["worker_done"] = False
+    _state["analysis_error"] = None
 
     # Lock run button
     dpg.configure_item("test_run_btn", enabled=False)
@@ -466,14 +504,34 @@ def _run_clicked(sender, app_data):
                          default_value=0.0, width=-1)
     dpg.add_text("Elapsed: 0s", parent="test_results_area", tag="test_elapsed_text", color=(100, 100, 100))
 
+    def _abort_run(message: str):
+        show_error_modal(message)
+        _state["running"] = False
+        # Restore the run button and remove the progress widgets
+        dpg.configure_item("test_run_btn", enabled=True)
+        if "run_theme" in _state:
+            dpg.bind_item_theme("test_run_btn", _state["run_theme"])
+        dpg.delete_item("test_results_area", children_only=True)
+        dpg.add_text("No results yet. Configure and run an experiment.",
+                     parent="test_results_area", color=(100, 100, 100))
+
     # Create problem
     try:
         problem = create_problem(prob_cat, suite, method, **problem_kwargs)
     except Exception as e:
-        show_error_modal(f"Failed to create problem: {e}")
-        _state["running"] = False
-        dpg.configure_item("test_run_btn", enabled=True)
-        dpg.configure_item("test_stop_btn", enabled=False)
+        _abort_run(f"Failed to create problem: {e}")
+        return
+
+    # Fail fast on algorithm-problem mismatches with a clear message
+    from utils.compat import check_algorithm_compatibility
+    incompat = []
+    for algo_entry in selected:
+        info = get_algorithm_info(algo_cat, algo_entry["algo_name"])
+        issues = check_algorithm_compatibility(problem, info)
+        if issues:
+            incompat.append(f"{algo_entry['custom_name']}: " + "; ".join(issues))
+    if incompat:
+        _abort_run("Incompatible algorithm(s) for this problem:\n\n" + "\n".join(incompat))
         return
 
     save_path = _state["file_manager"].get_data_path_str()
@@ -553,11 +611,18 @@ def _run_clicked(sender, app_data):
                     elapsed = time.time() - start_time
                     dpg.set_value("test_elapsed_text", f"Elapsed: {format_time(elapsed)}")
 
+            # Run analysis in this worker thread so the UI stays responsive
+            if _state["results"]:
+                if dpg.does_item_exist("test_running_text"):
+                    dpg.set_value("test_running_text", "Analyzing results...")
+                _run_analysis()
+
         # Final flush
         _state["stdout_buffer"] = capture.getvalue()
         if dpg.does_item_exist("test_progress"):
             dpg.set_value("test_progress", 1.0)
         _state["running"] = False
+        _state["worker_done"] = True
 
     t = threading.Thread(target=_worker, daemon=True)
     t.start()
@@ -647,9 +712,13 @@ def _run_analysis():
             clear_results=True
         )
 
-        return analyzer.run()
+        result = analyzer.run()
+        _state["analysis_error"] = None
+        return result
 
-    except Exception:
+    except Exception as e:
+        import traceback
+        _state["analysis_error"] = f"{e}\n{traceback.format_exc()}"
         return None
 
 
@@ -725,12 +794,14 @@ def _display_results():
     if not results:
         return
 
-    dpg.add_text("Generating analysis...", parent="test_results_area", tag="test_analysis_status",
-                 color=(60, 60, 60))
-    _run_analysis()
-
-    if dpg.does_item_exist("test_analysis_status"):
-        dpg.delete_item("test_analysis_status")
+    # Analysis already ran in the worker thread; surface any failure here
+    analysis_error = _state.get("analysis_error")
+    if analysis_error:
+        error_msg = f"Analysis failed: {analysis_error}"
+        with dpg.group(horizontal=True, parent="test_results_area"):
+            dpg.add_text(error_msg, color=(200, 60, 60), wrap=560)
+            dpg.add_button(label="Copy", callback=_on_copy_error_click,
+                           user_data=error_msg, width=24)
 
     results_path = Path(_state["file_manager"].get_results_path_str())
 
@@ -753,30 +824,17 @@ def _display_results():
 
     with dpg.group(horizontal=True, parent="test_results_area"):
         dpg.add_spacer(width=-1)
-        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=150)
-        with dpg.theme() as btn_theme:
-            with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (200, 200, 200))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (160, 160, 160))
-        dpg.bind_item_theme(btn, btn_theme)
+        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=160)
+        dpg.bind_item_theme(btn, get_light_btn_theme())
 
     dpg.add_spacer(height=5, parent="test_results_area")
 
     # Display Excel table first (like batch mode)
     excel_files = list(results_path.glob("*.xlsx"))
     if excel_files:
-        dpg.add_text("Results Table", parent="test_results_area", color=COLOR_TITLE)
-        dpg.add_separator(parent="test_results_area")
+        add_section_title("Results Table", parent="test_results_area", light=True)
 
-        # Create table theme
-        with dpg.theme() as table_theme:
-            with dpg.theme_component(dpg.mvTable):
-                dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (70, 70, 70))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 255, 255))
-            with dpg.theme_component(dpg.mvTableRow):
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
+        table_theme = get_results_table_theme()
 
         for excel_file in excel_files:
             try:
@@ -833,8 +891,7 @@ def _display_results():
 
         # 1. Convergence curves (adaptive per row, same width as all images)
         if convergence_files:
-            dpg.add_text("Convergence Curves", parent="test_results_area", color=COLOR_TITLE)
-            dpg.add_separator(parent="test_results_area")
+            add_section_title("Convergence Curves", parent="test_results_area", light=True)
             for i in range(0, len(convergence_files), nd_per_row):
                 row_files = sorted(convergence_files)[i:i+nd_per_row]
                 with dpg.group(horizontal=True, parent="test_results_area"):
@@ -850,8 +907,7 @@ def _display_results():
             nd_pngs = sorted(nd_folder.glob("*.png"))
             if nd_pngs:
                 dpg.add_spacer(height=10, parent="test_results_area")
-                dpg.add_text("Non-Dominated Solutions", parent="test_results_area", color=COLOR_TITLE)
-                dpg.add_separator(parent="test_results_area")
+                add_section_title("Non-Dominated Solutions", parent="test_results_area", light=True)
                 dpg.add_spacer(height=5, parent="test_results_area")
 
                 for i in range(0, len(nd_pngs), nd_per_row):
@@ -865,8 +921,7 @@ def _display_results():
         # 3. Runtime comparison (adaptive per row)
         if runtime_files:
             dpg.add_spacer(height=10, parent="test_results_area")
-            dpg.add_text("Runtime Comparison", parent="test_results_area", color=COLOR_TITLE)
-            dpg.add_separator(parent="test_results_area")
+            add_section_title("Runtime Comparison", parent="test_results_area", light=True)
             for i in range(0, len(runtime_files), nd_per_row):
                 row_files = sorted(runtime_files)[i:i+nd_per_row]
                 with dpg.group(horizontal=True, parent="test_results_area"):
@@ -883,7 +938,12 @@ def _display_results():
             dpg.add_spacer(height=10, parent="test_results_area")
 
     if not png_files and not excel_files:
-        dpg.add_text("No results generated.", parent="test_results_area", color=(180, 80, 80))
+        other = list(results_path.glob("*.pdf")) + list(results_path.glob("*.svg"))
+        if other:
+            dpg.add_text(f"Found {len(other)} plot files (PDF/SVG). Use Open Results Folder to view.",
+                         parent="test_results_area", color=(100, 100, 100))
+        else:
+            dpg.add_text("No results generated.", parent="test_results_area", color=(180, 80, 80))
 
     dpg.add_spacer(height=10, parent="test_results_area")
     dpg.add_text(f"Results saved to: {results_path}", parent="test_results_area", color=(100, 100, 100))
@@ -993,28 +1053,16 @@ def _display_loaded_results(results_path: Path):
 
     with dpg.group(horizontal=True, parent="test_results_area"):
         dpg.add_spacer(width=-1)
-        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=150)
-        with dpg.theme() as btn_theme:
-            with dpg.theme_component(dpg.mvButton):
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_Button, (200, 200, 200))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (180, 180, 180))
-                dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (160, 160, 160))
-        dpg.bind_item_theme(btn, btn_theme)
+        btn = dpg.add_button(label="Open Results Folder", callback=lambda: _open_folder(), width=160)
+        dpg.bind_item_theme(btn, get_light_btn_theme())
 
     dpg.add_spacer(height=5, parent="test_results_area")
 
     # Excel tables
     excel_files = list(results_path.glob("*.xlsx"))
     if excel_files:
-        dpg.add_text("Results Table", parent="test_results_area", color=COLOR_TITLE)
-        dpg.add_separator(parent="test_results_area")
-        with dpg.theme() as table_theme:
-            with dpg.theme_component(dpg.mvTable):
-                dpg.add_theme_color(dpg.mvThemeCol_TableHeaderBg, (70, 70, 70))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (255, 255, 255))
-            with dpg.theme_component(dpg.mvTableRow):
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
+        add_section_title("Results Table", parent="test_results_area", light=True)
+        table_theme = get_results_table_theme()
         for excel_file in excel_files:
             try:
                 import pandas as pd
@@ -1053,8 +1101,7 @@ def _display_loaded_results(results_path: Path):
                                   ("Other", other_images)]:
         if images:
             dpg.add_spacer(height=10, parent="test_results_area")
-            dpg.add_text(section_name, parent="test_results_area", color=COLOR_TITLE)
-            dpg.add_separator(parent="test_results_area")
+            add_section_title(section_name, parent="test_results_area", light=True)
             for i in range(0, len(images), per_row):
                 row_files = images[i:i + per_row]
                 with dpg.group(horizontal=True, parent="test_results_area"):
@@ -1168,147 +1215,102 @@ def create(parent, base_path: str = "./tests"):
 
     with dpg.group(horizontal=True, parent=parent):
         # Left panel - Problem Selection (Column 1)
-        with dpg.child_window(width=250, tag="test_problem_panel"):
-            dpg.add_text("Problem Selection", color=COLOR_TITLE)
-            dpg.add_separator()
+        with dpg.child_window(width=258, tag="test_problem_panel") as _left_panel:
+            add_section_title("Problem Selection")
+            dpg.add_spacer(height=4)
 
-            dpg.add_text("Category", color=COLOR_SUCCESS)
+            dpg.add_text("CATEGORY", color=COLOR_LABEL)
             dpg.add_combo(CATEGORIES, default_value="STSO", tag="test_prob_cat_combo",
                           callback=_on_prob_category_change, width=-1)
 
             dpg.add_spacer(height=5)
-            dpg.add_text("Suite", color=COLOR_SUCCESS)
+            dpg.add_text("SUITE", color=COLOR_LABEL)
             initial_suites = get_problem_suites("STSO")
             dpg.add_combo(initial_suites, default_value=initial_suites[0] if initial_suites else "",
                           tag="test_suite_combo", callback=_on_suite_change, width=-1)
 
             dpg.add_spacer(height=5)
-            dpg.add_text("Problem", color=COLOR_SUCCESS)
+            dpg.add_text("PROBLEM", color=COLOR_LABEL)
             initial_methods = get_problem_methods("STSO", initial_suites[0]) if initial_suites else []
             dpg.add_combo(initial_methods, default_value=initial_methods[0] if initial_methods else "",
                           tag="test_method_combo", width=-1)
 
             # Problem Parameters
-            dpg.add_spacer(height=10)
+            dpg.add_spacer(height=14)
             with dpg.group(tag="test_problem_params_group"):
-                dpg.add_text("Problem Parameters", color=COLOR_TITLE)
-                dpg.add_separator()
+                add_section_title("Problem Parameters")
+                dpg.add_spacer(height=4)
 
                 with dpg.group(tag="test_D_group", horizontal=True):
-                    dpg.add_text("D:")
+                    dpg.add_text("D ", color=COLOR_LABEL)
                     dpg.add_input_int(default_value=50, min_value=2, max_value=100,
                                       tag="test_D_input", width=-1, step=0)
 
                 with dpg.group(tag="test_M_group", horizontal=True, show=False):
-                    dpg.add_text("M:")
+                    dpg.add_text("M ", color=COLOR_LABEL)
                     dpg.add_input_int(default_value=3, min_value=2, max_value=10,
                                       tag="test_M_input", width=-1, step=0)
 
                 with dpg.group(tag="test_K_group", horizontal=True, show=False):
-                    dpg.add_text("K:")
+                    dpg.add_text("K ", color=COLOR_LABEL)
                     dpg.add_input_int(default_value=10, min_value=2, max_value=100,
                                       tag="test_K_input", width=-1, step=0)
 
-                with dpg.group(tag="test_L_group", horizontal=True, show=False):
-                    dpg.add_text("L:")
-                    dpg.add_input_int(default_value=20, min_value=1, max_value=50,
-                                      tag="test_L_input", width=-1, step=0)
+                with dpg.group(tag="test_Kp_group", horizontal=True, show=False):
+                    dpg.add_text("Kp", color=COLOR_LABEL)
+                    dpg.add_input_int(default_value=4, min_value=1, max_value=50,
+                                      tag="test_Kp_input", width=-1, step=0)
 
             dpg.add_spacer(height=10)
+        dpg.bind_item_theme(_left_panel, get_panel_theme())
 
         # Middle panel - Algorithm Selection (Column 2)
-        with dpg.child_window(width=280, tag="test_algo_panel"):
-            dpg.add_text("Algorithm Selection", color=COLOR_TITLE)
-            dpg.add_separator()
+        with dpg.child_window(width=288, tag="test_algo_panel") as _mid_panel:
+            add_section_title("Algorithm Selection")
+            dpg.add_spacer(height=4)
 
-            dpg.add_text("Category", color=COLOR_SUCCESS)
+            dpg.add_text("CATEGORY", color=COLOR_LABEL)
             dpg.add_combo(ALGO_CATEGORIES, default_value="STSO", tag="test_algo_cat_combo",
                           callback=_on_algo_category_change, width=-1)
 
             dpg.add_spacer(height=5)
-            with dpg.child_window(tag="test_algo_list_container", height=215, border=True):
+            with dpg.child_window(tag="test_algo_list_container", height=215, border=True) as _algo_list:
                 # Will be populated by _update_algo_list_display
                 pass
+            dpg.bind_item_theme(_algo_list, get_well_theme())
 
             # Selected Algorithms with parameters (dynamic)
-            dpg.add_spacer(height=10)
-            dpg.add_text("Selected Algorithms", color=COLOR_TITLE)
-            dpg.add_separator()
-            with dpg.child_window(tag="test_algo_params_container", height=-1, border=False):
+            dpg.add_spacer(height=12)
+            add_section_title("Selected Algorithms")
+            dpg.add_spacer(height=2)
+            with dpg.child_window(tag="test_algo_params_container", height=-1, border=False) as _params:
                 pass
+            dpg.bind_item_theme(_params, get_card_theme())
+        dpg.bind_item_theme(_mid_panel, get_panel_theme())
 
         # Right panel - Options and Results
-        with dpg.child_window(tag="test_right_panel"):
-            # Buttons row at the top
-            with dpg.group(horizontal=True):
-                clean_btn = dpg.add_button(label="Clean Data", callback=_clean_clicked, width=95)
-                dpg.add_spacer(width=4)
-                load_btn = dpg.add_button(label="Load Data", callback=_load_data_clicked, width=90)
-                dpg.add_spacer(width=4)
-                run_btn = dpg.add_button(label="Run", tag="test_run_btn",
-                                         callback=_run_clicked, width=100)
-                dpg.add_spacer(width=4)
-                stop_btn = dpg.add_button(label="Stop", tag="test_stop_btn",
-                                          callback=_stop_clicked, width=100)
-                dpg.add_spacer(width=4)
-                anim_btn = dpg.add_button(label="Animation", callback=_animation_clicked, width=100)
+        with dpg.child_window(tag="test_right_panel") as _right_panel:
+            # Toolbar strip at the top (design: #141922 rounded container)
+            with dpg.child_window(height=54, border=True, no_scrollbar=True) as toolbar:
+                with dpg.group(horizontal=True):
+                    clean_btn = dpg.add_button(label="Clean Data", callback=_clean_clicked, width=100)
+                    load_btn = dpg.add_button(label="Load Data", callback=_load_data_clicked, width=96)
+                    dpg.add_spacer(width=8)
+                    run_btn = dpg.add_button(label="Run", tag="test_run_btn",
+                                             callback=_run_clicked, width=108)
+                    stop_btn = dpg.add_button(label="Stop", tag="test_stop_btn",
+                                              callback=_stop_clicked, width=104)
+                    anim_btn = dpg.add_button(label="Animation", callback=_animation_clicked, width=110)
+            dpg.bind_item_theme(toolbar, get_toolbar_theme())
 
-            # Secondary buttons (Clean Data, Load Data)
-            with dpg.theme() as secondary_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (55, 75, 100))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (70, 95, 125))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (85, 115, 150))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (90, 110, 140))
-            dpg.bind_item_theme(clean_btn, secondary_theme)
-            dpg.bind_item_theme(load_btn, secondary_theme)
-
-            # Primary button (Run)
-            with dpg.theme() as run_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (40, 140, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (55, 165, 90))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (70, 185, 110))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (60, 170, 90))
+            dpg.bind_item_theme(clean_btn, get_secondary_btn_theme())
+            dpg.bind_item_theme(load_btn, get_secondary_btn_theme())
+            run_theme = get_run_btn_theme()
             dpg.bind_item_theme(run_btn, run_theme)
             _state["run_theme"] = run_theme
-
-            # Danger button (Stop)
-            with dpg.theme() as stop_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (170, 50, 50))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (195, 70, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (215, 95, 95))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (200, 70, 70))
-            dpg.bind_item_theme(stop_btn, stop_theme)
-
-            with dpg.theme() as delete_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (140, 50, 50))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (170, 70, 70))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (200, 90, 90))
-            _state["delete_theme"] = delete_theme
-
-            # Animation button
-            with dpg.theme() as anim_theme:
-                with dpg.theme_component(dpg.mvButton):
-                    dpg.add_theme_color(dpg.mvThemeCol_Button, (180, 120, 40))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonHovered, (200, 140, 60))
-                    dpg.add_theme_color(dpg.mvThemeCol_ButtonActive, (220, 160, 80))
-                    dpg.add_theme_style(dpg.mvStyleVar_FramePadding, 8, 6)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameRounding, 4)
-                    dpg.add_theme_style(dpg.mvStyleVar_FrameBorderSize, 1)
-                    dpg.add_theme_color(dpg.mvThemeCol_Border, (210, 150, 60))
-            dpg.bind_item_theme(anim_btn, anim_theme)
+            dpg.bind_item_theme(stop_btn, get_stop_btn_theme())
+            dpg.bind_item_theme(anim_btn, get_animation_btn_theme())
+            _state["delete_theme"] = get_delete_btn_theme()
 
             # Apply bold font to Run and Stop buttons
             from main import get_fonts
@@ -1317,12 +1319,10 @@ def create(parent, base_path: str = "./tests"):
                 dpg.bind_item_font(run_btn, _bold)
                 dpg.bind_item_font(stop_btn, _bold)
 
-            dpg.add_spacer(height=2)
-            dpg.add_separator()
+            dpg.add_spacer(height=8)
 
             # Analysis Settings
-            dpg.add_text("Analysis Settings", color=COLOR_TITLE)
-            dpg.add_separator()
+            add_section_title("Analysis Settings")
             dpg.add_spacer(height=3)
 
             # Analysis settings table: 2 rows, 6 columns, vertically aligned
@@ -1333,7 +1333,7 @@ def create(parent, base_path: str = "./tests"):
                            borders_innerV=False, borders_outerV=False,
                            policy=dpg.mvTable_SizingFixedFit, pad_outerX=False) as settings_tbl:
                 dpg.bind_item_theme(settings_tbl, _tbl_pad_theme)
-                for _ in range(6):
+                for _ in range(4):
                     dpg.add_table_column()
 
                 # Row 1: Checkboxes (label before checkbox)
@@ -1350,12 +1350,6 @@ def create(parent, base_path: str = "./tests"):
                     with dpg.group(horizontal=True):
                         dpg.add_text("Show PF")
                         dpg.add_checkbox(tag="test_showpf_check", default_value=True)
-                    with dpg.group(horizontal=True):
-                        dpg.add_text("Std Band")
-                        dpg.add_checkbox(tag="test_stdband_check", default_value=False)
-                    with dpg.group(horizontal=True):
-                        dpg.add_text("Merge Plots")
-                        dpg.add_checkbox(tag="test_merge_check", default_value=False)
 
                 # Row 2: Combos and inputs
                 with dpg.table_row():
@@ -1368,21 +1362,14 @@ def create(parent, base_path: str = "./tests"):
                         dpg.add_combo(FIGURE_FORMATS, default_value="png",
                                       tag="test_fig_combo", width=70)
 
-            dpg.add_spacer(height=5)
-            dpg.add_separator()
+            dpg.add_spacer(height=6)
 
-            # Results area (white background for seamless image display)
+            # Results area (light surface for seamless image display)
             with dpg.child_window(tag="test_results_area") as results_panel:
-                dpg.add_text("No results yet. Configure and run an experiment.", color=(100, 100, 100))
-
-        # Apply white background theme to results area with dark text
-        with dpg.theme() as results_theme:
-            with dpg.theme_component(dpg.mvAll):
-                dpg.add_theme_color(dpg.mvThemeCol_ChildBg, (255, 255, 255))
-                dpg.add_theme_color(dpg.mvThemeCol_Text, (40, 40, 40))
-                dpg.add_theme_color(dpg.mvThemeCol_FrameBg, (245, 245, 245))
-                dpg.add_theme_color(dpg.mvThemeCol_Border, (200, 200, 200))
-        dpg.bind_item_theme(results_panel, results_theme)
+                dpg.add_text("No results yet. Configure and run an experiment.",
+                             color=(152, 160, 171))
+        dpg.bind_item_theme(results_panel, get_results_theme())
+        dpg.bind_item_theme(_right_panel, get_panel_theme())
 
     # Initialize algorithm list
     _update_algo_list_display()
@@ -1435,9 +1422,12 @@ def update():
             _display_loaded_results(results_path)
         return
 
-    # Check if experiment finished (results exist and not running)
-    if not _state["running"] and _state.get("statuses") and not _state.get("results_displayed", False):
+    # Check if experiment finished (worker done and not running).
+    # Uses worker_done (not statuses) so the Run button also unlocks when the
+    # user stopped the run before the first algorithm finished.
+    if not _state["running"] and _state.get("worker_done") and not _state.get("results_displayed", False):
         _state["results_displayed"] = True
+        _state["worker_done"] = False
         # Unlock run button
         dpg.configure_item("test_run_btn", enabled=True)
         if "run_theme" in _state:

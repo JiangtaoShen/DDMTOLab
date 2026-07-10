@@ -321,37 +321,59 @@ def is_fixed_dimension_problem(category: str, suite: str) -> bool:
     return 'D' not in params
 
 
+def _filter_kwargs_for_callable(func: Callable, kwargs: dict) -> dict:
+    """Keep only the kwargs that func's signature accepts (all if it takes **kwargs)."""
+    try:
+        sig = inspect.signature(func)
+    except (ValueError, TypeError):
+        return dict(kwargs)
+
+    for p in sig.parameters.values():
+        if p.kind == inspect.Parameter.VAR_KEYWORD:
+            return dict(kwargs)
+
+    accepted = {
+        name for name, p in sig.parameters.items()
+        if name != 'self' and p.kind in (inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                         inspect.Parameter.KEYWORD_ONLY)
+    }
+    return {k: v for k, v in kwargs.items() if k in accepted}
+
+
+def map_method_kwargs(category: str, suite: str, method: str, kwargs: dict) -> dict:
+    """Map standard param names (D/M/K/Kp) to the method's original parameter names."""
+    if not _scanned:
+        scan_all_problems()
+
+    suite_info = _problem_cache.get(category, {}).get(suite)
+    if not suite_info:
+        return dict(kwargs)
+
+    method_params = suite_info[3].get(method, {})
+    mapped = {}
+    for key, value in kwargs.items():
+        original_name = method_params.get(key, {}).get('original_name', key)
+        mapped[original_name] = value
+    return mapped
+
+
 def create_problem_from_scan(category: str, suite: str, method: str, **kwargs):
     """Create a problem instance using scanned info."""
     cls = get_problem_class(category, suite)
     if cls is None:
         raise ValueError(f"Problem suite not found: {category}/{suite}")
 
-    # Get method params to map standard names back to original names
-    suite_info = _problem_cache.get(category, {}).get(suite)
-    if suite_info:
-        method_params = suite_info[3].get(method, {})
-        # Map standard param names to original names
-        mapped_kwargs = {}
-        for key, value in kwargs.items():
-            original_name = key
-            for param_name, param_info in method_params.items():
-                if param_name == key:
-                    original_name = param_info.get('original_name', key)
-                    break
-            mapped_kwargs[original_name] = value
-        kwargs = mapped_kwargs
+    # Map standard param names (D/M/K/Kp) back to the method's original names
+    kwargs = map_method_kwargs(category, suite, method, kwargs)
 
-    try:
-        instance = cls(**kwargs)
-    except TypeError:
-        instance = cls()
+    instance = cls()
 
     method_func = getattr(instance, method, None)
     if method_func is None:
         raise ValueError(f"Method not found: {suite}.{method}")
 
-    try:
-        return method_func(**kwargs)
-    except TypeError:
-        return method_func()
+    # Only pass params the method actually accepts; unknown params for this
+    # method (from the suite-wide union) are dropped individually instead of
+    # discarding every parameter on a TypeError.
+    call_kwargs = _filter_kwargs_for_callable(method_func, kwargs)
+    return method_func(**call_kwargs)
