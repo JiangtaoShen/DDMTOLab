@@ -51,6 +51,7 @@ Features
 * **Fully Extensible** - Easy to add custom algorithms and problems
 * **Powerful Analysis Tools** - Built-in visualization and statistical analysis
 * **Parallel Computing** - Multi-core support for batch experiments
+* **Desktop GUI** - Optional point-and-click interface for running experiments (see :ref:`gui`)
 
 Documentation
 -------------
@@ -60,6 +61,7 @@ Documentation
 
    installation
    demos
+   gui
    algorithms
    methods
    problems

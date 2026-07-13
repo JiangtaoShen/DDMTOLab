@@ -219,6 +219,21 @@ This installs D²MTOLab in development mode, allowing you to:
 * Run tests and contribute to development
 * Use the package from any directory
 
+Desktop GUI (Optional)
+----------------------
+
+D²MTOLab includes an experimental desktop GUI (see :ref:`gui`). It is shipped
+in the repository only, so it requires a source checkout and a few UI-only
+dependencies:
+
+.. code-block:: bash
+
+   # From a source checkout (after pip install -e .)
+   pip install -r ui/requirements.txt
+   python ui/main.py
+
+The GUI requires a graphical display and does not run on headless machines.
+
 **Step 6: Install Development Tools (Optional)**
 
 .. code-block:: bash
