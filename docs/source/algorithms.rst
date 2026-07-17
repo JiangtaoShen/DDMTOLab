@@ -700,14 +700,8 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
      - MFEA with Single-Step Generative Model
    * - ``SaEF_AKT``
      - Surrogate-Assisted Evolutionary Framework with Adaptive Knowledge Transfer
-   * - ``DFMAB_MTO``
-     - Dual-Feedback Multi-Armed Bandit for Expensive Multitask Optimization
    * - ``EMTO_OTL``
      - Expensive Multitask Optimization via Optimal Transport Learning
-   * - ``TATS_BO``
-     - Task-Adaptive Transfer Surrogate Bayesian Optimization
-   * - ``TGPBO``
-     - Transfer Gaussian Process Bayesian Optimization
 
 MTMO (Multitask Multiobjective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
