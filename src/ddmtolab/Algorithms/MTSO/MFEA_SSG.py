@@ -10,10 +10,17 @@ References
 
 Notes
 -----
+Reproduction of paper Table II (CEC17-MTSO, 20 runs): use n=50 (the paper's
+"population size 100" counts the population shared across both tasks) and
+max_nfes=400 with the remaining defaults. The paper text states E=5 training
+epochs, but each refinement sees at most one mini-batch (elites < batch_size),
+so 5 epochs = 5 gradient steps per refinement; 50 epochs per refinement with
+cumulative (progressive) training is required to reach the reported accuracy.
+
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.12.01
-Version: 1.0
+Version: 1.1
 """
 import time
 import numpy as np
@@ -211,9 +218,15 @@ def generate_with_student(student, elite_data, grid_h, grid_w, grid_dim,
     """
     Generate samples using single-step student model with elite-guided denoising.
 
-    Adds noise to elite solutions at timestep denoise_t via forward diffusion,
-    then denoises in one step. Dimension shuffling (meta-learning inspired) is
-    applied before noising and inverse-shuffled after denoising.
+    Implements Algorithm 1 line 6 ("Generate decisions Dec from noise Z using G"):
+    noise Z enters through the forward diffusion of an elite solution
+    (x_t = sqrt(a_t) x0 + sqrt(1 - a_t) Z), and the student maps the noisy input
+    to a denoised sample in one forward pass (paper Sec. III-B). Sampling x_t as
+    pure noise instead is out-of-distribution under the short schedule
+    (alpha_bar_N ~ 0.37 for N=100) and empirically degrades results by 3-50x on
+    CEC17-MTSO P1, so the elite-guided form is used. Dimension shuffling
+    (meta-learning inspired) is applied before noising and inverse-shuffled
+    after denoising.
     """
     # Keep the denoising timestep inside the diffusion schedule
     # (n_diffusion_steps is configurable and may be smaller than the default t)
@@ -365,7 +378,7 @@ class MFEA_SSG:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, muc=2, mum=5,
-                 max_gen=None, refine_freq=3, n_pairs_per_gen=None,
+                 max_gen=None, refine_freq=1, n_pairs_per_gen=None,
                  n_diffusion_steps=100, train_epochs=50, distill_epochs=50,
                  batch_size=512, lr=5e-4, base_ch=64,
                  save_data=True, save_path='./Data', name='MFEA-SSG', disable_tqdm=True):
@@ -387,9 +400,12 @@ class MFEA_SSG:
         mum : float, optional
             Distribution index for polynomial mutation (default: 5)
         max_gen : int, optional
-            Maximum generation for generative phase (default: auto)
+            Maximum generation for generative phase. By default the generative
+            model drives the search for the entire run (paper Fig. 4 shows the
+            student model still active at Gen=100 under the 400-FE budget);
+            pass a value to switch to pure GA crossover after that generation.
         refine_freq : int, optional
-            Refinement frequency tau for generative model (default: 3)
+            Refinement frequency tau for generative model (default: 1)
         n_diffusion_steps : int, optional
             Number of diffusion timesteps N (default: 100)
         train_epochs : int, optional
@@ -514,13 +530,10 @@ class MFEA_SSG:
         # Default: nt pairs → ~nt offspring per gen → many generations for model refinement
         n_pairs_per_gen = self.n_pairs_per_gen if self.n_pairs_per_gen is not None else nt
 
-        # Estimate MaxGen: half of total generations use the generative model
-        evals_per_gen = max(n_pairs_per_gen * 2, 1)  # ~2 evals per pair (1 gen, 2 GA)
-        if self.max_gen is not None:
-            max_gen_generative = self.max_gen
-        else:
-            est_total_gen = max((max_nfes - nfes) // evals_per_gen, 1)
-            max_gen_generative = max(est_total_gen // 2, 1)
+        # MaxGen: by default the generative model is used for the whole run
+        # (validated against paper Table II; an early switch to pure GA on the
+        # collapsed population stalls refinement and worsens results)
+        max_gen_generative = self.max_gen if self.max_gen is not None else float('inf')
 
         gen = 0
 
