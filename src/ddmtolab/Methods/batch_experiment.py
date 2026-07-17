@@ -102,9 +102,19 @@ class BatchExperiment:
 
         Args:
             problem_creator: Function that creates the problem instance
-            problem_name: Problem name (used for file naming)
+            problem_name: Problem name (used for file naming, must be unique)
             **problem_params: Parameters to pass to problem creator
+
+        Raises:
+            ValueError: If a problem with the same name was already added
+                        (duplicate names would silently overwrite result files).
         """
+        self._validate_name(problem_name, "Problem")
+        if any(name == problem_name for _, name, _ in self.problems):
+            raise ValueError(
+                f"Duplicate problem name '{problem_name}': result files are keyed "
+                f"by name, so runs would overwrite each other. Use a distinct name."
+            )
         self.problems.append((problem_creator, problem_name, problem_params))
 
         # Get the class name from the problem creator's __self__ attribute
@@ -127,10 +137,22 @@ class BatchExperiment:
 
         Args:
             algorithm_class: Algorithm class (e.g., GA, DE, PSO, etc.)
-            algorithm_name: Algorithm name (used for file naming and folder creation)
+            algorithm_name: Algorithm name (used for file naming and folder
+                            creation, must be unique)
             **params: Fixed parameters for the algorithm (e.g., n, max_nfes, muc, mum, etc.)
                      Note: problem, save_path, and name will be set automatically
+
+        Raises:
+            ValueError: If an algorithm with the same name was already added
+                        (duplicate names would silently overwrite result files).
         """
+        self._validate_name(algorithm_name, "Algorithm")
+        if any(name == algorithm_name for _, name, _ in self.algorithms):
+            raise ValueError(
+                f"Duplicate algorithm name '{algorithm_name}': result files are "
+                f"keyed by name, so runs would overwrite each other. Use a "
+                f"distinct name (e.g. '{algorithm_name}_2')."
+            )
         self.algorithms.append((algorithm_class, algorithm_name, params))
 
         # Create folder for this algorithm
@@ -146,6 +168,44 @@ class BatchExperiment:
             'parameters': params
         })
 
+    @staticmethod
+    def _validate_name(name: str, kind: str):
+        """
+        Reject names that cannot be used as file/directory components.
+
+        Algorithm and problem names become folder names and pkl filename parts;
+        characters like ':' or '*' fail at save time on Windows with an obscure
+        OS error, so fail fast with an actionable message instead.
+        """
+        forbidden = set('<>:"/\\|?*')
+        bad = sorted(set(name) & forbidden)
+        if not name or not name.strip():
+            raise ValueError(f"{kind} name must be a non-empty string")
+        if bad:
+            raise ValueError(
+                f"{kind} name {name!r} contains character(s) {bad} that are "
+                f"invalid in file names. Use letters, digits, '-' or '_'."
+            )
+
+    @staticmethod
+    def _yaml_scalar(value) -> str:
+        """
+        Render a single value as a YAML-safe inline scalar/flow string.
+
+        Plain f-string interpolation breaks the config file for values that
+        YAML treats specially (names containing ':', '#', quotes, ...); this
+        delegates quoting decisions to the YAML library itself.
+        """
+        try:
+            dumped = yaml.safe_dump(value, default_flow_style=True,
+                                    allow_unicode=True, width=10 ** 9).strip()
+        except yaml.YAMLError:
+            dumped = yaml.safe_dump(str(value)).strip()
+        # Scalar documents carry an explicit end marker ("5\n..."); drop it
+        if dumped.endswith('\n...'):
+            dumped = dumped[:-4].strip()
+        return dumped
+
     def save_config(self, n_runs: int, max_workers: int):
         """
         Save experiment configuration to YAML file with custom formatting
@@ -158,43 +218,45 @@ class BatchExperiment:
         self.experiment_config['run_settings'] = {'n_runs': n_runs, 'max_workers': max_workers,
                                                   'start_time': datetime.now().isoformat()}
 
+        s = self._yaml_scalar  # YAML-safe scalar renderer
+
         # Save to YAML file
         config_path = os.path.join(self.base_path, 'experiment_config.yaml')
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
                 # Write basic info
-                f.write(f"created_at: {self.experiment_config['created_at']}\n")
-                f.write(f"base_path: {self.experiment_config['base_path']}\n")
-                f.write(f"clear_folder: {self.experiment_config['clear_folder']}\n\n")
+                f.write(f"created_at: {s(self.experiment_config['created_at'])}\n")
+                f.write(f"base_path: {s(self.experiment_config['base_path'])}\n")
+                f.write(f"clear_folder: {s(self.experiment_config['clear_folder'])}\n\n")
 
                 # Write problems with blank lines between each
                 f.write("problems:\n")
                 for i, prob in enumerate(self.experiment_config['problems']):
                     if i > 0:
                         f.write("\n")  # Add blank line before each problem (except first)
-                    f.write(f"  - name: {prob['name']}\n")
-                    f.write(f"    class: {prob['class']}\n")
-                    f.write(f"    creator_name: {prob['creator_name']}\n")
-                    f.write(f"    module: {prob['module']}\n")
-                    f.write(f"    params: {prob['params']}\n")
+                    f.write(f"  - name: {s(prob['name'])}\n")
+                    f.write(f"    class: {s(prob['class'])}\n")
+                    f.write(f"    creator_name: {s(prob['creator_name'])}\n")
+                    f.write(f"    module: {s(prob['module'])}\n")
+                    f.write(f"    params: {s(dict(prob['params']))}\n")
 
                 # Write algorithms with blank lines between each
                 f.write("\nalgorithms:\n")
                 for i, algo in enumerate(self.experiment_config['algorithms']):
                     if i > 0:
                         f.write("\n")  # Add blank line before each algorithm (except first)
-                    f.write(f"  - name: {algo['name']}\n")
-                    f.write(f"    class: {algo['class']}\n")
-                    f.write(f"    module: {algo['module']}\n")
+                    f.write(f"  - name: {s(algo['name'])}\n")
+                    f.write(f"    class: {s(algo['class'])}\n")
+                    f.write(f"    module: {s(algo['module'])}\n")
                     f.write(f"    parameters:\n")
                     for key, value in algo['parameters'].items():
-                        f.write(f"      {key}: {value}\n")
+                        f.write(f"      {s(key)}: {s(value)}\n")
 
                 # Write run settings
                 f.write("\nrun_settings:\n")
-                f.write(f"  n_runs: {self.experiment_config['run_settings']['n_runs']}\n")
-                f.write(f"  max_workers: {self.experiment_config['run_settings']['max_workers']}\n")
-                f.write(f"  start_time: {self.experiment_config['run_settings']['start_time']}\n")
+                f.write(f"  n_runs: {s(self.experiment_config['run_settings']['n_runs'])}\n")
+                f.write(f"  max_workers: {s(self.experiment_config['run_settings']['max_workers'])}\n")
+                f.write(f"  start_time: {s(self.experiment_config['run_settings']['start_time'])}\n")
 
             print(f"💾 Configuration saved to: {config_path}\n")
         except Exception as e:
@@ -385,14 +447,19 @@ class BatchExperiment:
             verbose: Whether to print detailed progress information
             max_workers: Maximum number of worker processes, defaults to CPU count if None
                         If None and loaded from config, uses config value
+
+        Returns:
+            List[Dict]: One timing/status record per executed run, with keys
+            'Algorithm', 'Problem', 'Run', 'Filename', 'Time(s)', 'Status',
+            'Error'. Empty list if nothing was run.
         """
         if not self.problems:
             print("Error: No problems added!")
-            return
+            return []
 
         if not self.algorithms:
             print("Error: No algorithms added!")
-            return
+            return []
 
         # Use loaded settings if available
         if hasattr(self, '_loaded_run_settings'):
@@ -406,6 +473,11 @@ class BatchExperiment:
                 n_runs = 30
             if max_workers is None:
                 max_workers = mp.cpu_count()
+
+        if not isinstance(n_runs, int) or n_runs < 1:
+            raise ValueError(f"n_runs must be a positive integer, got {n_runs!r}")
+        if not isinstance(max_workers, int) or max_workers < 1:
+            raise ValueError(f"max_workers must be a positive integer, got {max_workers!r}")
 
         # Save configuration before running
         self.save_config(n_runs, max_workers)
@@ -458,7 +530,7 @@ class BatchExperiment:
 
         if not tasks:
             print("✅ All experiments already completed, nothing to run.")
-            return
+            return []
 
         total_remaining = len(tasks)
         print(f"▶️  Remaining experiments to run: {total_remaining}\n")
@@ -519,10 +591,29 @@ class BatchExperiment:
             throughput = total_remaining / max_workers / (elapsed_time / 60)
             print(f"💥 Throughput: {throughput:.2f} runs/worker/minute")
         print(f"📊 Timing summary saved to: {csv_path}\n")
+
+        # Surface failures prominently: a run that crashed produces no .pkl,
+        # and downstream analysis would otherwise fail far from the cause.
+        failed = [r for r in timing_records if r['Status'] != 'Success']
+        if failed:
+            print(f"⚠️  {len(failed)}/{total_remaining} runs FAILED:")
+            for r in failed[:5]:
+                first_line = str(r['Error']).strip().splitlines()
+                first_line = first_line[-1] if first_line else ''
+                print(f"   - {r['Filename']}: {first_line}")
+            if len(failed) > 5:
+                print(f"   ... and {len(failed) - 5} more (see {csv_path})")
+            print()
+
         print(f"=" * 60)
-        print(f"🎉🎉🎉 All Experiments Completed! 🎉🎉🎉")
+        if failed:
+            print(f"⚠️  Experiments finished with {len(failed)} failure(s)")
+        else:
+            print(f"🎉🎉🎉 All Experiments Completed! 🎉🎉🎉")
         print(f"=" * 60)
         print("\n")
+
+        return timing_records
 
     def _save_timing_summary(self, timing_records: List[Dict], csv_path: str):
         """
@@ -537,7 +628,8 @@ class BatchExperiment:
             return
 
         try:
-            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            # utf-8-sig so Excel on Windows opens the file with correct encoding
+            with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
                 fieldnames = ['Algorithm', 'Problem', 'Run', 'Filename', 'Time(s)', 'Status', 'Error']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()

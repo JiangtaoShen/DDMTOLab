@@ -44,6 +44,38 @@ class ObjectiveFunctionWrapper:
         self.func = func
         self.dim = dim
 
+    def _eval_per_row(self, X: np.ndarray) -> np.ndarray:
+        """Evaluate the function one sample at a time and stack the results."""
+        rows = []
+        for i in range(X.shape[0]):
+            rows.append(np.atleast_1d(self.func(X[i])))
+        return np.vstack(rows)
+
+    @staticmethod
+    def _align_output(out: np.ndarray, n: int, kind: str) -> Optional[np.ndarray]:
+        """
+        Normalize function output to shape (n, k); return None when the
+        output cannot be aligned to the batch size (caller may retry per-row).
+        """
+        out = np.asarray(out)
+        if out.ndim == 0:
+            return np.full((n, 1), float(out))
+        if out.ndim == 1:
+            # ambiguous: if length == n -> (n,1); else if n==1 -> (1,len)
+            if out.shape[0] == n:
+                return out.reshape(n, 1)
+            if n == 1:
+                return out.reshape(1, -1)
+            return None
+        if out.ndim == 2:
+            if out.shape[0] == n:
+                return out
+            # maybe user returned shape (k, n) accidentally -> try transpose
+            if out.shape[1] == n:
+                return out.T
+            return None
+        raise ValueError(f"{kind} returned array with ndim > 2, unsupported.")
+
     def __call__(self, X: np.ndarray) -> np.ndarray:
         """
         Evaluate the objective function on input samples.
@@ -65,17 +97,15 @@ class ObjectiveFunctionWrapper:
         """
         X = np.atleast_2d(X)
         n = X.shape[0]
+        aligned = None
         try:
             out = self.func(X)  # try vectorized call
+            aligned = self._align_output(out, n, "Objective")
         except Exception as vec_err:
             # try per-row; if that also fails, surface the original vectorized
             # error instead of silently masking a bug in the user's function
             try:
-                rows = []
-                for i in range(n):
-                    r = self.func(X[i])
-                    rows.append(np.atleast_1d(r))
-                out = np.vstack(rows)
+                aligned = self._align_output(self._eval_per_row(X), n, "Objective")
             except Exception as row_err:
                 raise RuntimeError(
                     f"Objective function failed for both vectorized and per-row "
@@ -83,30 +113,14 @@ class ObjectiveFunctionWrapper:
                     f"per-row error: {row_err!r}"
                 ) from row_err
 
-        out = np.asarray(out)
-        # Normalize to 2D with n rows
-        if out.ndim == 0:
-            out = np.full((n, 1), float(out))
-        elif out.ndim == 1:
-            # ambiguous: if length == n -> (n,1); else if n==1 -> (1,len)
-            if out.shape[0] == n:
-                out = out.reshape(n, 1)
-            else:
-                if n == 1:
-                    out = out.reshape(1, -1)
-                else:
-                    # cannot align
-                    raise ValueError("Objective returned 1D array that cannot be aligned to input batch.")
-        elif out.ndim == 2:
-            if out.shape[0] != n:
-                # maybe user returned shape (n_obj, n) accidental -> try transpose
-                if out.shape[1] == n:
-                    out = out.T
-                else:
-                    raise ValueError("Objective returned 2D array with incompatible number of rows.")
-        else:
-            raise ValueError("Objective returned array with ndim > 2, unsupported.")
-        return out.astype(np.float64)
+        if aligned is None:
+            # Vectorized call succeeded but its shape does not match the batch
+            # (typical for per-sample functions handed a 2D batch): retry per-row
+            aligned = self._align_output(self._eval_per_row(X), n, "Objective")
+        if aligned is None:
+            raise ValueError(
+                "Objective returned an array that cannot be aligned to the input batch.")
+        return aligned.astype(np.float64)
 
 
 class ConstraintFunctionWrapper:
@@ -172,48 +186,62 @@ class ConstraintFunctionWrapper:
         """
         X = np.atleast_2d(X)
         n = X.shape[0]
+        aligned = None
         try:
             out = self.func(X)
+            aligned = self._align_output(out, n)
         except Exception as vec_err:
             # try per-row; if that also fails, surface the original vectorized
             # error instead of silently masking a bug in the user's function
             try:
-                rows = []
-                for i in range(n):
-                    r = self.func(X[i])
-                    rows.append(np.atleast_1d(r))
-                out = np.vstack(rows)
+                aligned = self._align_output(self._eval_per_row(X), n)
             except Exception as row_err:
                 raise RuntimeError(
                     f"Constraint function failed for both vectorized and per-row "
                     f"evaluation. Vectorized error: {vec_err!r}; "
                     f"per-row error: {row_err!r}"
                 ) from row_err
+
+        if aligned is None:
+            # Vectorized call succeeded but its shape does not match the batch
+            # (typical for per-sample functions handed a 2D batch): retry per-row
+            aligned = self._align_output(self._eval_per_row(X), n)
+        if aligned is None:
+            raise ValueError(
+                "Constraint returned an array that cannot be aligned to the input batch.")
+        return aligned.astype(np.float64)
+
+    def _eval_per_row(self, X: np.ndarray) -> np.ndarray:
+        """Evaluate the function one sample at a time and stack the results."""
+        rows = []
+        for i in range(X.shape[0]):
+            rows.append(np.atleast_1d(self.func(X[i])))
+        return np.vstack(rows)
+
+    def _align_output(self, out: np.ndarray, n: int) -> Optional[np.ndarray]:
+        """
+        Normalize constraint output to shape (n, k); return None when the
+        output cannot be aligned (caller may retry per-row evaluation).
+        """
         out = np.asarray(out)
-        # normalize to (n, k_local)
         if out.ndim == 0:
-            out = np.full((n, 1), float(out))
-        elif out.ndim == 1:
+            return np.full((n, 1), float(out))
+        if out.ndim == 1:
             if out.shape[0] == n:
-                out = out.reshape(n, 1)
-            else:
-                if n == 1:
-                    out = out.reshape(1, -1)
-                else:
-                    # if can reshape to (n, k_local), try:
-                    if out.size == n * self.k_local:
-                        out = out.reshape(n, self.k_local)
-                    else:
-                        raise ValueError("Constraint returned 1D that cannot be aligned to inputs.")
-        elif out.ndim == 2:
-            if out.shape[0] != n:
-                if out.shape[1] == n:
-                    out = out.T
-                else:
-                    raise ValueError("Constraint returned 2D with incompatible rows.")
-        else:
-            raise ValueError("Constraint returned ndim > 2, unsupported.")
-        return out.astype(np.float64)
+                return out.reshape(n, 1)
+            if n == 1:
+                return out.reshape(1, -1)
+            # flat (n * k_local) output can be reshaped unambiguously
+            if out.size == n * self.k_local:
+                return out.reshape(n, self.k_local)
+            return None
+        if out.ndim == 2:
+            if out.shape[0] == n:
+                return out
+            if out.shape[1] == n:
+                return out.T
+            return None
+        raise ValueError("Constraint returned ndim > 2, unsupported.")
 
 
 class MTOP:
@@ -535,17 +563,28 @@ class MTOP:
         ub = np.asarray(upper_bound, dtype=np.float64).reshape(-1)
         if lb.size != dim or ub.size != dim:
             raise ValueError(f"Bounds must be length {dim}")
+        if np.any(lb > ub):
+            bad = np.where(lb > ub)[0]
+            raise ValueError(
+                f"lower_bound must not exceed upper_bound "
+                f"(violated at dimension(s) {bad.tolist()}: "
+                f"lb={lb[bad].tolist()}, ub={ub[bad].tolist()})"
+            )
 
         # Wrap objective and constraints (using independent wrapper classes, can be pickled)
         wrapped_obj = self._wrap_objective_func(objective_func, dim)
 
-        # Infer n_objectives by testing a single sample
-        test_out = wrapped_obj(np.zeros((1, dim)))
+        # Infer n_objectives by probing a single sample at the bounds midpoint
+        # (always inside the box, unlike the origin, so functions that are
+        # undefined at zero still work)
+        probe_point = ((lb + ub) / 2.0).reshape(1, -1)
+        test_out = wrapped_obj(probe_point)
         if test_out.ndim != 2:
             raise ValueError("Wrapped objective must produce 2D array")
         n_obj = test_out.shape[1]
 
-        constraint_wrappers, n_constraints = self._process_constraints(constraint_func, dim)
+        constraint_wrappers, n_constraints = self._process_constraints(
+            constraint_func, dim, probe_point=probe_point)
 
         task = {
             'raw_objective': objective_func,
@@ -720,7 +759,12 @@ class MTOP:
         """
         return ObjectiveFunctionWrapper(func, dim)
 
-    def _process_constraints(self, constraint_func, dim: int) -> Tuple[List[Callable[[np.ndarray], np.ndarray]], int]:
+    def _process_constraints(
+            self,
+            constraint_func,
+            dim: int,
+            probe_point: Optional[np.ndarray] = None
+    ) -> Tuple[List[Callable[[np.ndarray], np.ndarray]], int]:
         """
         Normalize constraint functions into list of pickle-compatible wrappers.
 
@@ -730,6 +774,9 @@ class MTOP:
             Constraint function(s) to process.
         dim : int
             Dimension of decision variables.
+        probe_point : np.ndarray, optional
+            In-bounds sample of shape (1, dim) used to probe each constraint's
+            output size. Defaults to the origin for backward compatibility.
 
         Returns
         -------
@@ -760,16 +807,25 @@ class MTOP:
         else:
             raise TypeError("constraint_func must be callable or list/tuple of callables or None")
 
+        if probe_point is None:
+            probe_point = np.zeros((1, dim))
+        probe_row = np.asarray(probe_point).reshape(-1)
+
         wrappers = []
         total = 0
         for f in funcs:
-            # probe to detect per-call output size
-            try:
-                probe = f(np.zeros(dim))
-                probe = np.atleast_1d(np.asarray(probe))
-                k = probe.size
-            except Exception:
-                # if probe fails, assume scalar per-call
+            # Probe to detect per-call output size: try the 1D row first
+            # (most constraint functions are written per-sample), then 2D
+            k = None
+            for candidate in (probe_row, probe_point):
+                try:
+                    probe = np.atleast_1d(np.asarray(f(candidate)))
+                    k = probe.size
+                    break
+                except Exception:
+                    continue
+            if k is None:
+                # if probing fails entirely, assume scalar per-call
                 k = 1
 
             total += k

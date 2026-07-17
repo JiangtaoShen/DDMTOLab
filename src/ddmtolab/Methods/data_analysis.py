@@ -271,6 +271,31 @@ class DataUtils:
     """
 
     @staticmethod
+    def natural_sort_key(name: str) -> Tuple[int, int, str]:
+        """
+        Sort key ordering digit-bearing names numerically ('P2' before 'P10')
+        while keeping digit-free names after them, alphabetically.
+
+        Returns a homogeneous tuple so mixed name styles never raise the
+        int-vs-str TypeError a naive conditional key produces.
+        """
+        digits = ''.join(filter(str.isdigit, name))
+        if digits:
+            return (0, int(digits), name)
+        return (1, 0, name)
+
+    @staticmethod
+    def first_available_run(run_dict: Dict[int, Any]) -> Optional[int]:
+        """
+        Return the smallest run key present in a per-run dictionary, or None
+        if the dictionary is empty (e.g. every run of a combination failed).
+
+        Run numbering starts at 1 but run 1 may be missing when it failed, so
+        callers must not hardcode it.
+        """
+        return min(run_dict.keys()) if run_dict else None
+
+    @staticmethod
     def load_pickle(file_path: Path) -> Dict[str, Any]:
         """
         Load and return a Python object from a pickle file.
@@ -764,9 +789,8 @@ class TableGenerator:
             DataFrame for Excel format, LaTeX string for LaTeX format.
         """
         # Extract problems and determine task count
-        # problems = sorted(all_best_values[algorithm_order[0]].keys())
         problems = sorted(all_best_values[algorithm_order[0]].keys(),
-                          key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
+                          key=DataUtils.natural_sort_key)
 
         # Determine optimization direction
         direction = DataUtils.get_metric_direction(metric_name)
@@ -801,9 +825,18 @@ class TableGenerator:
         algorithm_ranks = {algo: [] for algo in algorithm_order}
 
         for prob in problems:
-            first_algo = algorithm_order[0]
-            first_run = list(all_best_values[first_algo][prob].keys())[0]
-            num_tasks = len(all_best_values[first_algo][prob][first_run])
+            # Task count comes from the first algorithm that has any run for
+            # this problem (a fully-failed algorithm must not sink the table)
+            num_tasks = None
+            for algo in algorithm_order:
+                first_run = DataUtils.first_available_run(all_best_values[algo][prob])
+                if first_run is not None:
+                    num_tasks = len(all_best_values[algo][prob][first_run])
+                    break
+            if num_tasks is None:
+                warnings.warn(f"No runs available for any algorithm on '{prob}', "
+                              f"skipping it in the results table")
+                continue
 
             for task_idx in range(num_tasks):
                 row = {'Problem': prob, 'Task': task_idx + 1}
@@ -972,7 +1005,9 @@ class TableGenerator:
             cell = row[algo]
             if cell != 'N/A':
                 try:
-                    val_str = cell.split('(')[0].replace('$', '')
+                    # Cell formats: "1.2e+00", "1.2e+00 +", "1.2e+00 (3e-01) +",
+                    # and LaTeX "$...$" variants -- strip std and symbol parts
+                    val_str = cell.split('(')[0].replace('$', '').split()[0]
                     val = float(val_str)
 
                     if direction == OptimizationDirection.MINIMIZE:
@@ -1109,7 +1144,8 @@ class TableGenerator:
 
                 if cell_value and cell_value != 'N/A':
                     try:
-                        val_str = str(cell_value).split('(')[0].strip()
+                        # Handles "1.2e+00", "1.2e+00 +", "1.2e+00 (3e-01) +"
+                        val_str = str(cell_value).split('(')[0].split()[0]
                         val = float(val_str)
 
                         if direction == OptimizationDirection.MINIMIZE:
@@ -1353,8 +1389,12 @@ class PlotGenerator:
         else:
             # Separate plot mode: one figure per problem/task
             for prob in problems:
-                first_run_data = best_values[algorithm_order[0]][prob][1]
-                num_tasks = len(first_run_data)
+                first_run = DataUtils.first_available_run(best_values[algorithm_order[0]][prob])
+                if first_run is None:
+                    warnings.warn(f"No runs available for '{algorithm_order[0]}' on "
+                                  f"'{prob}', skipping its convergence plots")
+                    continue
+                num_tasks = len(best_values[algorithm_order[0]][prob][first_run])
 
                 for task_idx in range(num_tasks):
                     fig = self._create_convergence_figure(
@@ -1493,12 +1533,13 @@ class PlotGenerator:
             # Check data range; use linear scale if range is too small
             if len(all_curves) > 0:
                 all_data = np.concatenate([c for c in all_curves])
-                y_min, y_max = np.min(all_data), np.max(all_data)
+                y_min, y_max = np.nanmin(all_data), np.nanmax(all_data)
 
-                # Log scale ineffective for less than one order of magnitude
-                if y_max / y_min < 10:
+                # Log scale is invalid for non-positive values and ineffective
+                # for less than one order of magnitude
+                if y_min <= 0 or y_max / y_min < 10:
                     print(
-                        f"Warning: Data range too small for log scale ({y_min:.4f} to {y_max:.4f}), using linear scale")
+                        f"Warning: Data range unsuitable for log scale ({y_min:.4f} to {y_max:.4f}), using linear scale")
                     ax.set_yscale('linear')
                     self._apply_scientific_notation(ax, actual_xmax=actual_max_nfes)
                 else:
@@ -1557,8 +1598,12 @@ class PlotGenerator:
         # Collect all subplot info (problem, task_idx)
         subplot_info = []
         for prob in problems:
-            first_run_data = best_values[algorithm_order[0]][prob][1]
-            num_tasks = len(first_run_data)
+            first_run = DataUtils.first_available_run(best_values[algorithm_order[0]][prob])
+            if first_run is None:
+                warnings.warn(f"No runs available for '{algorithm_order[0]}' on "
+                              f"'{prob}', skipping it in the merged plot")
+                continue
+            num_tasks = len(best_values[algorithm_order[0]][prob][first_run])
             for task_idx in range(num_tasks):
                 subplot_info.append((prob, task_idx, num_tasks))
 
@@ -1784,7 +1829,7 @@ class PlotGenerator:
             Saves figure to disk.
         """
         problems = sorted(runtime[algorithm_order[0]].keys(),
-                          key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
+                          key=DataUtils.natural_sort_key)
         save_dir = Path(self.config.save_path)
         save_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1876,7 +1921,11 @@ class PlotGenerator:
             # Separate plot mode: one figure per algorithm/problem/task
             for algo in algorithm_order:
                 for prob in problems:
-                    first_run = list(objective_values[algo][prob].keys())[0]
+                    first_run = DataUtils.first_available_run(objective_values[algo][prob])
+                    if first_run is None:
+                        warnings.warn(f"No runs available for '{algo}' on '{prob}', "
+                                      f"skipping its ND plots")
+                        continue
                     n_tasks = len(objective_values[algo][prob][first_run])
 
                     for task_idx in range(n_tasks):
@@ -1891,7 +1940,12 @@ class PlotGenerator:
                         )
 
                         if selected_run is None:
-                            selected_run = 1
+                            # MEAN mode (or no valid data): fall back to the
+                            # first run that actually exists for this combo
+                            selected_run = DataUtils.first_available_run(
+                                objective_values[algo][prob])
+                        if selected_run is None:
+                            continue
 
                         objectives = objective_values[algo][prob][selected_run][task_idx]
 
@@ -1955,7 +2009,11 @@ class PlotGenerator:
         """
         for prob in problems:
             first_algo = algorithm_order[0]
-            first_run = list(objective_values[first_algo][prob].keys())[0]
+            first_run = DataUtils.first_available_run(objective_values[first_algo][prob])
+            if first_run is None:
+                warnings.warn(f"No runs available for '{first_algo}' on '{prob}', "
+                              f"skipping it in the merged ND plot")
+                continue
             n_tasks = len(objective_values[first_algo][prob][first_run])
 
             for task_idx in range(n_tasks):
@@ -1997,7 +2055,10 @@ class PlotGenerator:
                         best_values, algo, prob, task_idx, self.config.statistic_type
                     )
                     if selected_run is None:
-                        selected_run = 1
+                        selected_run = DataUtils.first_available_run(
+                            objective_values[algo][prob])
+                    if selected_run is None:
+                        continue
 
                     objectives = objective_values[algo][prob][selected_run][task_idx]
                     if objectives.shape[0] == 0:
@@ -2387,8 +2448,14 @@ class DataAnalyzer:
                             problems.append(prob)
 
         algorithms.sort()
-        problems.sort(key=lambda x: int(''.join(filter(str.isdigit, x))) if any(c.isdigit() for c in x) else x)
-        # problems.sort()
+        problems.sort(key=DataUtils.natural_sort_key)
+
+        if not algorithms or not problems:
+            raise ValueError(
+                f"No experiment data found under '{self.data_path}'. Expected "
+                f"one subdirectory per algorithm containing "
+                f"'<algo>_<problem>_<run>.pkl' result files."
+            )
 
         # Use the maximum run count across all combinations; missing runs are
         # skipped (with a warning) during metric calculation.
@@ -2439,6 +2506,12 @@ class DataAnalyzer:
 
         scan = self._scan_result
         algo_order = self.algorithm_order if self.algorithm_order else scan.algorithms
+        unknown = [a for a in algo_order if a not in scan.algorithms]
+        if unknown:
+            raise ValueError(
+                f"algorithm_order contains name(s) with no data on disk: {unknown}. "
+                f"Algorithms found under '{self.data_path}': {scan.algorithms}"
+            )
         metric_name = self.settings.get('metric') if self.settings else None
 
         # Initialize storage dictionaries
@@ -2477,7 +2550,11 @@ class DataAnalyzer:
                     ]
                     all_best_values[algo][prob][run] = last_vals
 
-                    last_objs = [data['all_objs'][t][-1] for t in range(len(data['all_objs']))]
+                    last_objs = [
+                        data['all_objs'][t][-1] if len(data['all_objs'][t]) > 0
+                        else np.empty((0, 1))
+                        for t in range(len(data['all_objs']))
+                    ]
                     original_objective_values[algo][prob][run] = last_objs
 
                     all_runtime[algo][prob][run] = data['runtime']
@@ -2619,15 +2696,17 @@ class DataAnalyzer:
 
                 metric_values[t][gen, 0] = metric_value
 
-                if best_so_far is None:
-                    best_so_far = metric_value
-                else:
-                    if sign == -1:
+                # NaN metric values (e.g. HV without a reference) must not
+                # poison the best-so-far curve for later generations
+                if not np.isnan(metric_value):
+                    if best_so_far is None:
+                        best_so_far = metric_value
+                    elif sign == -1:
                         best_so_far = min(best_so_far, metric_value)
                     else:
                         best_so_far = max(best_so_far, metric_value)
 
-                metric_values_best_so_far[t][gen, 0] = best_so_far
+                metric_values_best_so_far[t][gen, 0] = best_so_far if best_so_far is not None else np.nan
 
         return metric_values, metric_values_best_so_far
 
