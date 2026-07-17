@@ -66,7 +66,7 @@ class BO_LCB_CKT:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None,
-                 gen_gap=10, ada_flag=False,
+                 gen_gap=20, ada_flag=False,
                  save_data=True, save_path='./Data',
                  name='BO-LCB-CKT', disable_tqdm=False):
         """
@@ -78,13 +78,16 @@ class BO_LCB_CKT:
             Multi-task optimization problem instance.
             Task 0 is the target task, tasks 1:k are source tasks.
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 50)
+            Number of initial samples per task (default: 50, as in the
+            reference implementation)
         max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: [500, 100, 100, ...])
-            - First value: budget for target task (task 0)
+            Maximum number of function evaluations per task
+            (default: [500, 100, 100, ...])
+            - First value: budget for target task (task 0), 500 in the paper
             - Remaining values: budget for source tasks
         gen_gap : int, optional
-            Knowledge transfer trigger frequency (default: 10)
+            Knowledge transfer trigger interval in true evaluations
+            (default: 20, matching paras.interval in the reference code)
         ada_flag : bool, optional
             Whether to enable task adaptation (default: False)
         save_data : bool, optional
@@ -101,11 +104,11 @@ class BO_LCB_CKT:
         self.dims = problem.dims
         self.dim_max = max(self.dims)  # Maximum dimension across all tasks
         self.dim_target = self.dims[0]  # Target task dimension
-        self.n_initial = n_initial if n_initial is not None else 20
+        self.n_initial = n_initial if n_initial is not None else 50
 
-        # Default budget: target task gets more evaluations
+        # Default budget: target task gets more evaluations (paper: 500)
         if max_nfes is None:
-            self.max_nfes = [200] + [50] * (self.nt - 1)
+            self.max_nfes = [500] + [100] * (self.nt - 1)
         else:
             self.max_nfes = max_nfes
 
@@ -351,9 +354,10 @@ class BO_LCB_CKT:
             except:
                 pass
 
-            # Random starts
+            # Random starts across the full adaptation box, as in the
+            # reference implementation (LHS over [-1, 1])
             for _ in range(no_local_opt - 1):
-                x0 = np.random.uniform(-0.5, 0.5, self.dim_max)
+                x0 = np.random.uniform(-1.0, 1.0, self.dim_max)
                 try:
                     result = minimize(
                         objective, x0,
@@ -579,7 +583,10 @@ class BO_LCB_CKT:
         predicted_obj = a_target * np.exp(-b_target * analogized_time)
         improvement = similarity * (np.min(objs_target) - predicted_obj)
 
-        return max(0.0, improvement)
+        # Official code keeps negative improvements (they lose the competition
+        # naturally); clipping to zero here would let an external candidate
+        # beat an internal one whose improvement is also negative.
+        return improvement
 
     def _compute_ranks(self, values):
         """

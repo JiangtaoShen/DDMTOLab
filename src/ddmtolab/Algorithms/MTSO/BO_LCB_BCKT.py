@@ -56,9 +56,42 @@ class BO_LCB_BCKT:
     def __init__(self, problem, n_initial=None, max_nfes=None, gen_gap=10,
                  sigma_I_sq=0.05 ** 2, save_data=True, save_path='./Data',
                  name='BO-LCB-BCKT', disable_tqdm=True, padding='zero'):
+        """
+        Initialize BO-LCB-BCKT algorithm.
+
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance (all tasks optimized
+            simultaneously, unlike the sequential-transfer CKT variant).
+        n_initial : int, optional
+            Number of initial samples per task (default: 50, matching the
+            reference implementation)
+        max_nfes : int, optional
+            Maximum number of function evaluations per task, including the
+            initial samples (default: 200, matching FEsMax = 200 x T in the
+            reference code)
+        gen_gap : int, optional
+            Knowledge transfer trigger interval per task in true evaluations;
+            the total-FE interval is ``n_tasks * gen_gap`` as in the reference
+            code (default: 10)
+        sigma_I_sq : float, optional
+            Observation variance of the similarity measurements in the
+            conjugate Gaussian model of transferability (default: 0.05**2)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'BO-LCB-BCKT')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
+        padding : str, optional
+            Padding mode for the unified search space (default: 'zero')
+        """
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
-        self.max_nfes = max_nfes if max_nfes is not None else 100
+        self.max_nfes = max_nfes if max_nfes is not None else 200
         self.gen_gap = gen_gap
         self.sigma_I_sq = sigma_I_sq
         self.save_data = save_data
@@ -79,7 +112,8 @@ class BO_LCB_BCKT:
         n_initial = self.n_initial
         max_nfes = self.max_nfes
         gen_gap = self.gen_gap
-        sigma2_sim = 0.05 ** 2
+        # Similarity observation variance (configurable; 0.05^2 in the paper)
+        sigma2_sim = self.sigma_I_sq
 
         # ======================== Phase 1: Initialization ========================
         decs_real = initialization(problem, n_initial, method='lhs')
