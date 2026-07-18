@@ -700,8 +700,6 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
      - MFEA with Single-Step Generative Model
    * - ``SaEF_AKT``
      - Surrogate-Assisted Evolutionary Framework with Adaptive Knowledge Transfer
-   * - ``EMTO_OTL``
-     - Expensive Multitask Optimization via Optimal Transport Learning
 
 MTMO (Multitask Multiobjective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

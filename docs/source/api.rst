@@ -992,16 +992,6 @@ Multitask Single-Objective (MTSO)
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
-.. automodule:: ddmtolab.Algorithms.MTSO.EMTO_OTL
-   :no-members:
-
-.. autoclass:: ddmtolab.Algorithms.MTSO.EMTO_OTL.EMTO_OTL
-   :members: optimize
-   :undoc-members:
-   :show-inheritance:
-   :special-members: __init__
-   :exclude-members: algorithm_information, get_algorithm_information
-
 Multitask Multiobjective (MTMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
