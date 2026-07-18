@@ -10,10 +10,27 @@ References
 
 Notes
 -----
+Verified against the paper (Wang et al., IEEE TEVC 2025). This is the vanilla
+multipopulation-based LCB-EMT: each task is evolved by its own GA solver, and
+every ``TGap`` generations the LCB-based solution-selection module transfers up
+to ``Nt`` solutions from a source task into the target population. The module
+matches the paper's formulation:
+- TGP with the task-transfer kernel (Eqs. 8-9) and inter-task similarity
+  lambda = max(2/(1+e^b) - 1, 0) learned by maximizing the marginal likelihood
+  (Eqs. 10, 14; Algorithm 1).
+- SLCB(x') = f(x') - lambda_gen * sigma(x') with the TGP-predicted target-task
+  mean and uncertainty (Eq. 16), and the two-stage transfer probability of
+  Eqs. 18-20 (Algorithm 2).
+
+Correction: cross-task solution alignment now follows Eq. 21 -- missing genes
+are generated randomly (not zero-padded) when the source has fewer dimensions
+than the target; overlong genes are truncated. In the unified [0, 1] space the
+bound rescaling of Eq. 21 is the identity.
+
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.12.19
-Version: 1.0
+Date: 2026.07.18
+Version: 1.1
 """
 from tqdm import tqdm
 import time
@@ -63,15 +80,16 @@ def tgp_slcb_knowledge_transfer(target_task_idx, source_task_idx, decs, objs, di
     target_dim = dims[target_task_idx]
     source_dim = dims[source_task_idx]
 
-    # Step 1: Dimension alignment - adjust source task dimensions to match target task
+    # Step 1: Dimension alignment (paper Eq. 21). All tasks share the unified
+    # [0, 1] space, so the bound rescaling is the identity; only dimensionality
+    # is adjusted -- overlong genes are truncated and missing genes are randomly
+    # generated (as the paper prescribes), not zero-padded.
     adjusted_source_decs = decs[source_task_idx].copy()
 
     if source_dim < target_dim:
-        # Zero-padding for smaller dimensions
-        padding = np.zeros((len(adjusted_source_decs), target_dim - source_dim))
+        padding = np.random.rand(len(adjusted_source_decs), target_dim - source_dim)
         adjusted_source_decs = np.hstack([adjusted_source_decs, padding])
     elif source_dim > target_dim:
-        # Truncation for larger dimensions
         adjusted_source_decs = adjusted_source_decs[:, :target_dim]
 
     # Step 2: Prepare training data
