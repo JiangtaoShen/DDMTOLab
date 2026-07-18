@@ -9,10 +9,31 @@ References
 
 Notes
 -----
+Verified against the paper (v1.1). Structure matches Algorithm 2 and the
+component equations: local GP on the NC nearest + NR most-recent points, merit
+functions f_M = t_hat - g*s_t with g in {0, 1, 2, 4} optimized inside the
+hypercube around x_best (Eqs. 15-16), KLD similarity between the training-data
+normal distributions (Eq. 21), Softmax-normalized reciprocal similarity
+(Eqs. 23-24), pheromone/similarity transfer selection (Eqs. 22, 25), and
+pheromone volatilize/reward/clamp (Eqs. 26-28). Default parameters follow the
+paper: NC = NR = 60, Phe_a = 0.1, Phe_max = 1.0, Phe_min = 0.01, P_max = 0.9,
+DE population 15 with 2000 merit evaluations.
+
+Correction: the GPOP phase now evaluates the optima of all four merit functions
+with the true fitness each generation (the defining exploration mechanism of
+GPOP), instead of the previous single best-predicted candidate.
+
+Deliberate substitutions (inner-solver / modeling choices that do not change the
+algorithm's semantics): the merit functions and GP hyper-parameters are
+optimized with the platform's DE / botorch's L-BFGS rather than the paper's
+JADE, and the GP uses botorch's default Matern 5/2 kernel rather than the
+paper's squared-exponential-with-periodic kernel (more robust on general,
+non-periodic landscapes).
+
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2026.02.22
-Version: 1.0
+Date: 2026.07.18
+Version: 1.1
 """
 import time
 import warnings
@@ -163,13 +184,16 @@ class SaEF_AKT:
                 break
 
             # ===== Phase 1: Surrogate-Assisted EA (GPOP) =====
-            # For each task: GP search + evaluate best candidate with real function
+            # For each task: build a local GP and evaluate the optima of all four
+            # merit functions (g = 0, 1, 2, 4) with the real fitness (GPOP).
             for i in active_tasks:
                 if nfes_per_task[i] >= max_nfes_per_task[i]:
                     continue
 
-                candidate = self._gpop_search(decs[i], objs[i], dims[i])
-                if candidate is not None:
+                candidates = self._gpop_search(decs[i], objs[i], dims[i])
+                for candidate in candidates:
+                    if nfes_per_task[i] >= max_nfes_per_task[i]:
+                        break
                     candidate = candidate.reshape(1, -1)
                     obj_new, _ = evaluation_single(problem, candidate, i)
                     decs[i] = np.vstack([decs[i], candidate])
@@ -289,8 +313,9 @@ class SaEF_AKT:
 
         Returns
         -------
-        np.ndarray or None
-            Best candidate found, shape (dim_t,), or None if GP fails
+        list of np.ndarray
+            Optima of the four merit functions (g = 0, 1, 2, 4), each of shape
+            (dim_t,); near-duplicates removed. Empty if the GP cannot be built.
         """
         n = len(decs_t)
         best_idx = np.argmin(objs_t.flatten())
@@ -323,26 +348,23 @@ class SaEF_AKT:
         try:
             gp, y_mean, y_std = self._build_gp(train_x, train_y)
         except Exception:
-            return None
+            return []
 
-        # Search with multiple merit functions (g = 0, 1, 2, 4)
-        # Each g explores different exploration-exploitation trade-off
-        # Select best candidate using predicted mean (g=0) for fair comparison
-        best_candidate = None
-        best_pred_mean = np.inf
-
+        # Optimize each merit function f_M = mean - g*std (g = 0, 1, 2, 4). Each
+        # optimum is a distinct exploration/exploitation trade-off; per the GPOP
+        # procedure all of them are returned to be evaluated with the true
+        # fitness (g=0 exploits the surrogate mean, larger g probes uncertain
+        # regions). Near-duplicates are dropped to avoid wasting evaluations.
+        candidates = []
         for g in self.g_values:
             try:
-                candidate = self._optimize_merit(gp, y_mean, y_std, lb, ub, dim_t, g)
-                # Compare using predicted mean (g=0) to avoid bias toward high-g
-                pred_mean = self._evaluate_merit(gp, y_mean, y_std, candidate, 0)
-                if pred_mean < best_pred_mean:
-                    best_pred_mean = pred_mean
-                    best_candidate = candidate
+                cand = self._optimize_merit(gp, y_mean, y_std, lb, ub, dim_t, g)
             except Exception:
                 continue
+            if not any(np.allclose(cand, c, atol=1e-6) for c in candidates):
+                candidates.append(cand)
 
-        return best_candidate
+        return candidates
 
     def _build_gp(self, train_x, train_y):
         """
@@ -375,33 +397,6 @@ class SaEF_AKT:
         fit_gpytorch_mll(mll)
 
         return gp, y_mean, y_std
-
-    def _evaluate_merit(self, gp, y_mean, y_std, x, g):
-        """
-        Evaluate merit function: f_M(x) = mean(x) - g * std(x).
-
-        Parameters
-        ----------
-        gp : SingleTaskGP
-            Fitted GP model
-        y_mean, y_std : torch.Tensor
-            Standardization parameters
-        x : np.ndarray
-            Decision vector, shape (dim,)
-        g : float
-            Exploration weight
-
-        Returns
-        -------
-        float
-            Merit function value
-        """
-        x_t = torch.tensor(x, dtype=torch.double).unsqueeze(0)
-        with torch.no_grad():
-            posterior = gp.posterior(x_t)
-            mean = posterior.mean.item() * y_std.item() + y_mean.item()
-            std = posterior.variance.sqrt().item() * y_std.item()
-        return mean - g * std
 
     def _batch_merit(self, gp, y_mean, y_std, X, g):
         """
