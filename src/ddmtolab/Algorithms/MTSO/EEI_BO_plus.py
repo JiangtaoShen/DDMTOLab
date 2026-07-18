@@ -1,41 +1,59 @@
 """
-Evolutionary Expected Improvement based Bayesian Optimization for MTOP (EEI-BO+)
+Evolutionary Expected Improvement based Bayesian Optimization for MTOPs (EEI-BO+)
 
-This module implements Bayesian Optimization for expensive single-objective optimization problems
-using an evolutionary approach to optimize the Expected Improvement acquisition function.
+Multi-task extension of EEI-BO. Each task keeps its own GP surrogate and its own
+persistent CMA-ES search distribution, which advances one generation per BO
+iteration. Knowledge is transferred by periodically letting one task's EEI be
+guided by another task's CMA-ES distribution: every ``switch_interval`` no-transfer
+iterations, a single transfer iteration replaces each task's own search
+distribution with the (dimension-adapted) distribution of another task, following
+the reference's global 6-no-transfer / 1-transfer schedule.
 
 References
 ----------
-    [1] Liu, Jiao, et al. "Solving highly expensive optimization problems via evolutionary expected improvement." IEEE Transactions on Systems, Man, and Cybernetics: Systems 53.8 (2023): 4843-4855.
+    [1] J. Liu, Y. Wang, G. Sun, and T. Pang, "Solving Highly Expensive
+        Optimization Problems via Evolutionary Expected Improvement," IEEE
+        Transactions on Systems, Man, and Cybernetics: Systems, vol. 53, no. 8,
+        pp. 4843-4855, 2023.
 
 Notes
 -----
+Corrected against the reference implementation (MT-EEI-BO, v2.0):
+- Persistent per-task CMA-ES advancing one generation per iteration (was a full
+  CMA-ES restart every iteration); shares the ST-EEI-BO components.
+- A single global transfer schedule shared by all tasks (was tracked per task and
+  could desync): ``switch_interval`` no-transfer iterations then one transfer
+  iteration, repeating.
+- Transfer uses the other task's CMA-ES distribution snapshot from the same
+  iteration (all tasks advance CMA-ES first, then all tasks query), matching the
+  reference's two-pass structure.
+- Cross-task distribution mapping is dimension pad/truncation in the unified
+  [0, 1] space (the reference's bound rescaling is the identity there).
+- EEI maximized in log space; see EEI_BO for the shared acquisition details.
+
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.12.17
-Version: 1.0
+Date: 2026.07.18
+Version: 2.0
 """
-from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
-from ddmtolab.Algorithms.STSO.CMA_ES import CMA_ES
-import torch
-from ddmtolab.Methods.mtop import MTOP
-from botorch.models import SingleTaskGP
-from botorch.fit import fit_gpytorch_mll
-from gpytorch.mlls import ExactMarginalLogLikelihood
-from botorch.models.transforms import Standardize
-from ddmtolab.Algorithms.STSO.DE import DE
-from botorch.acquisition import LogExpectedImprovement
-from ddmtolab.Methods.Algo_Methods.algo_utils import *
-import warnings
 import time
+import warnings
+
+import numpy as np
+import torch
+from tqdm import tqdm
+
+from ddmtolab.Algorithms.STSO.EEI_BO import (
+    init_cma_state, fit_gp_ei, cma_step, eei_next_point,
+)
+from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 warnings.filterwarnings("ignore")
 
 
 class EEI_BO_plus:
     """
-    Evolutionary Expected Improvement based Bayesian Optimization for MTOP.
+    Evolutionary Expected Improvement based Bayesian Optimization for MTOPs.
 
     Attributes
     ----------
@@ -60,8 +78,9 @@ class EEI_BO_plus:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, switch_interval=6, n1=50, max_nfes1=500, n2=30,
-                 max_nfes2=6000, save_data=True, save_path='./Data', name='EEI-BO+', disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, switch_interval=6,
+                 cma_popsize=100, sigma0=0.5, n2=30, max_nfes2=6000,
+                 save_data=True, save_path='./Data', name='EEI-BO+', disable_tqdm=True):
         """
         Initialize EEI-BO+ algorithm.
 
@@ -73,20 +92,23 @@ class EEI_BO_plus:
             Number of initial samples per task (default: 50)
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 100)
-        n1: int, optional
-            Population size of CMA-ES (default: 50)
-        max_nfes1: int, optional
-            Maximum number of function evaluations of CMA-ES (default: 500)
-        n2: int, optional
-            Population size of DE (default: 30)
-        max_nfes2: int, optional
-            Maximum number of function evaluations of DE (default: 6000)
+        switch_interval : int, optional
+            Number of no-transfer iterations between transfer iterations
+            (default: 6, the reference's 6-no-transfer / 1-transfer schedule)
+        cma_popsize : int, optional
+            Number of surrogate-ranked samples per CMA-ES generation (default: 100)
+        sigma0 : float, optional
+            Initial CMA-ES step size in the [0, 1] space (default: 0.5)
+        n2 : int, optional
+            Population size of the DE that maximizes EEI (default: 30)
+        max_nfes2 : int, optional
+            Function evaluations of the DE that maximizes EEI (default: 6000)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'EEIBO_test')
+            Name for the experiment (default: 'EEI-BO+')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -94,8 +116,8 @@ class EEI_BO_plus:
         self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 100
         self.switch_interval = switch_interval
-        self.n1 = n1
-        self.max_nfes1 = max_nfes1
+        self.cma_popsize = cma_popsize
+        self.sigma0 = sigma0
         self.n2 = n2
         self.max_nfes2 = max_nfes2
         self.save_data = save_data
@@ -105,14 +127,14 @@ class EEI_BO_plus:
 
     def optimize(self):
         """
-        Execute the Evolutionary Expected Improvement based Bayesian Optimization algorithm.
+        Execute EEI-BO+.
 
         Returns
         -------
         Results
             Optimization results containing decision variables, objectives, and runtime
         """
-        data_type = torch.float
+        data_type = torch.double
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
@@ -120,270 +142,112 @@ class EEI_BO_plus:
         n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Generate initial samples using Latin Hypercube Sampling
         decs = initialization(problem, self.n_initial, method='lhs')
         objs, _ = evaluation(problem, decs)
         nfes_per_task = n_initial_per_task.copy()
 
-        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task), desc=f"{self.name}",
-                    disable=self.disable_tqdm)
+        # Persistent CMA-ES state per task, seeded at each task's sample mean
+        cma_states = [init_cma_state(decs[i], dims[i], self.cma_popsize, self.sigma0)
+                      for i in range(nt)]
 
-        params_per_task = [None] * nt
-        modeflag_per_task = [0] * nt  # 0=no transfer, 1=transfer
-        mode_counter_per_task = [1] * nt  # counter starts at 1 (matching MATLAB)
+        # Global transfer schedule (shared by all tasks)
+        transfer_mode = False
+        mode_counter = 1
+
+        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
+                    desc=f"{self.name}", disable=self.disable_tqdm)
 
         while sum(nfes_per_task) < sum(max_nfes_per_task):
-            # Identify tasks that have not exhausted their evaluation budget
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
 
+            # Pass 1: fit GP and advance each active task's CMA-ES one generation
+            gps, logeis = {}, {}
             for i in active_tasks:
-                # Build RBF surrogate model from current samples
-                rbf_i = RBFInterpolator(decs[i], objs[i].flatten())
+                gp, logEI = fit_gp_ei(decs[i], objs[i], data_type)
+                gps[i], logeis[i] = gp, logEI
+                cma_step(cma_states[i], gp, data_type)
 
-                def rbf(x):
-                    return rbf_i(x)
+            # Snapshot post-update distributions for cross-task transfer
+            snapshots = {i: (cma_states[i]['m_dec'].copy(),
+                             cma_states[i]['sigma'] ** 2 * cma_states[i]['C'].copy())
+                         for i in active_tasks}
 
-                surrogate_problem = MTOP()
-                surrogate_problem.add_task(rbf, dim=dims[i])
-
-                # Use CMA-ES to extract distribution parameters from surrogate
-                cmaes = CMA_ES(surrogate_problem, n=self.n1, max_nfes=self.max_nfes1, save_data=False)
-                cmaes.optimize()
-
-                params_i = cmaes.cmaes_params[0]
-
-                params_per_task[i] = {
-                    'mu': params_i['m_dec'],
-                    'sigma': params_i['sigma'],
-                    'C': params_i['C']
-                }
-
-
-                if modeflag_per_task[i] == 0:
-                    # No transfer: use own CMA-ES distribution
-                    mu = params_per_task[i]['mu']
-                    sigma = params_per_task[i]['sigma']
-                    C = params_per_task[i]['C']
-                else:
-                    # Transfer mode: use adapted params from another task
-                    other_tasks = [t for t in range(nt) if t != i and params_per_task[t] is not None]
-                    if other_tasks:
-                        source = np.random.choice(other_tasks)
-                        mu, sigma, C = _adapt_distribution_params(
-                            params_per_task[source]['mu'],
-                            params_per_task[source]['sigma'],
-                            params_per_task[source]['C'],
-                            dims[source], dims[i]
-                        )
+            # Pass 2: build EEI (own or transferred distribution) and query each task
+            for i in active_tasks:
+                if transfer_mode:
+                    sources = [t for t in active_tasks if t != i]
+                    if sources:
+                        source = int(np.random.choice(sources))
+                        mu_s, Sigma_s = snapshots[source]
+                        mu, Sigma_real = _adapt_distribution(mu_s, Sigma_s, dims[source], dims[i])
                     else:
-                        mu = params_per_task[i]['mu']
-                        sigma = params_per_task[i]['sigma']
-                        C = params_per_task[i]['C']
+                        mu, Sigma_real = snapshots[i]
+                else:
+                    mu, Sigma_real = snapshots[i]
 
-                # Select next candidate using Evolutionary Expected Improvement
-                candidate = eei_bo_next_point(decs[i], objs[i], dims[i], mu, sigma, C, self.n2, self.max_nfes2,
-                                              data_type=data_type)
+                candidate = eei_next_point(logeis[i], mu, Sigma_real, dims[i],
+                                           self.n2, self.max_nfes2, data_type)
 
-                # Evaluate the candidate solution on true objective
                 new_objs, _ = evaluation_single(problem, candidate, i)
-
-                # Update dataset with new sample
                 decs[i], objs[i] = vstack_groups((decs[i], candidate), (objs[i], new_objs))
 
                 nfes_per_task[i] += 1
-
-                # Mode switching: 6 no-transfer + 1 transfer (matching MATLAB 6:1 pattern)
-                if modeflag_per_task[i] == 0 and mode_counter_per_task[i] == self.switch_interval:
-                    modeflag_per_task[i] = 1
-                    mode_counter_per_task[i] = 0
-                elif modeflag_per_task[i] == 1:
-                    modeflag_per_task[i] = 0
-                mode_counter_per_task[i] += 1
-
                 pbar.update(1)
+
+            # Advance the global schedule once per iteration
+            if (not transfer_mode) and mode_counter == self.switch_interval:
+                transfer_mode = True
+                mode_counter = 0
+            elif transfer_mode:
+                transfer_mode = False
+            mode_counter += 1
 
         pbar.close()
         runtime = time.time() - start_time
 
         all_decs, all_objs = build_staircase_history(decs, objs, k=1)
-        # Build and save optimization results
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
-                                     bounds=problem.bounds, save_path=self.save_path,
-                                     filename=self.name, save_data=self.save_data)
-
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                     max_nfes=nfes_per_task, bounds=problem.bounds,
+                                     save_path=self.save_path, filename=self.name,
+                                     save_data=self.save_data)
         return results
 
 
-def eei_acquisition_function(mu, sigma, C, dim, logEI, data_type=torch.float):
+def _adapt_distribution(mu_source, Sigma_source, dim_source, dim_target):
     """
-    Create Evolutionary Expected Improvement acquisition function.
+    Map a source task's CMA-ES distribution (mu, Sigma) to a target task's space.
+
+    In DDMTOLab all tasks share the unified [0, 1] space, so the reference's
+    bound rescaling is the identity and only dimensionality is adjusted:
+    truncate to the first dims when the source is larger, pad the mean with
+    uniform-random coordinates and the covariance with the identity when the
+    target is larger.
 
     Parameters
     ----------
-    mu : ndarray
-        Mean vector from CMA-ES distribution
-    sigma : float
-        Step size from CMA-ES
-    C : ndarray
-        Covariance matrix from CMA-ES
-    dim : int
-        Dimensionality of the problem
-    logEI : LogExpectedImprovement
-        Log Expected Improvement acquisition function
-    data_type : torch.dtype, optional
-        Data type for PyTorch tensors (default: torch.float)
+    mu_source : np.ndarray
+        Source mean, shape (dim_source,).
+    Sigma_source : np.ndarray
+        Source real covariance sigma^2 C, shape (dim_source, dim_source).
+    dim_source, dim_target : int
+        Source and target dimensionalities.
 
     Returns
     -------
-    callable
-        EEI acquisition function
-    """
-    # Compute real covariance matrix and its properties
-    Sigma_Real = sigma ** 2 * C
-    det_C = np.linalg.det(Sigma_Real)
-    C_inv = np.linalg.inv(Sigma_Real)
-    d = dim
-
-    def EEI_func(x):
-        """
-        Evolutionary Expected Improvement acquisition function.
-
-        EEI(x) = EI(x) * P(x), where:
-        - EI(x) is the Expected Improvement
-        - P(x) is the probability density from CMA-ES distribution
-
-        Parameters
-        ----------
-        x : ndarray
-            Candidate point(s) to evaluate
-
-        Returns
-        -------
-        float or ndarray
-            Negative EEI value(s) for minimization
-        """
-        x = x.reshape(1, -1) if x.ndim == 1 else x
-
-        # Compute Expected Improvement
-        x_torch = torch.tensor(x, dtype=data_type)
-        with torch.no_grad():
-            log_ei = logEI(x_torch).detach().cpu().numpy().flatten()
-
-        ei = np.exp(log_ei)
-
-        # Compute probability density from multivariate normal distribution
-        normalization = 1.0 / (det_C * (2 * np.pi) ** (d / 2))
-        diff = x - mu
-        mahalanobis = np.sum(diff @ C_inv * diff, axis=1)
-        P = normalization * np.exp(-0.5 * mahalanobis)
-
-        # Combine EI with probability density
-        eei = ei * P
-
-        return -float(eei) if x.shape[0] == 1 else -eei
-
-    return EEI_func
-
-
-def eei_bo_next_point(decs, objs, dim, mu, sigma, C, n2, max_nfes2, data_type=torch.float):
-    """
-    Select next candidate point using Evolutionary Expected Improvement criterion.
-
-    This function combines the traditional Expected Improvement acquisition function
-    with a probability distribution derived from CMA-ES, creating an Evolutionary
-    Expected Improvement (EEI) acquisition function that balances exploration and
-    exploitation while incorporating evolutionary search information.
-
-    Parameters
-    ----------
-    decs : ndarray
-        Current decision variables (samples)
-    objs : ndarray
-        Current objective values
-    dim : int
-        Dimensionality of the problem
-    mu : ndarray
-        Mean vector from CMA-ES distribution
-    sigma : float
-        Step size from CMA-ES
-    C : ndarray
-        Covariance matrix from CMA-ES
-    n2 : int
-        Population size of DE
-    max_nfes2 : int
-        Maximum number of function evaluations of DE
-    data_type : torch.dtype, optional
-        Data type for PyTorch tensors (default: torch.float)
-
-    Returns
-    -------
-    ndarray
-        Next candidate point to evaluate
-    """
-    # Fit Gaussian Process surrogate model
-    train_X = torch.tensor(decs, dtype=data_type)
-    train_Y = torch.tensor(-objs, dtype=data_type)  # Negative for maximization
-    gp = SingleTaskGP(train_X=train_X, train_Y=train_Y, outcome_transform=Standardize(m=1))
-    mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
-    fit_gpytorch_mll(mll)
-
-    # Prepare Expected Improvement acquisition function
-    best_f = train_Y.max()
-    logEI = LogExpectedImprovement(model=gp, best_f=best_f)
-
-    # Create EEI acquisition function
-    EEI_func = eei_acquisition_function(mu, sigma, C, dim, logEI, data_type)
-
-    # Optimize EEI acquisition function using Differential Evolution
-    problem = MTOP()
-    problem.add_task(EEI_func, dim=dim)
-    result = DE(problem, n=n2, max_nfes=max_nfes2, F=0.5, CR=0.9, save_data=False, disable_tqdm=True).optimize()
-
-    return result.best_decs
-
-
-def _adapt_distribution_params(mu_source, sigma_source, C_source, dim_source, dim_target):
-    """
-    Adapt CMA-ES distribution parameters for cross-task transfer with different dimensions.
-
-    Matches MATLAB MT_EEI_BO.m dimension handling logic. In [0,1] space (DDMTOLab),
-    no bound rescaling is needed — only dimension adjustment via truncation or padding.
-
-    Parameters
-    ----------
-    mu_source : ndarray
-        Mean vector from source task
-    sigma_source : float
-        Step size from source task
-    C_source : ndarray
-        Covariance matrix from source task
-    dim_source : int
-        Dimension of source task
-    dim_target : int
-        Dimension of target task
-
-    Returns
-    -------
-    mu_new, sigma_new, C_new : tuple
-        Adapted distribution parameters
+    mu_new, Sigma_new : tuple(np.ndarray, np.ndarray)
+        Adapted mean (dim_target,) and covariance (dim_target, dim_target).
     """
     if dim_source == dim_target:
-        return mu_source.copy(), sigma_source, C_source.copy()
-
-    # Compute full covariance in [0,1] space
-    Sigma_source = sigma_source ** 2 * C_source
+        return mu_source.copy(), Sigma_source.copy()
 
     if dim_source > dim_target:
-        # Source is higher-dim: truncate to first dim_target dimensions
         mu_new = mu_source[:dim_target].copy()
-        C_new = Sigma_source[:dim_target, :dim_target]
+        Sigma_new = Sigma_source[:dim_target, :dim_target].copy()
     else:
-        # Target is higher-dim: pad mean with random [0,1], pad covariance with identity
         mu_new = np.concatenate([mu_source, np.random.rand(dim_target - dim_source)])
-        C_new = np.eye(dim_target)
-        C_new[:dim_source, :dim_source] = Sigma_source
+        Sigma_new = np.eye(dim_target)
+        Sigma_new[:dim_source, :dim_source] = Sigma_source
 
-    # Return sigma=1.0 since covariance already includes sigma^2
-    return mu_new, 1.0, C_new
+    return mu_new, Sigma_new
