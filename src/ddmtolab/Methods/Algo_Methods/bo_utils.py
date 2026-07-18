@@ -526,10 +526,13 @@ def mtgp_task_corr(
             index_kernel = kernel
             break
 
-    # Extract task correlations without gradient computation
+    # Extract task correlations without gradient computation.
+    # IndexKernel covariance is B B^T + diag(var); the diagonal term must be
+    # included or correlations are overestimated.
     with torch.no_grad():
         covar_factor = index_kernel.covar_factor
         task_covar = (covar_factor @ covar_factor.T).cpu().numpy()
+        task_covar += np.diag(index_kernel.var.detach().cpu().numpy().flatten())
 
     # Normalize covariance matrix to get correlation matrix
     diag = np.sqrt(np.diag(task_covar))

@@ -1,19 +1,42 @@
 """
 A Surrogate-Assisted Evolutionary Framework for Expensive Multitask Optimization Problems (SELF)
 
-This module implements SELF using multi-task Gaussian processes and Bayesian optimization for expensive multi-task
-optimization.
+This module implements SELF using multi-task Gaussian processes and Bayesian
+optimization for expensive multi-task optimization. Each optimization cycle
+runs two phases (paper Algorithm 1): a global knowledge transfer phase, where
+DE assisted with an MTGP surrogate preselects one candidate per individual by
+the lower confidence bound (Eq. 18), and a local knowledge transfer phase,
+where task-local BO improves each population's best individual (Algorithm 3)
+and the improved best individuals are transferred across tasks with the
+correlation-based probability p_T (Eq. 23, Algorithm 4).
 
 References
 ----------
-    [1] Tan, Shenglian, et al. "A surrogate-assisted evolutionary framework for expensive multitask optimization problems." IEEE Transactions on Evolutionary Computation (2024).
+    [1] S. Tan, Y. Wang, G. Sun, T. Pang, and K. Tang, "A surrogate-assisted
+        evolutionary framework for expensive multitask optimization problems,"
+        IEEE Transactions on Evolutionary Computation, vol. 29, no. 3,
+        pp. 779-793, 2025.
 
 Notes
 -----
+Corrected against the paper (v2.0):
+- Global phase uses DE/rand/1 with binomial crossover against the current
+  individual (Algorithm 2, Eqs. 19-20) and preselects candidates by the LCB
+  mean - std (Eq. 18), not the posterior mean alone.
+- Local BO builds the GP on the n nearest evaluated solutions to the best
+  individual and maximizes EI inside the bounding box of those solutions
+  (Eq. 21); the BO candidate competes for the best individual's slot.
+- Transfer moves the BO-improved best individuals X_I (not population bests)
+  with probability p_T from the MTGP task correlation (no absolute value);
+  the best transferred solution competes for the best individual's slot.
+- Paper parameter defaults: NP=10, lambda=50, F=0.6, CR=0.7, n=50,
+  MaxFEs=200 per task (400 total for two tasks).
+Validated on the paper's 10-D CEC17-MTSO test suite (Table II protocol).
+
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.11.18
-Version: 1.0
+Date: 2026.07.18
+Version: 2.0
 """
 import numpy as np
 from tqdm import tqdm
@@ -60,7 +83,7 @@ class SELF:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, max_nfes=None, np=10, F=0.5, CR=0.9, ng=50, nl=50, save_data=True, save_path='./Data',
+    def __init__(self, problem, max_nfes=None, np=None, F=0.6, CR=0.7, ng=50, nl=50, save_data=True, save_path='./Data',
                  name='SELF', disable_tqdm=True):
         """
         Initialize SELF algorithm.
@@ -70,29 +93,33 @@ class SELF:
         problem : MTOP
             Multi-task optimization problem instance
         max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 200)
+            Maximum number of function evaluations per task (default: 200,
+            the paper's setting of MaxFEs = 400 for two tasks)
         np : int, optional
-            Population size (default: 10)
+            Population size NP per task (default: 10, paper setting)
         F : float, optional
-            Mutation factor for DE (default: 0.5)
+            Mutation factor for DE (default: 0.6, paper setting)
         CR : float, optional
-            Crossover rate for DE (default: 0.9)
+            Crossover rate for DE (default: 0.7, paper setting)
         ng : int, optional
-            Number of trial vectors in global knowledge transfer phase (default: 50)
+            Number of trial vectors lambda per individual in the global
+            knowledge transfer phase (default: 50, paper setting)
         nl : int, optional
-            Sample size for training GP model in local knowledge transfer phase (default: 50)
+            Number n of nearest evaluated solutions used to train the local
+            GP model in the local knowledge transfer phase (default: 50,
+            paper setting)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'SELF_test')
+            Name for the experiment (default: 'SELF')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.max_nfes = max_nfes if max_nfes is not None else 200
-        self.np = np if max_nfes is not None else 10
+        self.np = np if np is not None else 10
         self.F = F
         self.CR = CR
         self.ng = ng
@@ -104,7 +131,7 @@ class SELF:
 
     def optimize(self):
         """
-        Execute the SELF algorithm with three phases: global transfer, local optimization, and local transfer.
+        Execute the SELF algorithm (paper Algorithm 1).
 
         Returns
         -------
@@ -116,18 +143,17 @@ class SELF:
         problem = self.problem
         nt = problem.n_tasks
         dims = problem.dims
-        n_initial_per_task = par_list(self.np, nt)
         nfes_per_task = [0] * nt
         max_nfes = self.max_nfes * nt
 
-        # Initialize samples using Latin Hypercube Sampling
+        # Line 1-4: initialize populations by LHS, evaluate, fill databases
         decs = initialization(problem, self.np, method='lhs')
         objs, _ = evaluation(problem, decs)
         nfes = self.np * nt
         for i in range(nt):
             nfes_per_task[i] += self.np
 
-        # Working population for evolutionary updates
+        # Working populations P_m (databases are decs/objs)
         pop_decs = copy.deepcopy(decs)
         pop_objs = copy.deepcopy(objs)
 
@@ -135,28 +161,30 @@ class SELF:
 
         while nfes < max_nfes:
 
-            # === Global Knowledge Transfer Phase ===
-            # Build multi-task Gaussian process and extract task correlations
+            # ==================== Global Knowledge Transfer Phase ====================
+            # Line 7: establish MTGP on all evaluated data
             objs_normalized, _, _ = normalize(objs, axis=0, method='minmax')
             mtgp = mtgp_build(decs, objs_normalized, dims, data_type=data_type)
             task_corr = mtgp_task_corr(mtgp)
 
+            # Lines 8-10: DE_MTGP per task (Algorithm 2)
             for i in range(nt):
                 for j in range(self.np):
-                    # Generate candidates using DE guided by current best
-                    off_decs = de_generation_with_core(pop_decs[i], pop_objs[i], pop_decs[i][j], self.ng, self.F,
-                                                       self.CR)
+                    # DE/rand/1 + binomial crossover vs the current individual
+                    # (Eqs. 19-20): lambda trial vectors
+                    off_decs = de_rand_1_bin_trials(pop_decs[i], pop_decs[i][j],
+                                                    self.ng, self.F, self.CR)
 
-                    # Predict objectives using MTGP surrogate
+                    # Preselect by LCB mean - std of the MTGP (Eq. 18)
                     pred_objs, pred_std = mtgp_predict(mtgp=mtgp, off_decs=off_decs, task_id=i, dims=dims, nt=nt,
                                                        data_type=data_type)
+                    lcb = pred_objs.flatten() - pred_std.flatten()
 
-                    # Evaluate candidate with minimum predicted objective
-                    best_idx = np.argmin(pred_objs)
+                    best_idx = np.argmin(lcb)
                     best_off_dec = off_decs[[best_idx], :]
                     true_obj, _ = evaluation_single(problem, best_off_dec, i)
 
-                    # Greedy update: replace if offspring is better
+                    # Line 9 (Alg. 2): survival between x_{m,i} and o*_{m,i}
                     if true_obj < pop_objs[i][j]:
                         pop_decs[i][j] = best_off_dec[0]
                         pop_objs[i][j] = true_obj[0]
@@ -167,30 +195,30 @@ class SELF:
                     nfes_per_task[i] += 1
                     pbar.update(1)
 
-            # === Local Optimization Phase ===
+            # ==================== Local Knowledge Transfer Phase ====================
+            # Lines 12-16: BO per task (Algorithm 3); collect improved bests X_I
+            transfer_pool = []
             for i in range(nt):
-                # Select top nl individuals for local GP model
-                if len(decs[i]) <= self.nl:
-                    nearest_decs = decs[i]
-                    nearest_objs = objs[i]
-                else:
-                    best_indices = np.argsort(objs[i].flatten())[:self.nl]
-                    nearest_decs = decs[i][best_indices]
-                    nearest_objs = objs[i][best_indices]
+                # Best individual x_Bm and its position in P_m
+                best_pos = int(np.argmin(pop_objs[i].flatten()))
+                x_best = pop_decs[i][best_pos]
 
-                # Generate next point via Bayesian optimization with LogEI
+                # Local GP on the nl nearest evaluated solutions to x_Bm
+                dists = np.linalg.norm(decs[i] - x_best[None, :], axis=1)
+                near_idx = np.argsort(dists)[:min(self.nl, len(dists))]
+                nearest_decs = decs[i][near_idx]
+                nearest_objs = objs[i][near_idx]
+
+                # Maximize EI inside the bounding box of the nearest solutions
+                # (Eq. 21), then evaluate the improved best individual x_Im
                 candidate = bo_next_point_de(nearest_decs, nearest_objs, dims[i], data_type)
                 true_obj, _ = evaluation_single(problem, candidate, i)
+                transfer_pool.append(candidate[0])
 
-                # Update working population if candidate improves
-                if np.any(true_obj < pop_objs[i]):
-                    is_duplicate = np.any(np.all(np.isclose(pop_decs[i], candidate[0]), axis=1))
-                    if not is_duplicate:
-                        worse_indices = np.where(pop_objs[i] > true_obj)[0]
-                        if len(worse_indices) > 0:
-                            worst_idx = worse_indices[np.argmax(pop_objs[i][worse_indices])]
-                            pop_decs[i][worst_idx] = candidate[0]
-                            pop_objs[i][worst_idx] = true_obj[0]
+                # Line 7 (Alg. 3): better of (x_Im, x_Bm) takes the best slot
+                if true_obj[0, 0] < pop_objs[i][best_pos, 0]:
+                    pop_decs[i][best_pos] = candidate[0]
+                    pop_objs[i][best_pos] = true_obj[0]
 
                 decs[i], objs[i] = vstack_groups((decs[i], candidate), (objs[i], true_obj))
 
@@ -198,19 +226,16 @@ class SELF:
                 nfes_per_task[i] += 1
                 pbar.update(1)
 
-            # === Local Knowledge Transfer Phase ===
+            # Lines 17-20: adaptive knowledge transfer of X_I (Algorithm 4)
             for i in range(nt):
                 transfer_samples = []
-
-                # Probabilistic transfer based on task correlation.
-                # Adjust each sample to the target task's dimensionality before
-                # stacking: source tasks may have different dims.
                 for j in range(nt):
                     if i == j:
                         continue
-                    if np.random.rand() < abs(task_corr[i][j]):
-                        best_idx = np.argmin(pop_objs[j])
-                        sample = pop_decs[j][best_idx]
+                    # p_T from the MTGP task correlation (Eq. 23); negative
+                    # correlation means the transfer never fires
+                    if np.random.rand() < task_corr[i][j]:
+                        sample = transfer_pool[j]
                         if len(sample) > dims[i]:
                             sample = sample[:dims[i]]
                         elif len(sample) < dims[i]:
@@ -222,19 +247,16 @@ class SELF:
 
                     true_obj, _ = evaluation_single(problem, transfer_samples, i)
 
-                    # Select best transfer sample and update population
+                    # Line 14 (Alg. 4): best transferred solution competes for
+                    # the best individual's slot
                     best_idx = np.argmin(true_obj)
-                    best_sample = transfer_samples[[best_idx], :]
+                    best_sample = transfer_samples[best_idx]
                     best_sample_obj = true_obj[best_idx]
 
-                    if np.any(best_sample_obj < pop_objs[i]):
-                        is_duplicate = np.any(np.all(np.isclose(pop_decs[i], best_sample[0]), axis=1))
-                        if not is_duplicate:
-                            worse_indices = np.where(pop_objs[i] > best_sample_obj)[0]
-                            if len(worse_indices) > 0:
-                                worst_idx = worse_indices[np.argmax(pop_objs[i][worse_indices])]
-                                pop_decs[i][worst_idx] = best_sample[0]
-                                pop_objs[i][worst_idx] = best_sample_obj
+                    best_pos = int(np.argmin(pop_objs[i].flatten()))
+                    if best_sample_obj[0] < pop_objs[i][best_pos, 0]:
+                        pop_decs[i][best_pos] = best_sample
+                        pop_objs[i][best_pos] = best_sample_obj
 
                     decs[i], objs[i] = vstack_groups((decs[i], transfer_samples), (objs[i], true_obj))
 
@@ -259,80 +281,64 @@ class SELF:
         return results
 
 
-def de_generation_with_core(parents, parents_objs, core_parent, n_off, F, CR):
+def de_rand_1_bin_trials(parents, current, n_off, F, CR):
     """
-    Generate offspring using hybrid DE mutation strategy.
+    Generate trial vectors for one individual per paper Algorithm 2.
+
+    DE/rand/1 mutation (Eq. 19): v = x_r1 + F * (x_r2 - x_r3) with distinct
+    random parents, followed by binomial crossover (Eq. 20) between v and the
+    current individual with a forced dimension j_rd.
 
     Parameters
     ----------
     parents : np.ndarray
-        Parent solutions of shape (n, d)
-    parents_objs : np.ndarray
-        Objective values of parents of shape (n,) or (n, 1)
-    core_parent : np.ndarray
-        Current individual being evolved of shape (1, d) or (d,)
+        Population P_m of shape (n, d)
+    current : np.ndarray
+        Current individual x_{m,i} of shape (d,) or (1, d)
     n_off : int
-        Number of offspring to generate
+        Number lambda of trial vectors to generate
     F : float
-        Differential weight (mutation scale factor)
+        Scaling factor
     CR : float
-        Crossover rate in [0, 1] for binomial crossover
+        Crossover control parameter in [0, 1]
 
     Returns
     -------
-    offdecs : np.ndarray
-        Offspring array of shape (n_off, d), clipped to [0, 1]
-
-    Notes
-    -----
-    Uses a hybrid strategy with 50% probability each:
-    - DE/best/1 with binomial crossover: v = best + F*(r2 - r3)
-    - DE/current/1 without crossover: v = current + F*(r2 - r3)
+    trials : np.ndarray
+        Trial vectors of shape (n_off, d), clipped to [0, 1]
     """
     n, d = parents.shape
+    if current.ndim == 2:
+        current = current.squeeze(0)
 
-    # Ensure correct dimensions
-    if core_parent.ndim == 2:
-        core_parent = core_parent.squeeze()
-    if parents_objs.ndim == 2:
-        parents_objs = parents_objs.flatten()
+    trials = np.zeros((n_off, d), dtype=float)
+    for c in range(n_off):
+        r1, r2, r3 = np.random.permutation(n)[:3]
+        v = parents[r1] + F * (parents[r2] - parents[r3])
 
-    # Find best parent
-    best_id = np.argmin(parents_objs)
-    best_parent = parents[best_id]
+        cross = np.random.rand(d) <= CR
+        cross[np.random.randint(d)] = True
+        trials[c] = np.where(cross, v, current)
 
-    offdecs = np.zeros((n_off, d), dtype=float)
-
-    # Generate offspring
-    for j in range(n_off):
-        id_set = np.random.permutation(n)
-        r1, r2, r3 = id_set[0], id_set[1], id_set[2]
-
-        if np.random.rand() < 0.5:
-            # DE/best/1 with binomial crossover
-            v = best_parent + F * (parents[r2] - parents[r3])
-            trial = np.where(np.random.rand(d) < CR, v, parents[r1])
-        else:
-            # DE/current/1 without crossover
-            trial = core_parent + F * (parents[r2] - parents[r3])
-
-        offdecs[j] = np.clip(trial, 0.0, 1.0)
-
-    return offdecs
+    return np.clip(trials, 0.0, 1.0)
 
 
 def bo_next_point_de(decs, objs, dim, data_type=torch.float):
     """
-    Generate next sampling point using Bayesian Optimization with Log Expected Improvement.
+    Solve the EI subproblem of paper Eq. 21 for the local BO step.
+
+    Builds a local GP on the given (nearest) solutions and maximizes log
+    expected improvement inside the bounding box of those solutions using
+    DE/rand/1/bin, as prescribed by the paper.
 
     Parameters
     ----------
     decs : np.ndarray
-        Decision variables (training data) of shape (n_samples, dim)
+        Local training decision variables of shape (n_samples, dim)
     objs : np.ndarray
-        Objective values (training data) of shape (n_samples, 1)
+        Local training objective values of shape (n_samples, 1)
     dim : int
-        Dimension of the problem
+        Dimension of the task
     data_type : torch.dtype, optional
         Data type for torch tensors (default: torch.float)
 
@@ -340,40 +346,40 @@ def bo_next_point_de(decs, objs, dim, data_type=torch.float):
     -------
     candidate_np : np.ndarray
         Next sampling point of shape (1, dim)
-
-    Notes
-    -----
-    Builds a Gaussian Process with the provided data, constructs a Log Expected Improvement
-    acquisition function, and optimizes it using Differential Evolution to find the next
-    most promising point to evaluate.
     """
-    # Prepare training data for Gaussian Process
+    # Prepare training data for the local GP (negated for maximization)
     train_X = torch.tensor(decs, dtype=data_type)
     train_Y = torch.tensor(-objs, dtype=data_type)
 
-    # Build and fit Gaussian Process model
     gp = SingleTaskGP(train_X=train_X, train_Y=train_Y, outcome_transform=Standardize(m=1))
     mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
     fit_gpytorch_mll(mll)
 
-    # Build Log Expected Improvement acquisition function
+    # f_min in Eq. 21 is the best value among the local solutions, which
+    # include the best individual (distance zero to itself)
     best_f = train_Y.max()
     logEI = LogExpectedImprovement(model=gp, best_f=best_f)
 
-    # Wrap LogEI as numpy function for DE optimizer
+    # Bounding box [L~, U~] of the local solutions (Eq. 21 constraints)
+    lb = decs.min(axis=0)
+    ub = decs.max(axis=0)
+    span = np.maximum(ub - lb, 1e-12)
+
+    # Inner DE searches [0, 1]^dim mapped affinely into the bounding box
     def logEI_func(x):
         if x.ndim == 1:
             x = x.reshape(1, -1)
-        x_torch = torch.tensor(x, dtype=data_type)
+        x_box = lb[None, :] + x * span[None, :]
+        x_torch = torch.tensor(x_box, dtype=data_type)
         with torch.no_grad():
             logei_value = logEI(x_torch)
         logei_np = logei_value.detach().cpu().numpy()
         return -logei_np.flatten() if x.shape[0] == 1 else -logei_np
 
-    # Optimize LogEI using Differential Evolution
     problem = MTOP()
     problem.add_task(logEI_func, dim=dim)
     de = DE(problem, n=50, max_nfes=5000, F=0.5, CR=0.9, save_data=False, disable_tqdm=True)
     result = de.optimize()
 
-    return result.best_decs
+    best_x = np.asarray(result.best_decs[0]).flatten()
+    return (lb + best_x * span).reshape(1, -1)
