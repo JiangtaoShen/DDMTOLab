@@ -126,7 +126,7 @@ class CEC17MTSO_10D:
         return problem
 
     def P4(self) -> MTOP:
-        """
+        r"""
         Generates Problem 4 (10D): **T1: Ackley, T2: Rosenbrock**.
 
         - T1: Ackley (Dim 10, [-50, 50]) - Rotated and Shifted (Data loaded from P4.mat)
@@ -222,7 +222,7 @@ class CEC17MTSO_10D:
         return problem
 
     def P7(self) -> MTOP:
-        """
+        r"""
         Generates Problem 7 (10D): **T1: Ackley, T2: Schwefel**.
 
         - T1: Ackley (Dim 10, [-50, 50]) - Rotated and Shifted (Data loaded from P7.mat)
@@ -286,7 +286,7 @@ class CEC17MTSO_10D:
         return problem
 
     def P9(self) -> MTOP:
-        """
+        r"""
         Generates Problem 9 (10D): **T1: Rastrigin, T2: Schwefel**.
 
         - T1: Rastrigin (Dim 10, [-50, 50]) - Rotated and Shifted (Data loaded from P9.mat)
