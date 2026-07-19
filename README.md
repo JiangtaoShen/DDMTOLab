@@ -24,6 +24,12 @@
 
 ---
 
+## 📰 News
+
+<!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
+
+- **2026-07-19** — Verified and validated several expensive multitask optimization algorithms (MUMBO, SELF, EEI-BO / EEI-BO+, SaEF-AKT, RAMTEA, LCB-EMT).
+
 ## 📖 Overview
 
 **D<sup>2</sup>MTOLab (Data-Driven Multitask Optimization Laboratory)** is a comprehensive Python platform for optimization research, featuring **110+ algorithms**, **180+ benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
