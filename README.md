@@ -28,7 +28,7 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
-- **2026-07-19** — Verified and validated several expensive multitask optimization algorithms (MUMBO, SELF, EEI-BO / EEI-BO+, SaEF-AKT, RAMTEA, LCB-EMT).
+- **2026-07-19** — Verified and validated several expensive multitask optimization algorithms (MFEA-SSG, MUMBO, SELF, EEI-BO / EEI-BO+, SaEF-AKT, RAMTEA, LCB-EMT).
 
 ## 📖 Overview
 
