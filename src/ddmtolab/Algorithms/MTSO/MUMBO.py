@@ -36,6 +36,7 @@ References
 Notes
 -----
 Corrected against the paper source (arXiv:2006.12093):
+
 - g* is sampled with the mean-field Gumbel method of [2] (product of posterior
   marginal CDFs over a random grid plus evaluated points, quantile-fitted
   Gumbel), not from a heuristic around the best posterior mean.

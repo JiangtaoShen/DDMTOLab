@@ -27,6 +27,7 @@ class EMTO_AI:
     Evolutionary Multi-Task Optimization with Adaptive Intensity of Knowledge Transfer.
 
     Uses a DE-based multi-factorial framework with:
+
     - Per-task elite archives for inter-task knowledge transfer
     - DE mutation with archive base vector for transfer, DE/rand/1 for intra-task
     - Binomial crossover

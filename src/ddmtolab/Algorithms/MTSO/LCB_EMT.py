@@ -15,6 +15,7 @@ multipopulation-based LCB-EMT: each task is evolved by its own GA solver, and
 every ``TGap`` generations the LCB-based solution-selection module transfers up
 to ``Nt`` solutions from a source task into the target population. The module
 matches the paper's formulation:
+
 - TGP with the task-transfer kernel (Eqs. 8-9) and inter-task similarity
   lambda = max(2/(1+e^b) - 1, 0) learned by maximizing the marginal likelihood
   (Eqs. 10, 14; Algorithm 1).

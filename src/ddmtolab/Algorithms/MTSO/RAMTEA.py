@@ -17,6 +17,7 @@ Notes
 -----
 Reconciled with the reference MATLAB implementation (MTO-Platform) and generalized
 to K >= 3 tasks (v2.0):
+
 - Task similarity is the Spearman rank correlation between the objective values a
   shared set of points attains on each task, clamped to >= 0 (the reference's
   ``S = max(S, 0)``). The previous version used Pearson correlation on the raw

@@ -3,8 +3,10 @@ Kriging-Assisted Two-Archive Search (KTS)
 
 This module implements KTS for computationally expensive constrained/unconstrained
 multi-objective optimization. It adaptively switches between two search modes:
-  Mode 0 (unconstrained/KTA2-style): two-archive CA/DA with convergence/diversity
-  Mode 1 (constrained/KCCMO-style): SPEA2-based fitness with K-means sampling
+
+- Mode 0 (unconstrained/KTA2-style): two-archive CA/DA with convergence/diversity
+- Mode 1 (constrained/KCCMO-style): SPEA2-based fitness with K-means sampling
+
 The switching is based on the correlation between convergence metric Q and
 constraint violation CV.
 

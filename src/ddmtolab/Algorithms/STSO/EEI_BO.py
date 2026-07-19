@@ -22,6 +22,7 @@ References
 Notes
 -----
 Corrected against the reference implementation (ST-EEI-BO, v2.0):
+
 - The CMA-ES distribution is now persistent and advances exactly one generation
   per BO iteration (the paper's co-evolution). The previous version re-ran a full
   CMA-ES optimization from a random restart every iteration.

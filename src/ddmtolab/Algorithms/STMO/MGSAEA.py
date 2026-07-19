@@ -3,6 +3,7 @@ Multigranularity Surrogate-Assisted Evolutionary Algorithm (MGSAEA)
 
 This module implements MGSAEA for computationally expensive constrained multi-objective
 optimization. It uses a two-stage framework:
+
 - Stage 1 (convergence stage): Builds surrogates for objectives only, ignoring constraints
 - Stage 2 (constraint stage): Adaptively selects constraint handling strategy based on
   constraint satisfaction status (all violated, partially violated, all satisfied)

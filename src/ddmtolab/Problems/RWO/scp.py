@@ -75,11 +75,14 @@ class SCP:
         Each task optimizes sensor placements and radii.
 
         Task Structure:
+
         - T_i (i sensors): 1-objective, (3*i)-dimensional
+
           * Decision variables: [x1, y1, r1, x2, y2, r2, ..., xi, yi, ri]
           * x, y: Sensor positions in [-1, 1]
           * r: Sensing radii in [0.1, 0.25]
           * Objective: Weighted sum of:
+
             - Coverage penalty: 1000 * (1 - coverage_ratio)
             - Sensor count penalty: 1 * number_of_sensors
             - Sensing cost: 10 * sum(r²)

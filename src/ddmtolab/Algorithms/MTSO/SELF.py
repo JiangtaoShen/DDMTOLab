@@ -20,6 +20,7 @@ References
 Notes
 -----
 Corrected against the paper (v2.0):
+
 - Global phase uses DE/rand/1 with binomial crossover against the current
   individual (Algorithm 2, Eqs. 19-20) and preselects candidates by the LCB
   mean - std (Eq. 18), not the posterior mean alone.
@@ -31,6 +32,7 @@ Corrected against the paper (v2.0):
   the best transferred solution competes for the best individual's slot.
 - Paper parameter defaults: NP=10, lambda=50, F=0.6, CR=0.7, n=50,
   MaxFEs=200 per task (400 total for two tasks).
+
 Validated on the paper's 10-D CEC17-MTSO test suite (Table II protocol).
 
 Author: Jiangtao Shen

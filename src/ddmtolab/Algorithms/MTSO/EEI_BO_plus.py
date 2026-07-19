@@ -19,6 +19,7 @@ References
 Notes
 -----
 Corrected against the reference implementation (MT-EEI-BO, v2.0):
+
 - Persistent per-task CMA-ES advancing one generation per iteration (was a full
   CMA-ES restart every iteration); shares the ST-EEI-BO components.
 - A single global transfer schedule shared by all tasks (was tracked per task and
