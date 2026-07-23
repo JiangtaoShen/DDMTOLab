@@ -17,8 +17,7 @@ Version: 1.0
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
-from scipy.stats import norm
+from scipy.stats import norm, qmc
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF as RBF_kernel, ConstantKernel as C, WhiteKernel
 from sklearn.neighbors import KNeighborsClassifier
@@ -232,7 +231,7 @@ class AutoSAEA:
         """Rank-based reward: [0, 1], higher is better."""
         N = len(Y_elite)
         Y_all = np.concatenate([Y_elite.flatten(), [y_new]])
-        sorted_idx = np.argsort(Y_all)
+        sorted_idx = np.argsort(Y_all, kind='stable')
         position = np.where(sorted_idx == N)[0][0] + 1
         return -position / N + (N + 1) / N
 
@@ -376,26 +375,11 @@ class AutoSAEA:
     # ==================== Surrogate Models ====================
 
     def _build_rbf_model(self, X, Y):
-        """Build Gaussian RBF surrogate model (matching MATLAB newrbe)."""
-        Y_flat = Y.flatten()
-        n_samples, dim = X.shape
-
-        if n_samples > 1:
-            dist_matrix = cdist(X, X, metric='euclidean')
-            max_dist = dist_matrix.max()
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
-
-        try:
-            rbf = RBFInterpolator(X, Y_flat, kernel='gaussian', epsilon=1.0 / spread)
-        except Exception:
-            rbf = RBFInterpolator(X, Y_flat, kernel='thin_plate_spline')
+        """Build Gaussian RBF surrogate model (MATLAB newrbe equivalent)."""
+        predict = newrbe_surrogate(X, Y)
 
         def model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            return rbf(x).reshape(-1, 1)
+            return np.asarray(predict(x)).reshape(-1, 1)
 
         return model
 
@@ -432,8 +416,8 @@ class AutoSAEA:
         """EA-based local search on surrogate within local bounds."""
         popsize = popsize if popsize % 2 == 0 else popsize + 1
 
-        # Random initialization within local bounds
-        pop = lb + (ub - lb) * np.random.rand(popsize, dim)
+        # Latin hypercube initialization within local bounds (MATLAB pop_ini 'random')
+        pop = lb + (ub - lb) * qmc.LatinHypercube(d=dim).random(popsize)
         pop_objs = surrogate_func(pop).flatten()
 
         for _ in range(n_gen):
@@ -539,13 +523,12 @@ class AutoSAEA:
         ub_local[mask] = np.minimum(1.0, ub_local[mask] + 0.05)
         return lb_local, ub_local
 
-    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, max_trials=50):
-        """Ensure candidate is not too close to existing samples."""
-        scales = np.linspace(0.1, 1.0, max_trials)
-        for t in range(max_trials):
-            dist = cdist(candidate, X, metric='chebyshev').min()
-            if dist >= epsilon:
-                break
-            perturbation = scales[t] * (np.random.rand(1, dim) - 0.5)
+    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, n_scales=50, max_trials=1000):
+        """Perturb the candidate until it is not too close to existing samples."""
+        scales = np.linspace(0.1, 1.0, n_scales)
+        c = 0
+        while cdist(candidate, X, metric='chebyshev').min() < epsilon and c < max_trials:
+            perturbation = scales[c % n_scales] * (np.random.rand(1, dim) - 0.5)
             candidate = np.clip(candidate + perturbation, 0.0, 1.0)
+            c += 1
         return candidate

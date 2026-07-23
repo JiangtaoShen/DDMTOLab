@@ -11,16 +11,14 @@ Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2026.02.19
-Version: 1.0
+Date: 2026.07.23
+Version: 1.1
 """
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Methods.mtop import MTOP
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -31,9 +29,9 @@ class DDEA_MESS:
     Data-Driven Evolutionary Algorithm with Multi-Evolutionary Sampling Strategy.
 
     Dynamically selects from three search strategies based on evaluation budget usage:
-    1. Global search: DE/rand/1 prescreening on RBF model built from first min(N, 300) samples
-    2. Local search: DE/best/1 on RBF model built from top tau samples by fitness
-    3. Trust region search: Local optimization (L-BFGS-B) on RBF model around best solution
+    1. Global search: one-generation DE prescreening on RBF built from the first min(N, 300) samples
+    2. Local search: DE/best/1 (10 generations) on RBF built from the top tau samples by fitness
+    3. Interior-point search: local optimization on RBF around the best solution
     """
 
     algorithm_information = {
@@ -63,7 +61,7 @@ class DDEA_MESS:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 100)
+            Number of initial samples per task (default: 50)
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 300)
         save_data : bool, optional
@@ -76,7 +74,7 @@ class DDEA_MESS:
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n_initial = n_initial if n_initial is not None else 100
+        self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 300
         self.save_data = save_data
         self.save_path = save_path
@@ -121,15 +119,15 @@ class DDEA_MESS:
                 X = current_decs[i]
                 Y = current_objs[i]
 
-                # Select strategy using MESS
-                strategy_id = self._mess(nfes_per_task[i], 500)
+                # Select strategy using MESS (MATLAB passes its FEsMax=500 here)
+                strategy_id = self._mess(nfes_per_task[i], max_nfes_per_task[i])
 
                 if strategy_id == 1:
                     candidate = self._strategy_global(X, Y, dim)
                 elif strategy_id == 2:
                     candidate = self._strategy_local(X, Y, dim)
                 else:
-                    candidate = self._strategy_trust_region(X, Y, dim)
+                    candidate = self._strategy_interior_point(X, Y, dim)
 
                 # Ensure uniqueness
                 candidate = self._ensure_uniqueness(candidate, X, dim)
@@ -165,20 +163,10 @@ class DDEA_MESS:
         """
         Multi-Evolutionary Sampling Strategy selector.
 
-        Dynamically computes probabilities for three strategies based on
-        the ratio of used evaluations to total budget.
-
-        Parameters
-        ----------
-        fes_used : int
-            Number of function evaluations used (including initial samples)
-        fes_max : int
-            Maximum number of function evaluations (total budget)
-
         Returns
         -------
         int
-            Strategy ID: 1 (global), 2 (local), or 3 (trust region)
+            Strategy ID: 1 (global), 2 (local), or 3 (interior point)
         """
         ratio = fes_used / fes_max
         beta = (1 - ratio ** 3) ** 2
@@ -191,46 +179,18 @@ class DDEA_MESS:
         elif r <= 2 * P1:
             return 2  # local search
         else:
-            return 3  # trust region search
-
-    def _build_rbf_model(self, X, Y):
-        """Build Gaussian RBF surrogate model."""
-        Y_flat = Y.flatten()
-        n_samples, dim = X.shape
-
-        if n_samples > 1:
-            dist_matrix = cdist(X, X, metric='euclidean')
-            max_dist = dist_matrix.max()
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
-
-        try:
-            rbf = RBFInterpolator(X, Y_flat, kernel='gaussian', epsilon=1.0 / spread)
-        except Exception:
-            rbf = RBFInterpolator(X, Y_flat, kernel='thin_plate_spline')
-
-        def model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            return rbf(x).reshape(-1, 1)
-
-        return model
+            return 3  # interior point search
 
     def _strategy_global(self, X, Y, dim):
         """
-        Strategy 1: Global search with DE/rand/1 prescreening.
-
-        Builds RBF on first min(N, 300) samples (initial LHS provides good coverage).
-        Runs 1 generation of DE/rand/1 with elite initialization from full database.
+        Strategy 1: Global prescreening (one DE generation) on an RBF model
+        built from the first min(N, 300) samples, searched over [0, 1]^dim.
         """
         N = len(X)
         m = min(N, 300)
 
-        # Build RBF on first m samples
-        model = self._build_rbf_model(X[:m], Y[:m])
+        model = newrbe_surrogate(X[:m], Y[:m])
 
-        # DE/rand/1 prescreening (1 generation)
         candidate = self._de_search(
             model, X, Y,
             lb=np.zeros(dim), ub=np.ones(dim),
@@ -241,33 +201,23 @@ class DDEA_MESS:
 
     def _strategy_local(self, X, Y, dim):
         """
-        Strategy 2: Local search with DE/best/1.
-
-        Selects top tau = min(dim+25, N) solutions by fitness.
-        Builds RBF on selected data within local bounds.
-        Runs 10 generations of DE/best/1 with elite initialization from full database.
+        Strategy 2: Local search with DE/best/1 (10 generations) on an RBF model
+        built from the top tau = min(dim+25, N) samples, searched inside their
+        bounding box.
         """
         N = len(X)
         tau = min(dim + 25, N)
 
-        # Select top tau solutions by fitness
         Y_flat = Y.flatten()
-        idx = np.argsort(Y_flat)[:tau]
+        idx = np.argsort(Y_flat, kind='stable')[:tau]
         X_local = X[idx]
         Y_local = Y[idx]
 
         lb_local = np.min(X_local, axis=0)
         ub_local = np.max(X_local, axis=0)
 
-        # Handle degenerate bounds
-        mask = (ub_local - lb_local) < 1e-10
-        lb_local[mask] = np.maximum(0.0, lb_local[mask] - 0.05)
-        ub_local[mask] = np.minimum(1.0, ub_local[mask] + 0.05)
+        model = newrbe_surrogate(X_local, Y_local)
 
-        # Build RBF on local data
-        model = self._build_rbf_model(X_local, Y_local)
-
-        # DE/best/1 search (10 generations)
         candidate = self._de_search(
             model, X, Y,
             lb=lb_local, ub=ub_local,
@@ -276,12 +226,11 @@ class DDEA_MESS:
 
         return candidate
 
-    def _strategy_trust_region(self, X, Y, dim):
+    def _strategy_interior_point(self, X, Y, dim):
         """
-        Strategy 3: Trust region search with local optimization.
-
-        Selects min(N, 5*dim) nearest neighbors to the best solution.
-        Builds RBF on selected data and runs L-BFGS-B optimization.
+        Strategy 3: Interior-point local optimization on an RBF model built
+        from the min(N, 5*dim) samples nearest to the current best, started
+        from the best solution.
         """
         N = len(X)
         m = min(N, 5 * dim)
@@ -289,29 +238,22 @@ class DDEA_MESS:
         Y_flat = Y.flatten()
         idx_min = np.argmin(Y_flat)
 
-        # Select m nearest neighbors to best
+        # Select m nearest neighbors to the best point
         dist = cdist(X, X[idx_min:idx_min + 1]).flatten()
-        idx = np.argsort(dist)[:m]
+        idx = np.argsort(dist, kind='stable')[:m]
         X_trs = X[idx]
         Y_trs = Y[idx]
 
-        # Build RBF on trust region data
-        model = self._build_rbf_model(X_trs, Y_trs)
+        model = newrbe_surrogate(X_trs, Y_trs)
 
         lb_trs = np.min(X_trs, axis=0)
         ub_trs = np.max(X_trs, axis=0)
 
-        # Handle degenerate bounds
-        mask = (ub_trs - lb_trs) < 1e-10
-        lb_trs[mask] = np.maximum(0.0, lb_trs[mask] - 0.05)
-        ub_trs[mask] = np.minimum(1.0, ub_trs[mask] + 0.05)
-
-        # Local optimization starting from best solution
         x0 = X[idx_min]
         bounds = list(zip(lb_trs, ub_trs))
 
         def obj_func(x):
-            return model(x.reshape(1, -1)).flatten()[0]
+            return float(model(x.reshape(1, -1))[0])
 
         try:
             result = minimize(obj_func, x0, method='trust-constr', bounds=bounds,
@@ -326,97 +268,79 @@ class DDEA_MESS:
     def _de_search(self, surrogate_func, X_full, Y_full, lb, ub, dim,
                    popsize=50, max_gen=10, mode='rand'):
         """
-        Run DE on surrogate model with elite initialization.
+        DE search on a surrogate with elite initialization from the full database.
 
-        Parameters
-        ----------
-        surrogate_func : callable
-            Surrogate model, accepts (n, d) array, returns (n, 1) predictions
-        X_full : np.ndarray
-            Full database of decision variables (for elite initialization)
-        Y_full : np.ndarray
-            Full database of objectives (for elite initialization)
-        lb, ub : np.ndarray
-            Search bounds, shape (d,)
-        dim : int
-            Problem dimension
-        popsize : int
-            Population size
-        max_gen : int
-            Maximum DE generations
-        mode : str
-            'rand' for DE/rand/1/bin, 'best' for DE/best/1/bin
+        The initial parents carry their raw database objective values; offspring
+        are scored on the surrogate and compete 1-to-1 (ties go to offspring).
+        Parents from the full database may lie outside [lb, ub]; they are
+        normalized without clipping, and only offspring are confined to the box.
         """
-        CR, F = 0.8, 0.5
         Y_flat = Y_full.flatten()
         N = len(Y_flat)
 
-        # Elite initialization: top popsize from full database
+        # Elite initialization: top popsize with raw objective values (sorted ascending)
         if N >= popsize:
-            idx = np.argsort(Y_flat)[:popsize]
+            idx = np.argsort(Y_flat, kind='stable')[:popsize]
             pop = X_full[idx].copy()
             pop_objs = Y_flat[idx].copy()
         else:
             extra = lb + (ub - lb) * np.random.rand(popsize - N, dim)
             pop = np.vstack([X_full.copy(), extra])
-            pop_objs = np.concatenate([Y_flat, surrogate_func(extra).flatten()])
+            pop_objs = np.concatenate([Y_flat, np.asarray(surrogate_func(extra)).flatten()])
 
-        # Compute range for normalization
-        range_vec = ub - lb
-        range_vec = np.maximum(range_vec, 1e-30)
+        range_vec = np.maximum(ub - lb, 1e-12)
 
         for gen in range(max_gen):
-            # Normalize to [0,1] within [lb, ub]
-            pop_norm = np.clip((pop - lb) / range_vec, 0, 1)
+            # Normalize parents without clipping (offspring are clipped to [0,1])
+            pop_norm = (pop - lb) / range_vec
 
-            # Generate offspring in normalized space
             if mode == 'rand':
-                off_norm = de_generation(pop_norm, F, CR)
+                off_norm = self._de_r1(pop_norm)
             else:
-                off_norm = self._de_best1(pop_norm, pop_objs, F, CR)
+                off_norm = self._de_best1(pop_norm, pop_objs)
 
-            # Denormalize to original space
-            offspring = lb + np.clip(off_norm, 0, 1) * range_vec
+            offspring = lb + off_norm * range_vec
 
-            # Evaluate on surrogate
-            off_objs = surrogate_func(offspring).flatten()
+            off_objs = np.asarray(surrogate_func(offspring)).flatten()
 
-            # Comparison selection (standard DE)
-            improved = off_objs < pop_objs
-            pop[improved] = offspring[improved]
-            pop_objs[improved] = off_objs[improved]
+            # 1-to-1 comparison selection (ties go to offspring)
+            replace = off_objs <= pop_objs
+            pop[replace] = offspring[replace]
+            pop_objs[replace] = off_objs[replace]
 
         best_idx = np.argmin(pop_objs)
         return pop[best_idx:best_idx + 1]
 
+    def _de_r1(self, parents, F=0.5, CR=0.8):
+        """
+        MATLAB 'de-r' offspring generation: the base vector is the first row of
+        the (elite-sorted) population, i.e. the best individual at generation 1.
+        """
+        popsize, dim = parents.shape
+        base = parents[0]
+
+        offspring = parents.copy()
+        for i in range(popsize):
+            r1 = self._rand_index(popsize, {i})
+            r2 = self._rand_index(popsize, {i, r1})
+            r3 = self._rand_index(popsize, {i, r1, r2})
+            mutant = base + F * (parents[r2] - parents[r3])
+            j_rand = np.random.randint(dim)
+            mask = (np.random.rand(dim) <= CR) | (np.arange(dim) == j_rand)
+            offspring[i, mask] = mutant[mask]
+
+        return np.clip(offspring, 0, 1)
+
     def _de_best1(self, parents, objs, F=0.5, CR=0.8):
-        """
-        DE/best/1/bin offspring generation in [0,1] normalized space.
-
-        Parameters
-        ----------
-        parents : np.ndarray
-            Parent population, shape (n, d), in [0,1]
-        objs : np.ndarray
-            Objective values, shape (n,)
-        F : float
-            Differential weight
-        CR : float
-            Crossover rate
-
-        Returns
-        -------
-        offspring : np.ndarray
-            Offspring population, shape (n, d), clipped to [0,1]
-        """
+        """DE/best/1/bin offspring generation in [0,1] normalized space."""
         popsize, dim = parents.shape
         best_idx = np.argmin(objs)
         best = parents[best_idx]
 
         offspring = parents.copy()
         for i in range(popsize):
-            idxs = np.delete(np.arange(popsize), i)
-            r1, r2 = np.random.choice(idxs, 2, replace=False)
+            r1 = self._rand_index(popsize, {i})
+            r2 = self._rand_index(popsize, {i, r1})
             mutant = best + F * (parents[r1] - parents[r2])
             j_rand = np.random.randint(dim)
             mask = (np.random.rand(dim) <= CR) | (np.arange(dim) == j_rand)
@@ -424,13 +348,20 @@ class DDEA_MESS:
 
         return np.clip(offspring, 0, 1)
 
-    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, max_trials=50):
-        """Ensure candidate is not too close to existing samples."""
-        scales = np.linspace(0.1, 1.0, max_trials)
-        for t in range(max_trials):
-            dist = cdist(candidate, X, metric='chebyshev').min()
-            if dist >= epsilon:
-                break
-            perturbation = scales[t] * (np.random.rand(1, dim) - 0.5)
+    @staticmethod
+    def _rand_index(n, exclude):
+        """Random index in [0, n) avoiding the excluded set."""
+        r = np.random.randint(n)
+        while r in exclude:
+            r = np.random.randint(n)
+        return r
+
+    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, n_scales=50, max_trials=1000):
+        """Perturb the candidate until it is not too close to existing samples."""
+        scales = np.linspace(0.1, 1.0, n_scales)
+        c = 0
+        while cdist(candidate, X, metric='chebyshev').min() < epsilon and c < max_trials:
+            perturbation = scales[c % n_scales] * (np.random.rand(1, dim) - 0.5)
             candidate = np.clip(candidate + perturbation, 0.0, 1.0)
+            c += 1
         return candidate

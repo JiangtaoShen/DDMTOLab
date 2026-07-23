@@ -17,7 +17,7 @@ Version: 1.0
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
+from scipy.stats import qmc
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 import warnings
 
@@ -50,7 +50,7 @@ class SHPSO:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, ps=None, mu=5,
+    def __init__(self, problem, n_initial=None, max_nfes=None, ps=None,
                  save_data=True, save_path='./Data', name='SHPSO', disable_tqdm=True):
         """
         Initialize SHPSO algorithm.
@@ -64,17 +64,13 @@ class SHPSO:
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 300)
         ps : int or List[int], optional
-            Particle swarm size per task (default: 20)
-        mu : int, optional
-            Number of new samples per iteration (default: 1)
-            - 1: Only evaluate surrogate optimum (most conservative)
-            - k: Evaluate surrogate optimum + top (k-1) prescreened particles
+            Particle swarm size per task (default: 50)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'SHPSO_test')
+            Name for the experiment (default: 'SHPSO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -82,7 +78,6 @@ class SHPSO:
         self.n_initial = n_initial if n_initial is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 300
         self.ps = ps if ps is not None else 50
-        self.mu = mu
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -114,9 +109,14 @@ class SHPSO:
         objs, _ = evaluation(problem, decs)
         nfes_per_task = n_initial_per_task.copy()
 
-        # Historical database for each task
+        # Historical database for each task (surrogate training data)
         hx = [decs[i].copy() for i in range(nt)]  # Historical positions
         hf = [objs[i].flatten().copy() for i in range(nt)]  # Historical fitness
+
+        # Full evaluation history for results (MATLAB records every evaluation
+        # in CE even when a point is not admitted into the database)
+        res_x = [decs[i].copy() for i in range(nt)]
+        res_f = [objs[i].flatten().copy() for i in range(nt)]
 
         # Initialize PSO swarm for each task
         pos = []  # Current positions
@@ -150,6 +150,8 @@ class SHPSO:
                     # Update history
                     hx[i] = np.vstack([hx[i], extra_pos])
                     hf[i] = np.concatenate([hf[i], extra_objs.flatten()])
+                    res_x[i] = np.vstack([res_x[i], extra_pos])
+                    res_f[i] = np.concatenate([res_f[i], extra_objs.flatten()])
                     nfes_per_task[i] += extra
 
             pos.append(pos_i)
@@ -168,9 +170,9 @@ class SHPSO:
             gbest.append(pos_i[gbestidx].copy())
             gbestval.append(obj_i[gbestidx])
 
-        # Best surrogate model optimum for each task
-        bestp = [gbest[i].copy() for i in range(nt)]
-        besty = [gbestval[i] for i in range(nt)]
+        # Best surrogate model optimum for each task (MATLAB: besty=1e200, bestp=zeros)
+        bestp = [np.zeros(dims[i]) for i in range(nt)]
+        besty = [1e200 for _ in range(nt)]
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(nfes_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
@@ -192,7 +194,7 @@ class SHPSO:
                     gs = 150
 
                 # Build global RBF surrogate model using best historical samples
-                rbf_model = self._build_rbf_model(hx[i], hf[i], gs, dim)
+                rbf_model, ghx, ghf, spread = self._build_rbf_model(hx[i], hf[i], gs, dim)
 
                 # Record old best
                 besty_old = besty[i]
@@ -200,9 +202,6 @@ class SHPSO:
 
                 # ===== Upper Level: Optimize surrogate model using SL-PSO =====
                 # MATLAB passes ghx (top-gs samples) to SLPSO for search bounds
-                idx_sorted = np.argsort(hf[i])
-                n_select = min(gs, len(hf[i]))
-                ghx = hx[i][idx_sorted[:n_select]]
                 bestp_new = self._optimize_surrogate_slpso(rbf_model, ghx, dim)
 
                 # Exact evaluate the surrogate optimum
@@ -210,6 +209,8 @@ class SHPSO:
                 besty_new = besty_new_arr[0, 0]
                 nfes_per_task[i] += 1
                 pbar.update(1)
+                res_x[i] = np.vstack([res_x[i], bestp_new.reshape(1, -1)])
+                res_f[i] = np.concatenate([res_f[i], [besty_new]])
 
                 # Update surrogate optimum (MATLAB: compare before adding to history)
                 if besty_new < besty_old:
@@ -224,8 +225,10 @@ class SHPSO:
                     hx[i] = np.vstack([hx[i], bestp[i]])
                     hf[i] = np.concatenate([hf[i], [besty[i]]])
 
-                # Rebuild RBF model with updated database (matching MATLAB: ghf(end) > besty)
-                rbf_model = self._build_rbf_model(hx[i], hf[i], gs, dim)
+                # Rebuild only when the worst training sample is worse than besty;
+                # MATLAB reuses the spread from the pre-update training set
+                if ghf[-1] > besty[i]:
+                    rbf_model, _, _, _ = self._build_rbf_model(hx[i], hf[i], gs, dim, spread=spread)
 
                 # ===== Lower Level: PSO guided by surrogate optimum =====
                 # Determine guidance strategy
@@ -281,6 +284,8 @@ class SHPSO:
                     e_true = candidate_obj[0, 0]
                     nfes_per_task[i] += 1
                     pbar.update(1)
+                    res_x[i] = np.vstack([res_x[i], candidate_pos])
+                    res_f[i] = np.concatenate([res_f[i], [e_true]])
 
                     # Update history database
                     hx[i] = np.vstack([hx[i], candidate_pos])
@@ -300,9 +305,9 @@ class SHPSO:
         pbar.close()
         runtime = time.time() - start_time
 
-        # Convert database to staircase history structure for results
-        db_decs = [hx[i].copy() for i in range(nt)]
-        db_objs = [hf[i].reshape(-1, 1).copy() for i in range(nt)]
+        # Convert evaluation history to staircase structure for results
+        db_decs = [res_x[i].copy() for i in range(nt)]
+        db_objs = [res_f[i].reshape(-1, 1).copy() for i in range(nt)]
         all_decs, all_objs = build_staircase_history(db_decs, db_objs, k=1)
 
         # Build and save results
@@ -313,38 +318,31 @@ class SHPSO:
         return results
 
     # Build RBF surrogate model using best historical samples
-    def _build_rbf_model(self, hx, hf, gs, dim):
+    def _build_rbf_model(self, hx, hf, gs, dim, spread=None):
 
         # Sort by fitness and select best gs samples
-        idx_sorted = np.argsort(hf)
+        idx_sorted = np.argsort(hf, kind='stable')
         n_select = min(gs, len(hf))
         idx_select = idx_sorted[:n_select]
 
         ghx = hx[idx_select]
         ghf = hf[idx_select]
 
-        # Calculate spread parameter
-        n_samples = len(ghf)
-        if n_samples > 1:
+        # Calculate spread parameter (MATLAB: max pairwise dist / (D*gs)^(1/D))
+        if spread is None:
             dist_matrix = cdist(ghx, ghx, metric='euclidean')
             max_dist = dist_matrix.max()
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
+            if max_dist > 0:
+                spread = max_dist / (dim * len(ghf)) ** (1.0 / dim)
+            else:
+                spread = 1.0
 
-        # Build RBF interpolator
-        try:
-            rbf_interpolator = RBFInterpolator(ghx, ghf, kernel='gaussian', epsilon=np.sqrt(np.log(2)) / spread)
-        except:
-            rbf_interpolator = RBFInterpolator(ghx, ghf, kernel='thin_plate_spline')
+        predict = newrbe_surrogate(ghx, ghf, spread=spread)
 
         def rbf_model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            pred = rbf_interpolator(x)
-            return pred.reshape(-1, 1)
+            return np.asarray(predict(x)).reshape(-1, 1)
 
-        return rbf_model
+        return rbf_model, ghx, ghf, spread
 
     # Optimize surrogate model using inline SLPSO (matching MATLAB exactly)
     def _optimize_surrogate_slpso(self, rbf_model, ghx, dim):
@@ -371,8 +369,8 @@ class SHPSO:
         # Learning probability: PL(i) = (1 - (i-1)/m)^log(sqrt(ceil(d/M)))
         PL = np.array([(1 - i / m) ** np.log(np.sqrt(np.ceil(dim / M))) for i in range(m)])
 
-        # Initialize population with LHS in [lb, ub]
-        p = lb + (ub - lb) * np.random.rand(m, dim)
+        # Initialize population with LHS in [lb, ub] (MATLAB: lhsdesign)
+        p = lb + (ub - lb) * qmc.LatinHypercube(d=dim).random(m)
         v = np.zeros((m, dim))
 
         bestever = 1e200
@@ -386,7 +384,7 @@ class SHPSO:
             fitness = rbf_model(p).flatten()
 
             # Sort descending (worst first, best last — matching MATLAB)
-            rank = np.argsort(-fitness)
+            rank = np.argsort(-fitness, kind='stable')
             fitness = fitness[rank]
             p = p[rank]
             v = v[rank]
@@ -395,7 +393,8 @@ class SHPSO:
             besty = fitness[-1]
             bestp = p[-1].copy()
 
-            if besty < bestever:
+            # MATLAB min([besty, bestever]) takes the new position on ties
+            if besty <= bestever:
                 bestever = besty
                 best_pos = bestp.copy()
 

@@ -17,7 +17,6 @@ Version: 1.0
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
 from scipy.optimize import minimize
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 import warnings
@@ -235,26 +234,11 @@ class LSADE:
     # ==================== Surrogate Models ====================
 
     def _build_rbf_model(self, X, Y):
-        """Build Gaussian RBF surrogate model (matching MATLAB newrbe)."""
-        Y_flat = Y.flatten()
-        n_samples, dim = X.shape
-
-        if n_samples > 1:
-            dist_matrix = cdist(X, X, metric='euclidean')
-            max_dist = dist_matrix.max()
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
-
-        try:
-            rbf = RBFInterpolator(X, Y_flat, kernel='gaussian', epsilon=1.0 / spread)
-        except Exception:
-            rbf = RBFInterpolator(X, Y_flat, kernel='thin_plate_spline')
+        """Build Gaussian RBF surrogate model (MATLAB newrbe equivalent)."""
+        predict = newrbe_surrogate(X, Y)
 
         def model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            return rbf(x).reshape(-1, 1)
+            return np.asarray(predict(x)).reshape(-1, 1)
 
         return model
 
@@ -421,13 +405,12 @@ class LSADE:
 
     # ==================== Utilities ====================
 
-    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, max_trials=50):
-        """Ensure candidate is not too close to existing samples."""
-        scales = np.linspace(0.1, 1.0, max_trials)
-        for t in range(max_trials):
-            dist = cdist(candidate, X, metric='chebyshev').min()
-            if dist >= epsilon:
-                break
-            perturbation = scales[t] * (np.random.rand(1, dim) - 0.5)
+    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, n_scales=50, max_trials=1000):
+        """Perturb the candidate until it is not too close to existing samples."""
+        scales = np.linspace(0.1, 1.0, n_scales)
+        c = 0
+        while cdist(candidate, X, metric='chebyshev').min() < epsilon and c < max_trials:
+            perturbation = scales[c % n_scales] * (np.random.rand(1, dim) - 0.5)
             candidate = np.clip(candidate + perturbation, 0.0, 1.0)
+            c += 1
         return candidate

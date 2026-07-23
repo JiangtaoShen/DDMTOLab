@@ -1925,6 +1925,122 @@ def rbf_predict(model, X_train, X_query):
     return Y_pred
 
 
+def newrbe_surrogate(X_train, Y_train, spread=None):
+    """
+    Build an exact Gaussian RBF interpolant equivalent to MATLAB's
+    ``newrbe(X', y', spread)``. When ``spread`` is None it is estimated as
+    ``max(pairwise distance) / (dim * n) ** (1 / dim)``.
+
+    MATLAB's newrbe uses Gaussian basis functions ``exp(-(0.8326 * r / spread)^2)``
+    (so that the response is 0.5 at distance ``spread``) plus an output bias,
+    solved as an underdetermined linear system. Here the (n+1)-parameter system
+    is solved with least squares (minimum-norm solution).
+
+    Parameters
+    ----------
+    X_train : np.ndarray
+        Training inputs, shape (n, d)
+    Y_train : np.ndarray
+        Training outputs, shape (n,) or (n, 1)
+    spread : float, optional
+        Gaussian spread parameter; estimated from the data when None.
+
+    Returns
+    -------
+    predict : callable
+        ``predict(x)`` accepts an array of shape (nq, d) or (d,) and returns
+        predictions of shape (nq,)
+    """
+    X_train = np.asarray(X_train, dtype=float)
+    Y_train = np.asarray(Y_train, dtype=float).flatten()
+    n, dim = X_train.shape
+
+    dist_matrix = cdist(X_train, X_train)
+    if spread is None:
+        max_dist = dist_matrix.max()
+        if max_dist > 0:
+            spread = max_dist / (dim * n) ** (1.0 / dim)
+        else:
+            spread = 1.0
+    b = 0.8326 / spread
+
+    A = np.exp(-(b * dist_matrix) ** 2)
+    G = np.hstack([A, np.ones((n, 1))])
+    w = np.linalg.lstsq(G, Y_train, rcond=None)[0]
+
+    def predict(x):
+        x = np.atleast_2d(np.asarray(x, dtype=float))
+        A_query = np.exp(-(b * cdist(x, X_train)) ** 2)
+        return A_query @ w[:-1] + w[-1]
+
+    return predict
+
+
+def newrb_surrogate(X_train, Y_train, goal=0.1, spread=1.0, max_neurons=8):
+    """
+    Build an approximating Gaussian RBF network equivalent to MATLAB's
+    ``newrb(X', y', goal, spread, max_neurons)``.
+
+    Neurons (centered on training points) are added greedily: at each step the
+    candidate input vector whose basis-function column best explains the
+    current residual is added, and the output layer (weights + bias) is
+    re-solved by least squares. Growth stops when the training MSE drops to
+    ``goal`` or ``max_neurons`` neurons are reached.
+
+    Parameters
+    ----------
+    X_train : np.ndarray
+        Training inputs, shape (n, d)
+    Y_train : np.ndarray
+        Training outputs, shape (n,) or (n, 1)
+    goal : float
+        Target mean squared error (default: 0.1)
+    spread : float
+        Gaussian spread parameter (default: 1.0)
+    max_neurons : int
+        Maximum number of hidden neurons (default: 8)
+
+    Returns
+    -------
+    predict : callable
+        ``predict(x)`` accepts an array of shape (nq, d) or (d,) and returns
+        predictions of shape (nq,)
+    """
+    X_train = np.asarray(X_train, dtype=float)
+    Y_train = np.asarray(Y_train, dtype=float).flatten()
+    n = X_train.shape[0]
+    b = 0.8326 / max(spread, 1e-30)
+
+    A = np.exp(-(b * cdist(X_train, X_train)) ** 2)
+
+    chosen = []
+    err = Y_train.copy()
+    w = np.zeros(1)
+    for _ in range(min(max_neurons, n)):
+        # Candidate whose column best reduces the residual (newrb's criterion)
+        proj = A.T @ err
+        norms = np.sum(A * A, axis=0)
+        scores = proj ** 2 / np.maximum(norms, 1e-300)
+        scores[chosen] = -np.inf
+        j = int(np.argmax(scores))
+        chosen.append(j)
+
+        G = np.hstack([A[:, chosen], np.ones((n, 1))])
+        w = np.linalg.lstsq(G, Y_train, rcond=None)[0]
+        err = Y_train - G @ w
+        if np.mean(err ** 2) <= goal:
+            break
+
+    centers = X_train[chosen]
+
+    def predict(x):
+        x = np.atleast_2d(np.asarray(x, dtype=float))
+        A_query = np.exp(-(b * cdist(x, centers)) ** 2)
+        return A_query @ w[:-1] + w[-1]
+
+    return predict
+
+
 # =============================================================================
 # dsmerge: Merge duplicate design sites
 # =============================================================================

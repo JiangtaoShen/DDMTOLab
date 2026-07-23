@@ -11,13 +11,12 @@ Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.01.13
-Version: 1.0
+Date: 2026.07.23
+Version: 1.1
 """
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel as C, WhiteKernel
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
@@ -31,8 +30,8 @@ class GL_SADE:
     Global-Local Surrogate-Assisted Differential Evolution for expensive optimization problems.
 
     This algorithm adaptively switches between:
-    1. Global search: RBF model with plain acquisition
-    2. Local search: GPR model with LCB-decay acquisition
+    1. Global search: RBF model with plain acquisition (DE/best/1, 50 generations)
+    2. Local search: GPR model on recent samples with LCB-decay acquisition (prescreening)
     """
 
     algorithm_information = {
@@ -62,20 +61,20 @@ class GL_SADE:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 100)
+            Number of initial samples per task (default: 50)
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 300)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'GLSADE_test')
+            Name for the experiment (default: 'GL-SADE')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n_initial = n_initial if n_initial is not None else 100
+        self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 300
         self.save_data = save_data
         self.save_path = save_path
@@ -121,20 +120,11 @@ class GL_SADE:
                 X = current_decs[i]
                 Y = current_objs[i]
 
-                # Determine search state based on improvement
-                if len(Y) > 1:
-                    if Y[-1, 0] < np.min(Y[:-1, 0]):
-                        state = 1  # Local search (last point improved)
-                    else:
-                        state = 0  # Global search (no improvement)
+                # Local search if the last evaluation improved on all previous ones
+                if len(Y) > 1 and Y[-1, 0] < np.min(Y[:-1, 0]):
+                    candidate_np = self._local_search(X, Y, dim, max_nfes_per_task[i])
                 else:
-                    state = 0  # Default to global if only initial samples
-
-                # Execute search based on state
-                if state == 0:
-                    candidate_np = self._global_search(X, Y, dim, nfes_per_task[i])
-                else:
-                    candidate_np = self._local_search(X, Y, dim, nfes_per_task[i])
+                    candidate_np = self._global_search(X, Y, dim)
 
                 # Ensure uniqueness: avoid duplicate sampling
                 candidate_np = self._ensure_uniqueness(candidate_np, X, dim)
@@ -164,37 +154,6 @@ class GL_SADE:
 
         return results
 
-    # Build RBF surrogate model
-    def _build_rbf_model(self, X, Y):
-
-        Y = Y.flatten()
-        n_samples, dim = X.shape
-
-        if n_samples > 1:
-            # Compute pairwise distances
-            dist_matrix = cdist(X, X, metric='euclidean')
-            max_dist = dist_matrix.max()
-            # Adaptive spread estimation
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
-
-        # Use Gaussian RBF
-        try:
-            rbf_interpolator = RBFInterpolator(X, Y, kernel='gaussian', epsilon=1.0 / spread)
-        except Exception:
-            # Fallback
-            rbf_interpolator = RBFInterpolator(X, Y, kernel='thin_plate_spline')
-
-        # Return a function that only returns predictions
-        def rbf_model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            pred = rbf_interpolator(x)
-            return pred.reshape(-1, 1)
-
-        return rbf_model
-
     # Build GPR surrogate model
     def _build_gpr_model(self, X, Y):
 
@@ -223,24 +182,22 @@ class GL_SADE:
         return gpr_model
 
     # Global search using RBF model with plain acquisition
-    def _global_search(self, X, Y, dim, nfes_used):
+    def _global_search(self, X, Y, dim):
 
-        # Build RBF model
-        rbf_model = self._build_rbf_model(X, Y)
+        rbf_model = newrbe_surrogate(X, Y)
 
-        # Define acquisition function
         def acquisition_func(x):
-            return rbf_model(x)
+            return np.asarray(rbf_model(x)).reshape(-1, 1)
 
-        # Optimize acquisition using DE/best/1 with elite init from database
+        # DE/best/1 with elite init from database, 50 generations
         candidate = self._de_best1_search(acquisition_func, X, Y, dim,
                                           popsize=50, max_gen=50)
         return candidate
 
     # Local search using GPR model with LCB-decay acquisition
-    def _local_search(self, X, Y, dim, nfes_used):
+    def _local_search(self, X, Y, dim, max_nfes):
 
-        # Use only recent samples (min(n, 2*dim))
+        # Use only the most recent min(n, 2*dim) samples
         n_local = min(len(X), 2 * dim)
         X_local = X[-n_local:]
         Y_local = Y[-n_local:]
@@ -248,88 +205,79 @@ class GL_SADE:
         # Build GPR model
         gpr_model = self._build_gpr_model(X_local, Y_local)
 
-        # Calculate LCB weight with decay
-        w = 2.0 - 2.0 / (1.0 + np.exp(5.0 - 20.0 * nfes_used / 500.0))
+        # LCB weight with decay (MATLAB hardcodes the 500 denominator = its FEsMax)
+        n_used = len(X)
+        w = 2.0 - 2.0 / (1.0 + np.exp(5.0 - 20.0 * n_used / max_nfes))
 
-        # Define acquisition function (LCB: mean - w * std)
+        # Acquisition function (LCB: mean - w * std)
         def acquisition_func(x):
             mean, std = gpr_model(x)
             return mean - w * std
 
-        # Optimize using DE/best/1 with elite init (1 generation = prescreening)
+        # DE/best/1 with elite init, 1 generation = prescreening
         candidate = self._de_best1_search(acquisition_func, X, Y, dim,
                                           popsize=50, max_gen=1)
         return candidate
 
     def _de_best1_search(self, acquisition_func, X_db, Y_db, dim,
                          popsize=50, max_gen=50, F=0.5, CR=0.8):
-        """DE/best/1/bin with elite initialization and 1-to-1 comparison selection."""
+        """
+        DE/best/1/bin with elite initialization and 1-to-1 comparison selection.
+
+        The initial parents carry their raw database objective values (MATLAB
+        pop_ini 'elite'); only offspring are scored with the acquisition function.
+        """
         N = len(X_db)
         Y_flat = Y_db.flatten()
 
-        # Elite initialization: top-popsize solutions from database
+        # Elite initialization: top-popsize solutions with raw objective values
         if N >= popsize:
-            idx = np.argsort(Y_flat)[:popsize]
+            idx = np.argsort(Y_flat, kind='stable')[:popsize]
             pop = X_db[idx].copy()
-            pop_acq = acquisition_func(pop).flatten()
+            pop_acq = Y_flat[idx].copy()
         else:
             extra = np.random.rand(popsize - N, dim)
             pop = np.vstack([X_db.copy(), extra])
-            pop_acq = acquisition_func(pop).flatten()
+            pop_acq = np.concatenate([Y_flat, acquisition_func(extra).flatten()])
 
+        n_pop = len(pop)
         for gen in range(max_gen):
-            # Find current best
+            # Current best as base vector
             best_idx = np.argmin(pop_acq)
             x_best = pop[best_idx]
 
             offspring = np.empty_like(pop)
-            for j in range(popsize):
+            for j in range(n_pop):
                 # Mutation: DE/best/1
-                candidates = [k for k in range(popsize) if k != j]
+                candidates = [k for k in range(n_pop) if k != j]
                 r1, r2 = np.random.choice(candidates, 2, replace=False)
                 mutant = x_best + F * (pop[r1] - pop[r2])
-                mutant = np.clip(mutant, 0.0, 1.0)
 
-                # Binomial crossover
+                # Binomial crossover with forced index
                 trial = pop[j].copy()
                 j_rand = np.random.randint(dim)
                 for d in range(dim):
-                    if np.random.rand() < CR or d == j_rand:
+                    if np.random.rand() <= CR or d == j_rand:
                         trial[d] = mutant[d]
-                offspring[j] = trial
+                offspring[j] = np.clip(trial, 0.0, 1.0)
 
-            # 1-to-1 greedy comparison selection
+            # 1-to-1 comparison selection (ties go to offspring)
             offspring_acq = acquisition_func(offspring).flatten()
-            for j in range(popsize):
-                if offspring_acq[j] <= pop_acq[j]:
-                    pop[j] = offspring[j]
-                    pop_acq[j] = offspring_acq[j]
+            replace = offspring_acq <= pop_acq
+            pop[replace] = offspring[replace]
+            pop_acq[replace] = offspring_acq[replace]
 
         # Return best solution
         best_idx = np.argmin(pop_acq)
         return pop[best_idx:best_idx + 1].copy()
 
     # Ensure candidate is not too close to existing samples
-    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, max_trials=50):
+    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, n_scales=50, max_trials=1000):
 
-        scales = np.linspace(0.1, 1.0, max_trials)
-        trial_count = 0
-
-        while trial_count < max_trials:
-            # Compute minimum distance to existing samples
-            dist = cdist(candidate, X, metric='chebyshev')
-            min_dist = np.min(dist)
-
-            if min_dist >= epsilon:
-                break  # Candidate is sufficiently unique
-
-            # Apply perturbation
-            scale = scales[trial_count % max_trials]
-            perturbation = scale * (np.random.rand(1, dim) - 0.5)
-            candidate = candidate + perturbation
-
-            # Clip to [0, 1]
-            candidate = np.clip(candidate, 0.0, 1.0)
-            trial_count += 1
-
+        scales = np.linspace(0.1, 1.0, n_scales)
+        c = 0
+        while cdist(candidate, X, metric='chebyshev').min() < epsilon and c < max_trials:
+            perturbation = scales[c % n_scales] * (np.random.rand(1, dim) - 0.5)
+            candidate = np.clip(candidate + perturbation, 0.0, 1.0)
+            c += 1
         return candidate

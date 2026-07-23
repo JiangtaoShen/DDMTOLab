@@ -11,16 +11,14 @@ Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2026.01.13
-Version: 1.0
+Date: 2026.07.23
+Version: 1.1
 """
 from tqdm import tqdm
 import time
 import numpy as np
-from scipy.interpolate import RBFInterpolator
+from scipy.stats import qmc
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Algorithms.STSO.GA import GA
-from ddmtolab.Methods.mtop import MTOP
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -63,20 +61,20 @@ class TLRBF:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 100)
+            Number of initial samples per task (default: 50)
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 300)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'TLRBF_test')
+            Name for the experiment (default: 'TLRBF')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n_initial = n_initial if n_initial is not None else 100
+        self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 300
         self.save_data = save_data
         self.save_path = save_path
@@ -163,54 +161,25 @@ class TLRBF:
 
         return results
 
-    # Build RBF surrogate model
-    def _build_rbf_model(self, X, Y):
-
-        Y = Y.flatten()
-
-        # Calculate spread parameter
-        n_samples, dim = X.shape
-        if n_samples > 1:
-            # Compute pairwise distances
-            dist_matrix = cdist(X, X, metric='euclidean')
-            max_dist = dist_matrix.max()
-            # Adaptive spread estimation
-            spread = max_dist / (dim * n_samples) ** (1.0 / dim)
-        else:
-            spread = 1.0
-
-        # Use Gaussian RBF
-        try:
-            rbf_model = RBFInterpolator(X, Y, kernel='gaussian', epsilon=1.0 / spread)
-        except Exception:
-            # Fallback to thin_plate_spline if gaussian fails
-            rbf_model = RBFInterpolator(X, Y, kernel='thin_plate_spline')
-
-        return rbf_model
-
     # Global search with distance filtering
     def _global_search(self, decs_i, objs_i, dim):
 
         alpha = 0.4
         m = 200 * dim
 
-        # Build RBF model
-        rbf_model = self._build_rbf_model(decs_i, objs_i)
+        # Build RBF model on the full database
+        rbf_model = newrbe_surrogate(decs_i, objs_i)
 
         # Generate random candidates in [0,1]^dim
         solutions_global = np.random.rand(m, dim)
 
-        # Distance filtering
+        # Distance filtering: drop candidates too close to existing points
         dist = cdist(solutions_global, decs_i, metric='euclidean')
         mindist = np.min(dist, axis=1)
         deltag = alpha * np.max(mindist)
-
-        # Remove candidates too close to existing points
-        valid_mask = mindist > deltag
-        solutions_global = solutions_global[valid_mask]
+        solutions_global = solutions_global[mindist > deltag]
 
         if len(solutions_global) == 0:
-            # If all filtered out, return a random point
             return np.random.rand(1, dim)
 
         # Predict and select best
@@ -231,70 +200,51 @@ class TLRBF:
             # Use all data
             X_subregion = decs_i
             Y_subregion = objs_i
-            lb_subregion = np.zeros(dim)
-            ub_subregion = np.ones(dim)
         else:
             # Compute number of clusters
             no_clusters = 1 + int(np.ceil((N - L1) / L2))
 
-            # Normalize data for clustering
+            # Normalize each dimension to [0,1] for clustering
             X_min = decs_i.min(axis=0)
             X_max = decs_i.max(axis=0)
             X_range = X_max - X_min
-            X_range[X_range < 1e-10] = 1.0
+            X_range[X_range < 1e-12] = 1.0
             X_normalized = (decs_i - X_min) / X_range
 
-            # Perform KMeans clustering (approximation of FCM)
-            kmeans = KMeans(n_clusters=no_clusters, random_state=42, n_init=10)
-            labels = kmeans.fit_predict(X_normalized)
+            # Fuzzy c-means clustering; membership matrix (N, no_clusters)
+            U = self._fcm(X_normalized, no_clusters).T
 
-            # Compute soft membership using inverse distance weighting
-            distances = kmeans.transform(X_normalized)
-            # Avoid division by zero
-            distances = np.maximum(distances, 1e-10)
-            U = 1.0 / distances
-            U = U / U.sum(axis=1, keepdims=True)
-
-            # Select top L1 points from each cluster based on membership
+            # Select top L1 points from each cluster by membership
             X_clusters = []
             Y_clusters = []
             mean_objs = []
-
             for k in range(no_clusters):
-                # Sort by membership in cluster k (descending)
-                membership_k = U[:, k]
-                idx_sorted = np.argsort(-membership_k)[:L1]
-
+                idx_sorted = np.argsort(-U[:, k], kind='stable')[:L1]
                 X_clusters.append(decs_i[idx_sorted])
                 Y_clusters.append(objs_i[idx_sorted])
                 mean_objs.append(np.mean(objs_i[idx_sorted]))
 
             # Probabilistic cluster selection (MATLAB: [~,idx]=sort(mper,'descend'); pro=idx/K)
             mean_objs = np.array(mean_objs)
-            idx_desc = np.argsort(-mean_objs)  # descending sort indices
-            pro = np.zeros(no_clusters)
-            for pos in range(no_clusters):
-                pro[pos] = (idx_desc[pos] + 1) / no_clusters  # MATLAB 1-indexed
+            idx_desc = np.argsort(-mean_objs, kind='stable')
+            pro = (idx_desc + 1) / no_clusters
 
-            # Rejection sampling (MATLAB: while rand > pro(sid))
-            selected_cluster = None
-            while selected_cluster is None:
-                sid = np.random.randint(0, no_clusters)
-                if np.random.rand() <= pro[sid]:
-                    selected_cluster = sid
+            # Rejection sampling (MATLAB: sid=randi(K); while rand>pro(sid): sid=randi(K))
+            sid = np.random.randint(no_clusters)
+            while np.random.rand() > pro[sid]:
+                sid = np.random.randint(no_clusters)
 
-            X_subregion = X_clusters[selected_cluster]
-            Y_subregion = Y_clusters[selected_cluster]
+            X_subregion = X_clusters[sid]
+            Y_subregion = Y_clusters[sid]
 
-            # Define subregion bounds
-            lb_subregion = np.min(X_subregion, axis=0)
-            ub_subregion = np.max(X_subregion, axis=0)
+        # Subregion bounds are the bounding box of the selected data
+        lb_subregion = np.min(X_subregion, axis=0)
+        ub_subregion = np.max(X_subregion, axis=0)
 
-        # Build RBF model on subregion
-        rbf_model = self._build_rbf_model(X_subregion, Y_subregion)
-
-        # Optimize using GA on surrogate (50 generations)
-        candidate = self._optimize_surrogate(rbf_model, lb_subregion, ub_subregion, dim, max_gen=50)
+        # Build RBF model on subregion and search it with the template EA
+        rbf_model = newrbe_surrogate(X_subregion, Y_subregion)
+        candidate = self._template_ea_search(rbf_model, X_subregion, Y_subregion,
+                                             lb_subregion, ub_subregion)
 
         return candidate
 
@@ -302,71 +252,163 @@ class TLRBF:
     def _local_search(self, decs_i, objs_i, dim):
 
         k = min(2 * dim, len(decs_i) - 1)
-        k = max(k, 1)  # Ensure at least 1 neighbor
+        k = max(k, 1)
 
-        # Find k nearest neighbors to the best point
+        # Find k nearest neighbors to the best point (including the best itself)
         idx_min = np.argmin(objs_i)
         dist = cdist(decs_i, decs_i[idx_min:idx_min + 1], metric='euclidean').flatten()
-        idx_sorted = np.argsort(dist)[:k]  # k points total including best (matches MATLAB)
+        idx_sorted = np.argsort(dist, kind='stable')[:k]
 
         X_local = decs_i[idx_sorted]
         Y_local = objs_i[idx_sorted]
 
-        # Build RBF model on local region
-        rbf_model = self._build_rbf_model(X_local, Y_local)
-
-        # Define local bounds
+        # Local bounds are the bounding box of the selected data
         lb_local = np.min(X_local, axis=0)
         ub_local = np.max(X_local, axis=0)
 
-        # Optimize using GA on surrogate (50 generations, matching MATLAB)
-        candidate = self._optimize_surrogate(rbf_model, lb_local, ub_local, dim, max_gen=50)
+        # Build RBF model on local region and search it with the template EA
+        rbf_model = newrbe_surrogate(X_local, Y_local)
+        candidate = self._template_ea_search(rbf_model, X_local, Y_local, lb_local, ub_local)
 
         return candidate
 
-    # Optimize surrogate model using Genetic Algorithm
-    def _optimize_surrogate(self, surrogate_model, lb, ub, dim, n_pop=50, max_gen=50):
+    # ==================== Surrogate Search (acquisition template) ====================
 
-        # Ensure bounds are valid
-        lb = np.asarray(lb)
-        ub = np.asarray(ub)
+    def _template_ea_search(self, surrogate, X_data, Y_data, lb, ub,
+                            popsize=50, n_queries=50):
+        """
+        Evolutionary search on a surrogate: 'elite+random' initialization,
+        SBX + polynomial mutation + variable swap offspring, and roulette
+        wheel selection, run for n_queries generations.
+        """
+        lb = np.asarray(lb, dtype=float).copy()
+        ub = np.asarray(ub, dtype=float).copy()
+        # Guard against zero-width dimensions for normalization
+        degenerate = (ub - lb) < 1e-12
+        ub[degenerate] = lb[degenerate] + 1e-6
 
-        # Handle case where lb == ub
-        range_mask = (ub - lb) < 1e-10
-        if np.any(range_mask):
-            ub[range_mask] = lb[range_mask] + 1e-6
+        Y_flat = Y_data.flatten()
+        n_half = popsize // 2
+        if len(Y_flat) >= n_half:
+            idx = np.argsort(Y_flat, kind='stable')[:n_half]
+            pop = np.vstack([X_data[idx], self._lhs(popsize - n_half, lb, ub)])
+        else:
+            pop = np.vstack([X_data, self._lhs(popsize - len(Y_flat), lb, ub)])
+        pop_acq = np.asarray(surrogate(pop)).flatten()
 
-        # Create surrogate problem wrapper
-        def surrogate_func(x):
-            x_denorm = lb + x * (ub - lb)
-            return surrogate_model(x_denorm).reshape(-1, 1)
+        for _ in range(n_queries):
+            offspring = self._ea_offspring(pop, lb, ub)
+            off_acq = np.asarray(surrogate(offspring)).flatten()
+            pop, pop_acq = self._roulette_select(pop, pop_acq, offspring, off_acq, popsize)
 
-        surrogate_problem = MTOP()
-        surrogate_problem.add_task(objective_func=surrogate_func, dim=dim)
+        best_idx = np.argmin(pop_acq)
+        return pop[best_idx:best_idx + 1].copy()
 
-        # Run GA
-        max_nfes = n_pop * max_gen
-        ga = GA(surrogate_problem, n=n_pop, max_nfes=max_nfes, disable_tqdm=True)
-        results = ga.optimize()
+    def _ea_offspring(self, parents, lb, ub, muc=15, mum=15, probswap=0.5):
+        """EA offspring: SBX crossover + polynomial mutation + variable swap."""
+        popsize, dim = parents.shape
+        range_vec = ub - lb
 
-        # Get best solution in [0,1] space
-        best_x_normalized = results.best_decs[0].reshape(1, -1)
+        # Normalize to [0,1] within bounds
+        pop_norm = (parents - lb) / range_vec
+        offspring = np.zeros((popsize, dim))
+        ind_order = np.random.permutation(popsize)
 
-        # Denormalize to [lb, ub] space
-        best_solution = lb + best_x_normalized * (ub - lb)
+        for i in range(popsize // 2):
+            p1 = ind_order[i]
+            p2 = ind_order[i + popsize // 2]
 
-        # Ensure solution is within [0, 1] (original problem bounds)
-        best_solution = np.clip(best_solution, 0.0, 1.0)
+            # SBX crossover (shared cf vector for both children)
+            u = np.random.rand(dim)
+            cf = np.where(u <= 0.5,
+                          (2 * u) ** (1 / (muc + 1)),
+                          (2 * (1 - u)) ** (-1 / (muc + 1)))
 
-        return best_solution
+            child1 = np.clip(0.5 * ((1 + cf) * pop_norm[p1] + (1 - cf) * pop_norm[p2]), 0, 1)
+            child2 = np.clip(0.5 * ((1 + cf) * pop_norm[p2] + (1 - cf) * pop_norm[p1]), 0, 1)
 
-    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, max_trials=50):
-        """Ensure candidate is not too close to existing samples (Chebyshev distance)."""
-        scales = np.linspace(0.1, 1.0, max_trials)
-        for t in range(max_trials):
-            dist = cdist(candidate, X, metric='chebyshev').min()
-            if dist >= epsilon:
+            # Polynomial mutation
+            for child in [child1, child2]:
+                for j in range(dim):
+                    if np.random.rand() < 1 / dim:
+                        u_val = np.random.rand()
+                        if u_val <= 0.5:
+                            delta = (2 * u_val) ** (1 / (1 + mum)) - 1
+                            child[j] += delta * child[j]
+                        else:
+                            delta = 1 - (2 * (1 - u_val)) ** (1 / (1 + mum))
+                            child[j] += delta * (1 - child[j])
+                child[:] = np.clip(child, 0, 1)
+
+            # Variable swap
+            swap = np.random.rand(dim) >= probswap
+            temp = child2[swap].copy()
+            child2[swap] = child1[swap]
+            child1[swap] = temp
+
+            # Denormalize back to bounds
+            offspring[i] = lb + child1 * range_vec
+            offspring[i + popsize // 2] = lb + child2 * range_vec
+
+        return offspring
+
+    def _roulette_select(self, pop, pop_objs, offspring, off_objs, popsize):
+        """Roulette wheel selection over parents + offspring (inverse fitness)."""
+        total_pop = np.vstack([pop, offspring])
+        total_objs = np.concatenate([pop_objs, off_objs])
+
+        shift = min(np.min(total_objs), 0)
+        fit = 1.0 / (total_objs - shift + 1e-6)
+        cum_fit = np.cumsum(fit)
+        cum_fit /= cum_fit[-1]
+
+        idx = np.searchsorted(cum_fit, np.random.rand(popsize))
+        idx = np.clip(idx, 0, len(total_objs) - 1)
+
+        return total_pop[idx].copy(), total_objs[idx].copy()
+
+    def _lhs(self, n, lb, ub):
+        """Latin hypercube samples scaled to [lb, ub]."""
+        if n <= 0:
+            return np.empty((0, len(lb)))
+        sample = qmc.LatinHypercube(d=len(lb)).random(n)
+        return lb + sample * (ub - lb)
+
+    # ==================== FCM Clustering ====================
+
+    def _fcm(self, data, n_clusters, expo=2.0, max_iter=100, min_impro=1e-5):
+        """
+        Fuzzy c-means clustering (MATLAB fcm equivalent).
+
+        Returns the membership matrix U of shape (n_clusters, n_points).
+        """
+        n = data.shape[0]
+        U = np.random.rand(n_clusters, n)
+        U = U / U.sum(axis=0, keepdims=True)
+
+        obj_prev = None
+        for _ in range(max_iter):
+            mf = U ** expo
+            centers = (mf @ data) / mf.sum(axis=1, keepdims=True)
+            dist = cdist(centers, data)
+            obj = np.sum((dist ** 2) * mf)
+            with np.errstate(divide='ignore', invalid='ignore'):
+                tmp = dist ** (-2.0 / (expo - 1.0))
+                U = tmp / tmp.sum(axis=0, keepdims=True)
+            if obj_prev is not None and abs(obj - obj_prev) < min_impro:
                 break
-            perturbation = scales[t] * (np.random.rand(1, dim) - 0.5)
+            obj_prev = obj
+
+        return U
+
+    # ==================== Utilities ====================
+
+    def _ensure_uniqueness(self, candidate, X, dim, epsilon=5e-3, n_scales=50, max_trials=1000):
+        """Perturb the candidate until it is not too close to existing samples."""
+        scales = np.linspace(0.1, 1.0, n_scales)
+        c = 0
+        while cdist(candidate, X, metric='chebyshev').min() < epsilon and c < max_trials:
+            perturbation = scales[c % n_scales] * (np.random.rand(1, dim) - 0.5)
             candidate = np.clip(candidate + perturbation, 0.0, 1.0)
+            c += 1
         return candidate

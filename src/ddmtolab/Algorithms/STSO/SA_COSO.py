@@ -11,15 +11,13 @@ Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
-Date: 2025.01.13
-Version: 1.0
+Date: 2026.07.23
+Version: 1.1
 """
 import time
 import numpy as np
 from tqdm import tqdm
-from scipy.interpolate import RBFInterpolator
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Methods.mtop import MTOP
 import warnings
 
 warnings.filterwarnings("ignore")
@@ -29,9 +27,17 @@ class SA_COSO:
     """
     Surrogate-Assisted Cooperative Swarm Optimization for expensive optimization problems.
 
-    This algorithm uses two cooperative swarms:
-    1. FES-PSO: Small swarm with Fitness Estimation Strategy to reduce evaluations
-    2. RBF-SLPSO: Large swarm with RBF-assisted Social Learning PSO
+    Two cooperating swarms share one RBF network (MATLAB newrb, at most 8 neurons)
+    trained on a bounded archive of exactly evaluated solutions:
+
+    1. A PSO swarm whose fitness is mostly estimated by a Fitness Estimation
+       Strategy (FES): plain RBF predictions plus position-relation-based
+       estimates from the nearest neighbor's virtual position; estimated
+       particles that look better than their personal best (under both the
+       estimate and the RBF prediction) are evaluated exactly.
+    2. A social-learning swarm whose particles learn dimension-wise from
+       better solutions among the swarm itself and random archive members;
+       its best predicted particle is evaluated exactly every iteration.
     """
 
     algorithm_information = {
@@ -51,9 +57,8 @@ class SA_COSO:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n_fes=30, n_rbf=100,
-                 mu=5, save_data=True, save_path='./Data',
-                 name='SA-COSO', disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, n_fes=30, n_rbf=200,
+                 save_data=True, save_path='./Data', name='SA-COSO', disable_tqdm=True):
         """
         Initialize SA-COSO algorithm.
 
@@ -66,28 +71,21 @@ class SA_COSO:
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 300)
         n_fes : int, optional
-            Population size of FES-assisted PSO (default: 30)
+            Population size of the FES-assisted PSO swarm (default: 30)
         n_rbf : int, optional
-            Population size of RBF-assisted SL-PSO (default: 100)
-        mu : int, optional
-            Total number of samples per iteration (default: 5, must be >= 2)
-            - (mu - 1) samples from FES-PSO
-            - 1 sample from RBF-SLPSO
+            Population size of the RBF-assisted social-learning swarm (default: 200)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'SACOSO_test')
+            Name for the experiment (default: 'SA-COSO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n_fes = n_fes  # FES-PSO population size
-        self.n_rbf = n_rbf  # RBF-SLPSO population size
-        self.mu = mu  # Total samples per iteration
-        self.n_sample_fes = mu - 1  # Samples from FES-PSO
-        self.n_sample_rbf = 1  # Samples from RBF-SLPSO (fixed to 1)
+        self.n_fes = n_fes
+        self.n_rbf = n_rbf
         self.n_initial = n_initial if n_initial is not None else (n_fes + n_rbf)
         self.max_nfes = max_nfes if max_nfes is not None else 300
         self.save_data = save_data
@@ -96,13 +94,14 @@ class SA_COSO:
         self.disable_tqdm = disable_tqdm
 
         # PSO parameters
-        self.c1 = 2.05  # Cognitive coefficient
-        self.c2 = 1.025  # Social coefficient (GbestFES)
-        self.c3 = 1.025  # Social coefficient (GbestRBF)
-        self.w = 0.7298  # Inertia weight (constriction factor)
+        self.c1 = 2.05   # cognitive coefficient
+        self.c2 = 1.025  # social coefficient (own gbest)
+        self.c3 = 1.025  # social coefficient (other swarm's gbest)
+        self.w = 0.7298  # constriction factor
 
-        # RBF parameters
+        # RBF network parameters (MATLAB newrb)
         self.max_node = 8
+        self.rbf_goal = 0.1
 
     def optimize(self):
         """
@@ -125,76 +124,63 @@ class SA_COSO:
         objs, _ = evaluation(problem, decs)
         nfes_per_task = n_initial_per_task.copy()
 
-        # Initialize data structures for each task
         hx = [decs[i].copy() for i in range(nt)]
         hf = [objs[i].flatten().copy() for i in range(nt)]
 
-        # FES-PSO swarm
-        swarm_fes = []
-        vel_fes = []
-        pbest_fes = []
-        pbest_fes_val = []
-        gbest_fes = []
-        gbest_fes_val = []
-
-        # RBF-SLPSO swarm
-        swarm_rbf = []
-        delta_rbf = []
-        gbest_rbf = []
-        gbest_rbf_val = []
-
-        # Spread sum for RBF
-        spread_sum = [0.0] * nt
-
+        # Per-task algorithm state
+        states = []
         for i in range(nt):
             dim = dims[i]
             n_total = n_initial_per_task[i]
+            n1 = min(self.n_fes, n_total)
+            n2 = n_total - n1
 
-            # Split initial population
-            n_fes_actual = min(self.n_fes, n_total)
-            n_rbf_actual = min(self.n_rbf, n_total - n_fes_actual)
+            pos1 = hx[i][:n1].copy()
+            fit1 = hf[i][:n1].copy()
 
-            # FES-PSO initialization
-            pos_fes = hx[i][:n_fes_actual].copy()
-            obj_fes = hf[i][:n_fes_actual].copy()
-            swarm_fes.append({'pos': pos_fes, 'obj': obj_fes})
-
-            vel_i = np.random.rand(n_fes_actual, dim) - 0.5
-            vel_fes.append(vel_i)
-
-            pbest_fes.append(pos_fes.copy())
-            pbest_fes_val.append(obj_fes.copy())
-
-            best_idx = np.argmin(obj_fes)
-            gbest_fes.append(pos_fes[best_idx].copy())
-            gbest_fes_val.append(obj_fes[best_idx])
-
-            # RBF-SLPSO initialization
-            if n_rbf_actual > 0:
-                pos_rbf = hx[i][n_fes_actual:n_fes_actual + n_rbf_actual].copy()
-                obj_rbf = hf[i][n_fes_actual:n_fes_actual + n_rbf_actual].copy()
+            if n2 > 0:
+                pos2 = hx[i][n1:].copy()
+                fit2 = hf[i][n1:].copy()
             else:
-                # Generate additional random samples if needed
-                pos_rbf = np.random.rand(self.n_rbf, dim)
-                obj_rbf_arr, _ = evaluation_single(problem, pos_rbf, i)
-                obj_rbf = obj_rbf_arr.flatten()
-                hx[i] = np.vstack([hx[i], pos_rbf])
-                hf[i] = np.concatenate([hf[i], obj_rbf])
-                nfes_per_task[i] += self.n_rbf
+                pos2 = np.random.rand(self.n_rbf, dim)
+                fit2_arr, _ = evaluation_single(problem, pos2, i)
+                fit2 = fit2_arr.flatten()
+                hx[i] = np.vstack([hx[i], pos2])
+                hf[i] = np.concatenate([hf[i], fit2])
+                nfes_per_task[i] += len(pos2)
 
-            swarm_rbf.append({'pos': pos_rbf, 'obj': obj_rbf})
+            st = {
+                'pos1': pos1, 'fit1': fit1,
+                'vel1': np.random.rand(len(pos1), dim) - 0.5,
+                'pbest': pos1.copy(), 'pbestval': fit1.copy(),
+                'pbest_eval': np.ones(len(pos1), dtype=bool),
+                'pos2': pos2, 'fit2': fit2,
+                'vel2': np.random.rand(len(pos2), dim) - 0.5,
+                'his_pos_1': pos1.copy(), 'his_fit_1': fit1.copy(),
+                'his_pos_2': np.zeros_like(pos1), 'his_fit_2': np.zeros(len(pos1)),
+                'r1': np.zeros((len(pos1), dim)), 'r2': np.zeros((len(pos1), dim)),
+                'r3': np.zeros((len(pos1), dim)),
+                'archive_pos': hx[i].copy(), 'archive_fit': hf[i].copy(),
+                'iter': 1,
+            }
 
-            delta_i = np.random.rand(len(pos_rbf), dim) - 0.5
-            delta_rbf.append(delta_i)
+            g_idx = int(np.argmin(fit1))
+            st['gbest'] = pos1[g_idx].copy()
+            st['gbestval'] = float(fit1[g_idx])
+            r_idx = int(np.argmin(fit2))
+            st['rbfgbest'] = pos2[r_idx].copy()
+            st['rbfgbestval'] = float(fit2[r_idx])
 
-            best_idx_rbf = np.argmin(obj_rbf)
-            gbest_rbf.append(pos_rbf[best_idx_rbf].copy())
-            gbest_rbf_val.append(obj_rbf[best_idx_rbf])
+            # Initial RBF network: spread is the archive bounding-box diagonal
+            spread0 = self._bbox_diagonal(st['archive_pos'])
+            st['spread_sum'] = spread0
+            st['model'] = newrb_surrogate(st['archive_pos'], st['archive_fit'],
+                                          goal=self.rbf_goal, spread=spread0,
+                                          max_neurons=self.max_node)
+            states.append(st)
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(nfes_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
-
-        iter_count = [0] * nt
 
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
@@ -203,70 +189,192 @@ class SA_COSO:
 
             for i in active_tasks:
                 dim = dims[i]
-                iter_count[i] += 1
+                st = states[i]
+                model = st['model']
+                n1 = len(st['pos1'])
+                n2 = len(st['pos2'])
 
-                # Determine global best across both swarms
-                if gbest_fes_val[i] < gbest_rbf_val[i]:
-                    gbest = gbest_fes[i].copy()
-                else:
-                    gbest = gbest_rbf[i].copy()
+                # Exact evaluations of this iteration (for archive update)
+                temp_pos = []
+                temp_fit = []
 
-                # Update spread for RBF
-                pos_range = np.max(hx[i], axis=0) - np.min(hx[i], axis=0)
-                spread_sum[i] += np.sqrt(np.sum(pos_range ** 2))
-                spread = spread_sum[i] / iter_count[i]
-
-                # Build RBF surrogate model
-                rbf_model = self._build_rbf_model(hx[i], hf[i], spread, dim)
-
-                # ===== FES-PSO Update =====
-                new_evals_fes = self._fes_pso_update(
-                    i, problem, dim, rbf_model,
-                    swarm_fes[i], vel_fes[i], pbest_fes[i], pbest_fes_val[i],
-                    gbest_fes[i], gbest_fes_val[i], gbest_rbf[i],
-                    hx[i], hf[i], self.n_sample_fes
-                )
-
-                # Update history and counters for FES-PSO
-                for pos, obj in new_evals_fes:
+                def try_eval(x_row):
                     if nfes_per_task[i] >= max_nfes_per_task[i]:
-                        break
-                    hx[i] = np.vstack([hx[i], pos.reshape(1, -1)])
-                    hf[i] = np.concatenate([hf[i], [obj]])
+                        return None
+                    obj_arr, _ = evaluation_single(problem, x_row.reshape(1, -1), i)
+                    val = float(obj_arr[0, 0])
                     nfes_per_task[i] += 1
                     pbar.update(1)
+                    hx[i] = np.vstack([hx[i], x_row.reshape(1, -1)])
+                    hf[i] = np.concatenate([hf[i], [val]])
+                    temp_pos.append(x_row.copy())
+                    temp_fit.append(val)
+                    return val
 
-                # Update FES gbest
-                best_idx = np.argmin(pbest_fes_val[i])
-                if pbest_fes_val[i][best_idx] < gbest_fes_val[i]:
-                    gbest_fes[i] = pbest_fes[i][best_idx].copy()
-                    gbest_fes_val[i] = pbest_fes_val[i][best_idx]
+                # ===== Learning pool for the social-learning swarm =====
+                # Current swarm particles plus distinct random archive members
+                # (MATLAB's index sampling never selects the last archive entry)
+                n_arc = len(st['archive_fit'])
+                n_picks = min(n2, max(n_arc - 1, 0))
+                picks = np.random.choice(max(n_arc - 1, 1), size=n_picks, replace=False)
+                pool_pos = np.vstack([st['pos2'], st['archive_pos'][picks]])
+                pool_fit = np.concatenate([st['fit2'], st['archive_fit'][picks]])
 
-                # ===== RBF-SLPSO Update =====
-                if nfes_per_task[i] < max_nfes_per_task[i]:
-                    # Rebuild RBF model with updated data
-                    spread = spread_sum[i] / iter_count[i]
-                    rbf_model = self._build_rbf_model(hx[i], hf[i], spread, dim)
+                # ===== Record swarm-1 history (pre-move positions) =====
+                if st['iter'] > 1:
+                    st['his_pos_2'] = st['his_pos_1'].copy()
+                    st['his_fit_2'] = st['his_fit_1'].copy()
+                st['his_pos_1'] = st['pos1'].copy()
+                st['his_fit_1'] = st['fit1'].copy()
+                sorted_index = np.argsort(st['his_fit_1'], kind='stable')
 
-                    new_evals_rbf = self._rbf_slpso_update(
-                        i, problem, dim, rbf_model,
-                        swarm_rbf[i], delta_rbf[i], gbest,
-                        hx[i], hf[i], self.n_sample_rbf
-                    )
+                # ===== Swarm 1: PSO move (random matrices kept for FES) =====
+                st['r1'] = np.random.rand(n1, dim)
+                st['r2'] = np.random.rand(n1, dim)
+                st['r3'] = np.random.rand(n1, dim)
+                st['vel1'] = self.w * (st['vel1'] +
+                                       self.c1 * st['r1'] * (st['pbest'] - st['pos1']) +
+                                       self.c2 * st['r2'] * (st['gbest'] - st['pos1']) +
+                                       self.c3 * st['r3'] * (st['rbfgbest'] - st['pos1']))
+                st['vel1'] = np.clip(st['vel1'], -0.5, 0.5)
+                st['pos1'] = np.clip(st['pos1'] + st['vel1'], 0.0, 1.0)
 
-                    # Update history for RBF-SLPSO
-                    for pos, obj in new_evals_rbf:
-                        if nfes_per_task[i] >= max_nfes_per_task[i]:
+                # ===== Swarm 2: dimension-wise social learning =====
+                for j in range(n2):
+                    better_idx = np.where(pool_fit < st['fit2'][j])[0]
+                    nb = len(better_idx)
+                    if nb == 0:
+                        continue
+                    if nb == 1:
+                        chosen = pool_pos[better_idx[0]].copy()
+                    elif nb == 2:
+                        take_first = np.random.rand(dim) > 0.5
+                        chosen = np.where(take_first,
+                                          pool_pos[better_idx[0]],
+                                          pool_pos[better_idx[1]])
+                    else:
+                        picks_d = better_idx[np.random.randint(nb, size=dim)]
+                        chosen = pool_pos[picks_d, np.arange(dim)]
+
+                    st['vel2'][j] = (np.random.rand(dim) * st['vel2'][j] +
+                                     np.random.rand(dim) * (chosen - st['pos2'][j]))
+                    st['vel2'][j] = np.clip(st['vel2'][j], -0.5, 0.5)
+                    st['pos2'][j] = np.clip(st['pos2'][j] + st['vel2'][j], 0.0, 1.0)
+                    st['fit2'][j] = float(model(st['pos2'][j])[0])
+
+                # ===== Swarm 1: fitness determination via FES =====
+                fit_known = np.zeros(n1, dtype=bool)
+                fit_eval = np.zeros(n1, dtype=bool)
+                determined = np.zeros(n1, dtype=bool)
+                via_virtual = np.zeros(n1, dtype=bool)
+                evals_before = nfes_per_task[i]
+
+                if st['iter'] == 1:
+                    for p in range(n1):
+                        idx = int(sorted_index[p])
+                        val = try_eval(st['pos1'][idx])
+                        if val is None:
                             break
-                        hx[i] = np.vstack([hx[i], pos.reshape(1, -1)])
-                        hf[i] = np.concatenate([hf[i], [obj]])
-                        nfes_per_task[i] += 1
-                        pbar.update(1)
+                        st['fit1'][idx] = val
+                        fit_known[idx] = True
+                        fit_eval[idx] = True
+                else:
+                    dist_mat = cdist(st['pos1'], st['pos1'])
+                    np.fill_diagonal(dist_mat, 1e5)
+                    for p in range(n1):
+                        idx = int(sorted_index[p])
+                        if not fit_known[idx]:
+                            st['fit1'][idx] = float(model(st['pos1'][idx])[0])
+                            fit_known[idx] = True
+                            fit_eval[idx] = False
+                            via_virtual[idx] = False
+                        determined[idx] = True
 
-                        # Update RBF gbest
-                        if obj < gbest_rbf_val[i]:
-                            gbest_rbf[i] = pos.copy()
-                            gbest_rbf_val[i] = obj
+                        # Nearest-neighbor estimation via the virtual position
+                        cand = np.where(dist_mat[idx] > 0)[0]
+                        if len(cand) > 0:
+                            p_star = int(cand[np.argmin(dist_mat[idx, cand])])
+                            mi = int(sorted_index[p_star])
+                            if (not fit_known[mi]) or (fit_known[mi] and not fit_eval[mi]
+                                                       and not determined[mi]):
+                                est = self._virtual_estimate(st, idx, mi)
+                                if est is not None:
+                                    if fit_known[mi]:
+                                        st['fit1'][mi] = est
+                                    else:
+                                        st['fit1'][mi] = min(st['fit1'][mi], est)
+                                    fit_known[mi] = True
+                                    fit_eval[mi] = False
+                                    via_virtual[mi] = True
+
+                        # Exact evaluation when both the estimate and the RBF
+                        # prediction improve on the personal best
+                        if via_virtual[idx] and not fit_eval[idx]:
+                            pred = float(model(st['pos1'][idx])[0])
+                            if (st['fit1'][idx] < st['pbestval'][idx]
+                                    and pred < st['pbestval'][idx]):
+                                val = try_eval(st['pos1'][idx])
+                                if val is not None:
+                                    st['fit1'][idx] = val
+                                    fit_eval[idx] = True
+
+                    # Fallback: no exact evaluation happened in this pass
+                    if nfes_per_task[i] == evals_before:
+                        preds = np.asarray(model(st['pos1'])).flatten()
+                        errs = np.abs(st['fit1'] - preds)
+                        est_mask = via_virtual & ~fit_eval
+                        if np.any(est_mask):
+                            avg_err = errs[est_mask].mean()
+                            for idx in np.where(est_mask)[0]:
+                                if errs[idx] > avg_err:
+                                    val = try_eval(st['pos1'][idx])
+                                    if val is None:
+                                        break
+                                    st['fit1'][idx] = val
+                                    fit_eval[idx] = True
+
+                # ===== Swarm 1: pbest / gbest update with certification =====
+                for idx in range(n1):
+                    if st['fit1'][idx] < st['pbestval'][idx]:
+                        st['pbest'][idx] = st['pos1'][idx].copy()
+                        st['pbestval'][idx] = st['fit1'][idx]
+                        st['pbest_eval'][idx] = fit_eval[idx]
+
+                bid = int(np.argmin(st['pbestval']))
+                if st['pbest_eval'][bid]:
+                    if st['pbestval'][bid] < st['gbestval']:
+                        st['gbest'] = st['pbest'][bid].copy()
+                        st['gbestval'] = float(st['pbestval'][bid])
+                else:
+                    val = try_eval(st['pbest'][bid])
+                    if val is not None:
+                        st['pbestval'][bid] = val
+                        st['pbest_eval'][bid] = True
+                        if val < st['gbestval']:
+                            st['gbest'] = st['pbest'][bid].copy()
+                            st['gbestval'] = val
+
+                # ===== Swarm 2: evaluate its best predicted particle =====
+                rid = int(np.argmin(st['fit2']))
+                val = try_eval(st['pos2'][rid])
+                if val is not None:
+                    st['fit2'][rid] = val
+                    if val < st['rbfgbestval']:
+                        st['rbfgbest'] = st['pos2'][rid].copy()
+                        st['rbfgbestval'] = val
+
+                st['iter'] += 1
+
+                # ===== Archive update and RBF network rebuild =====
+                if temp_pos:
+                    self._update_archive(st, np.asarray(temp_pos), np.asarray(temp_fit), dim)
+
+                spread1 = self._bbox_diagonal(st['archive_pos'])
+                st['spread_sum'] += spread1
+                spread = st['spread_sum'] / (st['iter'] + 1)
+                st['model'] = newrb_surrogate(st['archive_pos'], st['archive_fit'],
+                                              goal=self.rbf_goal, spread=spread,
+                                              max_neurons=self.max_node)
 
         pbar.close()
         runtime = time.time() - start_time
@@ -274,7 +382,7 @@ class SA_COSO:
         # Convert database to staircase history structure for results
         db_decs = [hx[i].copy() for i in range(nt)]
         db_objs = [hf[i].reshape(-1, 1).copy() for i in range(nt)]
-        all_decs, all_objs = build_staircase_history(db_decs, db_objs, k=self.mu)
+        all_decs, all_objs = build_staircase_history(db_decs, db_objs, k=1)
 
         # Build and save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
@@ -283,138 +391,81 @@ class SA_COSO:
 
         return results
 
-    # Build RBF surrogate model
-    def _build_rbf_model(self, hx, hf, spread, dim):
-        if spread <= 0:
-            spread = 1.0
+    @staticmethod
+    def _bbox_diagonal(X):
+        """Diagonal length of the bounding box of X (MATLAB spread estimate)."""
+        rng = np.max(X, axis=0) - np.min(X, axis=0)
+        diag = float(np.sqrt(np.sum(rng ** 2)))
+        return diag if diag > 0 else 1.0
 
-        try:
-            rbf_interpolator = RBFInterpolator(hx, hf, kernel='gaussian', epsilon=1.0 / spread)
-        except:
-            rbf_interpolator = RBFInterpolator(hx, hf, kernel='thin_plate_spline')
+    def _virtual_estimate(self, st, idx, mi):
+        """
+        Estimate the fitness of particle mi from the virtual position implied
+        by the PSO update relation between particles idx and mi.
 
-        def rbf_model(x):
-            if x.ndim == 1:
-                x = x.reshape(1, -1)
-            pred = rbf_interpolator(x)
-            return pred.flatten()
+        Returns None when any of the twelve reference distances is zero.
+        """
+        phi = self.w
+        r1m, r2m, r3m = st['r1'][mi], st['r2'][mi], st['r3'][mi]
 
-        return rbf_model
+        vp = (st['pos1'][idx]
+              + (1 + phi - phi * self.c1 * r1m - phi * self.c2 * r2m
+                 - phi * self.c3 * r3m) * st['his_pos_1'][mi]
+              + phi * st['his_pos_2'][idx]
+              + phi * self.c1 * r1m * st['pbest'][mi]
+              + phi * self.c2 * r2m * st['gbest']
+              + phi * self.c3 * r3m * st['rbfgbest'])
 
-    # FES-PSO update with fixed number of samples
-    def _fes_pso_update(self, task_idx, problem, dim, rbf_model,
-                        swarm, vel, pbest, pbest_val,
-                        gbest_fes, gbest_fes_val, gbest_rbf,
-                        hx, hf, n_sample):
+        refs_a = [st['pos1'][idx], st['his_pos_1'][mi], st['his_pos_2'][idx],
+                  st['pbest'][mi], st['gbest'], st['rbfgbest']]
+        vals_a = [st['fit1'][idx], st['his_fit_1'][mi], st['his_fit_2'][idx],
+                  st['pbestval'][mi], st['gbestval'], st['rbfgbestval']]
+        refs_b = [st['pos1'][mi], st['his_pos_1'][idx], st['his_pos_2'][mi],
+                  st['pbest'][idx], st['gbest'], st['rbfgbest']]
+        vals_b = [st['his_fit_1'][idx], st['his_fit_2'][mi], st['pbestval'][idx],
+                  st['gbestval'], st['rbfgbestval']]
 
-        new_evals = []
-        n = len(swarm['pos'])
+        d_a = np.array([np.linalg.norm(vp - r) for r in refs_a])
+        d_b = np.array([np.linalg.norm(vp - r) for r in refs_b])
+        if np.any(d_a == 0) or np.any(d_b == 0):
+            return None
 
-        # PSO velocity and position update
-        r1 = np.random.rand(n, dim)
-        r2 = np.random.rand(n, dim)
-        r3 = np.random.rand(n, dim)
+        dist_temp1 = np.sum(1.0 / d_a)
+        dist_temp2 = np.sum(1.0 / d_b)
+        dist_ratio = dist_temp2 / dist_temp1
+        virtual_fitness = float(np.sum(np.asarray(vals_a) / d_a))
+        # d_b[0] is the distance to particle mi whose fitness is being estimated
+        est = d_b[0] * (virtual_fitness * dist_ratio
+                        - float(np.sum(np.asarray(vals_b) / d_b[1:])))
+        return est
 
-        # Velocity update: influenced by pbest, gbest_fes, and gbest_rbf
-        vel_new = self.w * (vel +
-                            self.c1 * r1 * (pbest - swarm['pos']) +
-                            self.c2 * r2 * (gbest_fes - swarm['pos']) +
-                            self.c3 * r3 * (gbest_rbf - swarm['pos']))
+    def _update_archive(self, st, new_pos, new_fit, dim):
+        """
+        Insert this iteration's exactly evaluated points into the bounded
+        archive: append while below capacity; otherwise replace the archive
+        member farthest from the social-learning swarm when the new point
+        lies closer to it.
+        """
+        max_archive = self.max_node * dim + 10
 
-        # Velocity clamping (±0.5 in [0,1] space, matching MATLAB ±0.5*(ub-lb))
-        vel_new = np.clip(vel_new, -0.5, 0.5)
-        vel[:] = vel_new
+        arc_to_pop = cdist(st['archive_pos'], st['pos2'])
+        minarc_to_pop = arc_to_pop.min(axis=1)
+        max_id = int(np.argmax(minarc_to_pop))
+        max_val = minarc_to_pop[max_id]
 
-        # Position update
-        pos_new = swarm['pos'] + vel_new
-        pos_new = np.clip(pos_new, 0.0, 1.0)
-        swarm['pos'] = pos_new
-
-        # Use surrogate model for fitness approximation
-        srgt_obj = rbf_model(pos_new)
-        swarm['obj'] = srgt_obj.copy()
-
-        # Select top n_sample particles by surrogate prediction (ascending order)
-        sorted_idx = np.argsort(srgt_obj)
-
-        # Evaluate top n_sample non-duplicate particles
-        eval_count = 0
-        for idx in sorted_idx:
-            if eval_count >= n_sample:
-                break
-
-            if not is_duplicate(pos_new[idx], hx):
-                obj_arr, _ = evaluation_single(problem, pos_new[idx:idx + 1], task_idx)
-                obj = obj_arr[0, 0]
-                swarm['obj'][idx] = obj
-                new_evals.append((pos_new[idx].copy(), obj))
-                eval_count += 1
-
-                # Update personal best
-                if obj < pbest_val[idx]:
-                    pbest[idx] = pos_new[idx].copy()
-                    pbest_val[idx] = obj
-
-        return new_evals
-
-    # RBF-assisted SL-PSO update with fixed number of samples
-    def _rbf_slpso_update(self, task_idx, problem, dim, rbf_model,
-                          swarm, delta, gbest, hx, hf, n_sample):
-
-        new_evals = []
-        n = len(swarm['pos'])
-
-        # Combine swarm with historical best as demonstrators
-        n_demons = min(n, len(hf))
-        idx_sorted = np.argsort(hf)[:n_demons]
-        demons_pos = np.vstack([swarm['pos'], hx[idx_sorted]])
-        demons_obj = np.concatenate([swarm['obj'], hf[idx_sorted]])
-
-        # Social Learning PSO update
-        for j in range(n):
-            # Find better individuals (demonstrators)
-            better_mask = demons_obj < swarm['obj'][j]
-            better_idx = np.where(better_mask)[0]
-
-            if len(better_idx) > 0:
-                # Choose demonstrators for each dimension
-                chosen = np.zeros(dim)
-                if len(better_idx) == 1:
-                    chosen = demons_pos[better_idx[0]]
-                elif len(better_idx) == 2:
-                    mix = np.random.rand(dim) > 0.5
-                    chosen[mix] = demons_pos[better_idx[0], mix]
-                    chosen[~mix] = demons_pos[better_idx[1], ~mix]
-                else:
-                    for d in range(dim):
-                        rand_idx = better_idx[np.random.randint(len(better_idx))]
-                        chosen[d] = demons_pos[rand_idx, d]
-
-                # Update velocity (delta) and position
-                delta[j] = np.random.rand(dim) * delta[j] + np.random.rand(dim) * (chosen - swarm['pos'][j])
-                delta[j] = np.clip(delta[j], -0.5, 0.5)
-                swarm['pos'][j] = swarm['pos'][j] + delta[j]
-
-        # Boundary handling
-        swarm['pos'] = np.clip(swarm['pos'], 0.0, 1.0)
-
-        # Update fitness using surrogate
-        swarm['obj'] = rbf_model(swarm['pos'])
-
-        # Select top n_sample particles by surrogate prediction
-        sorted_idx = np.argsort(swarm['obj'])
-
-        # Evaluate top n_sample non-duplicate particles
-        eval_count = 0
-        for idx in sorted_idx:
-            if eval_count >= n_sample:
-                break
-
-            if not is_duplicate(swarm['pos'][idx], hx):
-                obj_arr, _ = evaluation_single(problem, swarm['pos'][idx:idx + 1], task_idx)
-                obj = obj_arr[0, 0]
-                swarm['obj'][idx] = obj
-                new_evals.append((swarm['pos'][idx].copy(), obj))
-                eval_count += 1
-
-        return new_evals
+        for k in range(len(new_fit)):
+            d_arc = cdist(new_pos[k:k + 1], st['archive_pos']).flatten()
+            if np.any(d_arc < 1e-4):
+                continue
+            if len(st['archive_fit']) < max_archive:
+                st['archive_pos'] = np.vstack([st['archive_pos'], new_pos[k:k + 1]])
+                st['archive_fit'] = np.concatenate([st['archive_fit'], [new_fit[k]]])
+            else:
+                d_pop = cdist(new_pos[k:k + 1], st['pos2']).flatten()
+                min_to_pop = d_pop.min()
+                if min_to_pop < max_val:
+                    st['archive_pos'][max_id] = new_pos[k]
+                    st['archive_fit'][max_id] = new_fit[k]
+                    minarc_to_pop[max_id] = min_to_pop
+                    max_id = int(np.argmax(minarc_to_pop))
+                    max_val = minarc_to_pop[max_id]
