@@ -129,10 +129,14 @@ class CSO:
                 loser_cvs = cvs[loser_idx]
                 winner_cvs = cvs[winner_idx]
 
-                # Swap indices if loser is better than winner
-                # Better means: lower constraint violation, or same violation but lower objective
-                swap_mask = (loser_cvs < winner_cvs) | \
-                            ((loser_cvs == winner_cvs) & (loser_objs.flatten() < winner_objs.flatten()))
+                # Swap indices if loser beats winner, matching MATLAB Selection_Tournament (Ep=0):
+                #   both feasible AND loser has lower objective, OR
+                #   both infeasible AND loser has lower constraint violation
+                # (mixed feasibility never swaps, exactly as in the MATLAB reference)
+                both_feasible = (loser_cvs <= 0) & (winner_cvs <= 0)
+                both_infeasible = (loser_cvs > 0) & (winner_cvs > 0)
+                swap_mask = (both_feasible & (loser_objs.flatten() < winner_objs.flatten())) | \
+                            (both_infeasible & (loser_cvs < winner_cvs))
 
                 temp_idx = loser_idx[swap_mask].copy()
                 loser_idx[swap_mask] = winner_idx[swap_mask]

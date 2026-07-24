@@ -143,18 +143,13 @@ class EO:
                     p_obj = objs[i][j, 0]
                     p_cv = cvs[j]
 
-                    # Compare with each Ceq and update if better
+                    # Cascade update (if/elseif): the individual replaces the first
+                    # candidate it beats, WITHOUT shifting the displaced candidate down
                     for k in range(4):
                         c_obj = ceq_objs[i][k, 0]
                         c_cv = ceq_cons[i][k, 0]
 
                         if (p_cv < c_cv) or (p_cv == c_cv and p_obj < c_obj):
-                            # Insert at position k and shift others
-                            if k < 3:
-                                ceq_decs[i][k + 1:] = ceq_decs[i][k:-1].copy()
-                                ceq_objs[i][k + 1:] = ceq_objs[i][k:-1].copy()
-                                ceq_cons[i][k + 1:] = ceq_cons[i][k:-1].copy()
-
                             ceq_decs[i][k] = decs[i][j].copy()
                             ceq_objs[i][k, 0] = p_obj
                             ceq_cons[i][k, 0] = p_cv
@@ -195,7 +190,7 @@ class EO:
 
                     # Update position
                     new_decs[j] = ceq_dec + (decs[i][j] - ceq_dec) * F + \
-                                  (G / (lam + 1e-10) * self.v) * (1 - F)
+                                  (G / lam * self.v) * (1 - F)
 
                 # Boundary constraint handling: clip to [0,1] space
                 new_decs = np.clip(new_decs, 0, 1)
@@ -203,17 +198,17 @@ class EO:
                 # Evaluate new solutions
                 new_objs, new_cons = evaluation_single(problem, new_decs, i)
 
-                # Tournament selection: keep better solution
+                # Tournament selection (MToP Selection_Tournament, Ep=0):
+                # replace if both infeasible and offspring CV is strictly lower,
+                # or both feasible and offspring objective is strictly lower
                 new_cvs = np.sum(np.maximum(0, new_cons), axis=1)
                 old_cvs = np.sum(np.maximum(0, cons[i]), axis=1)
-
-                for j in range(n_per_task[i]):
-                    # Compare by constraint violation first, then objective
-                    if (new_cvs[j] < old_cvs[j]) or \
-                            (new_cvs[j] == old_cvs[j] and new_objs[j] < objs[i][j]):
-                        decs[i][j] = new_decs[j]
-                        objs[i][j] = new_objs[j]
-                        cons[i][j] = new_cons[j]
+                replace = ((old_cvs > new_cvs) & (old_cvs > 0) & (new_cvs > 0)) | \
+                          ((old_cvs <= 0) & (new_cvs <= 0) &
+                           (objs[i].flatten() > new_objs.flatten()))
+                decs[i][replace] = new_decs[replace]
+                objs[i][replace] = new_objs[replace]
+                cons[i][replace] = new_cons[replace]
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])

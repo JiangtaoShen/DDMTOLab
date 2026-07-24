@@ -156,30 +156,30 @@ class OpenAI_ES:
                 X = p['x'][:, np.newaxis] + p['sigma'] * Z  # Shape: (dim, N)
 
                 # Decode samples (transpose to get (N, dim))
+                # MATLAB applies no boundary handling: raw (unclipped) decisions
+                # are mapped linearly to real space and evaluated as-is
                 sample_decs = X.T
-                sample_decs = np.clip(sample_decs, 0, 1)  # Boundary handling
 
                 # Also evaluate the mean
                 # MATLAB: mean_sample.Dec = x{t}';
                 mean_dec = p['x'][np.newaxis, :]
-                mean_dec = np.clip(mean_dec, 0, 1)
 
                 # Combine samples and mean for evaluation
+                # MATLAB: sample{t} = Algo.Evaluation([sample{t}, mean_sample], Prob, t);
                 all_sample_decs = np.vstack([sample_decs, mean_dec])
 
                 # Evaluate fitness
-                sample_objs, sample_cons = evaluation_single(problem, all_sample_decs, i)
+                all_objs_eval, all_cons_eval = evaluation_single(problem, all_sample_decs, i)
 
-                # Separate mean evaluation from population
-                mean_obj = sample_objs[-1:]
-                mean_con = sample_cons[-1:]
-                sample_objs = sample_objs[:-1]
-                sample_cons = sample_cons[:-1]
+                # MATLAB: sample{t} = sample{t}(1:N); (mean is dropped from the
+                # population but its evaluation still counts and enters history)
+                sample_objs = all_objs_eval[:-1]
+                sample_cons = all_cons_eval[:-1]
 
-                # Update current population (including mean as the best)
-                decs[i] = np.vstack([mean_dec, sample_decs])
-                objs[i] = np.vstack([mean_obj, sample_objs])
-                cons[i] = np.vstack([mean_con, sample_cons])
+                # Update current population (samples first, mean last, as in MATLAB)
+                decs[i] = all_sample_decs
+                objs[i] = all_objs_eval
+                cons[i] = all_cons_eval
 
                 nfes_per_task[i] += p['N'] + 1  # N samples + 1 mean
                 pbar.update(p['N'] + 1)
@@ -192,7 +192,7 @@ class OpenAI_ES:
                 # MATLAB: ranks(sortIdx) = N - 1:-1:0; % Minimizing fitness
                 # MATLAB: shaped = ranks / (N - 1) - 0.5;
                 fitness = sample_objs.flatten()
-                sort_idx = np.argsort(fitness)
+                sort_idx = np.argsort(fitness, kind='stable')  # MATLAB sort is stable
                 ranks = np.zeros(p['N'])
                 ranks[sort_idx] = np.arange(p['N'] - 1, -1, -1)
                 shaped = ranks / (p['N'] - 1) - 0.5

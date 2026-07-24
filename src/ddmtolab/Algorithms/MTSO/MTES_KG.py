@@ -123,7 +123,7 @@ class MTES_KG:
         dims = problem.dims
         n_dim = max(dims)  # CMA-ES operates in max dimension space
         lam = self.n  # lambda: population size per task
-        mu = lam // 2  # number of effective parents
+        mu = (lam + 1) // 2  # number of effective parents (MATLAB round(lambda/2))
         max_nfes_per_task = par_list(self.max_nfes, nt)
         total_max_nfes = self.max_nfes * nt
 

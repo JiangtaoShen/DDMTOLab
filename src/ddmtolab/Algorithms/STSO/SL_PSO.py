@@ -57,7 +57,10 @@ class SL_PSO:
         problem : MTOP
             Multi-task optimization problem instance
         n : int or List[int], optional
-            Population size per task (default: 100)
+            Base swarm size M per task (default: 100, the paper's setting).
+            The actual swarm size per task is m = M + floor(dim / 10),
+            following the reference formulation; M is also used in the
+            learning-probability exponent and the social influence factor.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 10000)
         save_data : bool, optional
@@ -89,45 +92,31 @@ class SL_PSO:
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
-        n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Initialize population and evaluate for each task
-        decs = initialization(problem, n_per_task)
+        # Base swarm size M per task (paper: M = 100);
+        # actual swarm size per task: m = M + floor(dim / 10)
+        base_m_per_task = par_list(self.n, nt)
+        m_per_task = [base_m_per_task[i] + int(np.floor(problem.dims[i] / 10))
+                      for i in range(nt)]
+
+        # Initialize swarm of size m in [0,1] space and evaluate for each task
+        decs = initialization(problem, m_per_task)
         objs, cons = evaluation(problem, decs)
-        nfes_per_task = n_per_task.copy()
+        nfes_per_task = m_per_task.copy()
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Initialize velocities for each task
         vel = [np.zeros_like(d) for d in decs]
 
-        # Calculate enhanced population size m for each task
-        m_per_task = []
-        for i in range(nt):
-            M = n_per_task[i]
-            m = M + int(np.floor(problem.dims[i] / 10))
-            m_per_task.append(m)
-
-            # Expand population to size m if necessary
-            if decs[i].shape[0] < m:
-                extra = m - decs[i].shape[0]
-                extra_decs = np.random.rand(extra, problem.dims[i])
-                extra_objs, extra_cons = evaluation_single(problem, extra_decs, i)
-                decs[i] = np.vstack([decs[i], extra_decs])
-                objs[i] = np.vstack([objs[i], extra_objs])
-                cons[i] = np.vstack([cons[i], extra_cons])
-                vel[i] = np.vstack([vel[i], np.zeros((extra, problem.dims[i]))])
-                nfes_per_task[i] += extra
-
-        # Calculate learning probability for each task
+        # Learning probability per task:
+        # PL(i) = (1 - (i-1)/m)^(0.5*log(ceil(dim/M))), worst-to-best sorted swarm
         PL = []
         for i in range(nt):
             dim = problem.dims[i]
-            M = n_per_task[i]
+            M = base_m_per_task[i]
             m = m_per_task[i]
-            pl = np.zeros(m)
-            for j in range(m):
-                pl[j] = (1 - j / m) ** np.log(np.sqrt(np.ceil(dim / M)))
+            pl = (1.0 - np.arange(m) / m) ** np.log(np.sqrt(np.ceil(dim / M)))
             PL.append(pl)
 
         total_nfes = sum(max_nfes_per_task)
@@ -142,13 +131,13 @@ class SL_PSO:
 
             for i in active_tasks:
                 dim = problem.dims[i]
-                M = n_per_task[i]
+                M = base_m_per_task[i]
                 m = m_per_task[i]
 
-                # Calculate social learning coefficient
+                # Social influence factor: epsilon = beta * dim / M, beta = 0.01
                 c3 = dim / M * 0.01
 
-                # Sort population by fitness (descending order, worst first)
+                # Sort population by fitness (descending order, worst first, best last)
                 cvs = np.sum(np.maximum(0, cons[i]), axis=1)
                 # For sorting: higher CV is worse, higher objective is worse (for minimization)
                 sort_indices = np.lexsort((-objs[i].flatten(), -cvs))
@@ -158,37 +147,28 @@ class SL_PSO:
                 cons[i] = cons[i][sort_indices]
                 vel[i] = vel[i][sort_indices]
 
-                # Best individual is at the end (index m-1)
-                best_dec = decs[i][-1:, :]
-                best_obj = objs[i][-1:, :]
-
-                # Calculate center position
+                # Calculate center (mean) position of the swarm
                 center = np.mean(decs[i], axis=0, keepdims=True)
-                center = np.repeat(center, m, axis=0)
 
                 # Random coefficients
                 randco1 = np.random.rand(m, dim)
                 randco2 = np.random.rand(m, dim)
                 randco3 = np.random.rand(m, dim)
 
-                # Social learning: select demonstrators
-                # For each particle and each dimension, select a better (higher index) particle
-                win_idx = np.zeros((m, dim), dtype=int)
-                for j in range(m):
-                    for k in range(dim):
-                        # Select from particles with index >= j (better particles)
-                        win_idx[j, k] = np.random.randint(j, m)
+                # Social learning: for particle j, each dimension learns from a
+                # strictly better particle (demonstrator).
+                # MATLAB: winidx = i + ceil(rand*(m-i)), i.e. uniform over {j+1, ..., m-1}
+                idx = np.arange(m).reshape(-1, 1)
+                offsets = np.ceil(np.random.rand(m, dim) * (m - 1 - idx)).astype(int)
+                win_idx = np.clip(idx + offsets, 0, m - 1)
 
-                # Get winner positions
-                pwin = np.zeros((m, dim))
-                for j in range(m):
-                    for k in range(dim):
-                        pwin[j, k] = decs[i][win_idx[j, k], k]
+                # Get demonstrator positions (per-dimension indexing)
+                pwin = np.take_along_axis(decs[i], win_idx, axis=0)
 
                 # Social learning mask (learning probability)
                 lpmask_1d = np.random.rand(m) < PL[i]
                 lpmask_1d[-1] = False  # Best particle doesn't learn
-                lpmask = np.repeat(lpmask_1d.reshape(-1, 1), dim, axis=1)
+                lpmask = lpmask_1d.reshape(-1, 1)
 
                 # Update velocity and position
                 v1 = randco1 * vel[i] + randco2 * (pwin - decs[i]) + c3 * randco3 * (center - decs[i])
@@ -198,25 +178,18 @@ class SL_PSO:
                 vel[i] = np.where(lpmask, v1, vel[i])
                 decs[i] = np.where(lpmask, p1, decs[i])
 
-                # Boundary constraint handling for learning particles (not the best)
-                decs[i][:-1] = np.clip(decs[i][:-1], 0, 1)
+                # Boundary constraint handling (best particle is unchanged and in-bounds)
+                decs[i] = np.clip(decs[i], 0, 1)
 
-                # Evaluate all particles except the best one
-                new_objs, new_cons = evaluation_single(problem, decs[i][:-1], i)
-                objs[i][:-1] = new_objs
-                cons[i][:-1] = new_cons
+                # Evaluate the whole swarm (canonical implementation: FES += m per generation)
+                objs[i], cons[i] = evaluation_single(problem, decs[i], i)
 
-                nfes_per_task[i] += (m - 1)
-                pbar.update(m - 1)
+                nfes_per_task[i] += m
+                pbar.update(m)
 
-                # Store only the base population (size M) for history
-                # Take the M best particles (at the end after sorting)
-                store_decs = decs[i][-M:]
-                store_objs = objs[i][-M:]
-                store_cons = cons[i][-M:]
-
-                append_history(all_decs[i], store_decs, all_objs[i], store_objs,
-                               all_cons[i], store_cons)
+                # Append current population to history
+                append_history(all_decs[i], decs[i], all_objs[i], objs[i],
+                               all_cons[i], cons[i])
 
         pbar.close()
         runtime = time.time() - start_time

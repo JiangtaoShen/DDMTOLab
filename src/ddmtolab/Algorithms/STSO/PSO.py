@@ -101,7 +101,6 @@ class PSO:
         """
         start_time = time.time()
         problem = self.problem
-        dims = problem.dims
         nt = problem.n_tasks
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
@@ -149,9 +148,11 @@ class PSO:
                 # Linearly decrease inertia weight from max_w to min_w
                 w = self.max_w - (self.max_w - self.min_w) * nfes_per_task[i] / max_nfes_per_task[i]
 
-                # Generate random coefficients for cognitive and social components
-                r1 = np.random.rand(n_per_task[i], dims[i])
-                r2 = np.random.rand(n_per_task[i], dims[i])
+                # Generate random coefficients for cognitive and social components.
+                # MTO-Platform uses a single scalar rand() per particle for each
+                # term (not one per dimension), hence shape (n, 1).
+                r1 = np.random.rand(n_per_task[i], 1)
+                r2 = np.random.rand(n_per_task[i], 1)
 
                 # Update velocity: v = w*v + c1*r1*(pbest-x) + c2*r2*(gbest-x)
                 vel[i] = (w * vel[i] + self.c1 * r1 * (pbest_decs[i] - decs[i]) +

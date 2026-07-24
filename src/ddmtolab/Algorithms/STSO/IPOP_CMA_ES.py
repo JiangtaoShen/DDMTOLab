@@ -166,15 +166,21 @@ class IPOP_CMA_ES:
                 cmaes_update(p, sample_decs, nfes_per_task[i])
 
                 # Restart strategy IPOP
+                # MATLAB: ObjHist = ObjHist(max(1, end - preGen):end) keeps preGen+1 entries
                 pre_gen = 10 + (30 * int(p['dim'] / p['lam']))
-                obj_hist[i] = obj_hist[i][max(0, len(obj_hist[i]) - pre_gen):]
+                obj_hist[i] = obj_hist[i][max(0, len(obj_hist[i]) - pre_gen - 1):]
                 obj_list = obj_hist[i] + sample_objs.flatten().tolist()
 
                 # Check restart conditions
                 if self._should_restart(p, obj_list):
-                    # Double population size and reinitialize
+                    # Double population size and reinitialize (MATLAB resets only
+                    # mDec, sigma, and the lambda-dependent strategy parameters;
+                    # evolution paths, covariance, and eigen state persist)
                     new_lam = p['lam'] * 2
-                    p = self._initialize_task_params(p['dim'], new_lam)
+                    new_p = self._initialize_task_params(p['dim'], new_lam)
+                    for key in ('ps', 'pc', 'B', 'D', 'C', 'invsqrtC', 'eigenFE'):
+                        new_p[key] = p[key]
+                    p = new_p
                     params[i] = p
                     obj_hist[i] = []
 

@@ -123,10 +123,14 @@ class DE:
                 off_cvs = np.sum(np.maximum(0, off_cons), axis=1)
                 parent_cvs = np.sum(np.maximum(0, cons[i]), axis=1)
 
-                # Greedy selection: replace parent if offspring is better
-                # Better means: lower constraint violation, or same violation but lower objective
-                improved = (off_cvs < parent_cvs) | \
-                           ((off_cvs == parent_cvs) & (off_objs.flatten() < objs[i].flatten()))
+                # One-to-one selection matching MTO-Platform Selection_Tournament
+                # (epsilon = 0): replace the parent only if
+                #   - both are infeasible and the offspring has strictly lower CV, or
+                #   - both are feasible and the offspring has strictly lower objective.
+                replace_cv = (parent_cvs > off_cvs) & (parent_cvs > 0) & (off_cvs > 0)
+                equal_cv = (parent_cvs <= 0) & (off_cvs <= 0)
+                replace_f = objs[i].flatten() > off_objs.flatten()
+                improved = (equal_cv & replace_f) | replace_cv
 
                 decs[i][improved] = off_decs[improved, :]
                 objs[i][improved] = off_objs[improved, :]

@@ -265,8 +265,10 @@ class xNES:
         temp_decs = np.clip(sample_decs, 0, 1)
         bound_cvs = np.sum((sample_decs - temp_decs) ** 2, axis=1)
 
-        # Evaluate with clipped decisions
-        sample_objs, sample_cons = evaluation_single(problem, temp_decs, task_idx)
+        # MATLAB: sample = Algo.Evaluation(sample, Prob, t);
+        # Evaluate the raw (unclipped) decisions, exactly as MATLAB does;
+        # out-of-bounds solutions are only penalized via boundCVs in the ranking
+        sample_objs, sample_cons = evaluation_single(problem, sample_decs, task_idx)
 
         # MATLAB: boundCVs(boundCVs > 0) = boundCVs(boundCVs > 0) + max(sample.CVs);
         cvs = np.sum(np.maximum(0, sample_cons), axis=1)

@@ -98,35 +98,6 @@ class GWO:
         nfes_per_task = n_per_task.copy()
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Initialize alpha, beta, delta wolves (top 3 solutions) for each task
-        alpha_decs = [None] * nt
-        alpha_objs = [None] * nt
-        beta_decs = [None] * nt
-        beta_objs = [None] * nt
-        delta_decs = [None] * nt
-        delta_objs = [None] * nt
-
-        # Find initial alpha, beta, delta for each task
-        for i in range(nt):
-            # Sort by constraint violation first, then by objective
-            cvs = np.sum(np.maximum(0, cons[i]), axis=1)
-            sort_indices = np.lexsort((objs[i].flatten(), cvs))
-
-            sorted_decs = decs[i][sort_indices]
-            sorted_objs = objs[i][sort_indices]
-
-            # Alpha: best solution
-            alpha_decs[i] = sorted_decs[0:1, :]
-            alpha_objs[i] = sorted_objs[0:1, :]
-
-            # Beta: second best solution
-            beta_decs[i] = sorted_decs[1:2, :] if n_per_task[i] > 1 else alpha_decs[i].copy()
-            beta_objs[i] = sorted_objs[1:2, :] if n_per_task[i] > 1 else alpha_objs[i].copy()
-
-            # Delta: third best solution
-            delta_decs[i] = sorted_decs[2:3, :] if n_per_task[i] > 2 else beta_decs[i].copy()
-            delta_objs[i] = sorted_objs[2:3, :] if n_per_task[i] > 2 else beta_objs[i].copy()
-
         total_nfes = sum(max_nfes_per_task)
         pbar = tqdm(total=total_nfes, initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -138,70 +109,36 @@ class GWO:
                 break
 
             for i in active_tasks:
+                n = n_per_task[i]
+                d = problem.dims[i]
+
+                # Rank current population (constraint violation first, then objective)
+                # and take the top-3 wolves as alpha, beta, delta for this generation
+                cvs = np.sum(np.maximum(0, cons[i]), axis=1)
+                order = np.lexsort((objs[i].flatten(), cvs))
+                alpha = decs[i][order[0]]
+                beta = decs[i][order[min(1, n - 1)]]
+                delta = decs[i][order[min(2, n - 1)]]
+
+                # Distances to leaders: D = |2*rand .* leader - X|
+                d_alpha = np.abs(2 * np.random.rand(n, d) * alpha - decs[i])
+                d_beta = np.abs(2 * np.random.rand(n, d) * beta - decs[i])
+                d_delta = np.abs(2 * np.random.rand(n, d) * delta - decs[i])
+
                 # Linearly decrease a from 2 to 0
-                a = 2 - 2 * nfes_per_task[i] / max_nfes_per_task[i]
+                a = 2 * (1 - nfes_per_task[i] / max_nfes_per_task[i])
 
-                # Update position of each search agent (grey wolf) in [0,1] space
-                for j in range(n_per_task[i]):
-                    # Calculate distance to alpha and update X1
-                    r1 = np.random.rand(problem.dims[i])
-                    r2 = np.random.rand(problem.dims[i])
-                    A1 = 2 * a * r1 - a
-                    C1 = 2 * r2
-                    D_alpha = np.abs(C1 * alpha_decs[i].flatten() - decs[i][j])
-                    X1 = alpha_decs[i].flatten() - A1 * D_alpha
+                # Leader-guided candidate positions: X_k = leader - A .* D, A in [-a, a]
+                x1 = alpha - (2 * a * np.random.rand(n, d) - a) * d_alpha
+                x2 = beta - (2 * a * np.random.rand(n, d) - a) * d_beta
+                x3 = delta - (2 * a * np.random.rand(n, d) - a) * d_delta
 
-                    # Calculate distance to beta and update X2
-                    r1 = np.random.rand(problem.dims[i])
-                    r2 = np.random.rand(problem.dims[i])
-                    A2 = 2 * a * r1 - a
-                    C2 = 2 * r2
-                    D_beta = np.abs(C2 * beta_decs[i].flatten() - decs[i][j])
-                    X2 = beta_decs[i].flatten() - A2 * D_beta
-
-                    # Calculate distance to delta and update X3
-                    r1 = np.random.rand(problem.dims[i])
-                    r2 = np.random.rand(problem.dims[i])
-                    A3 = 2 * a * r1 - a
-                    C3 = 2 * r2
-                    D_delta = np.abs(C3 * delta_decs[i].flatten() - decs[i][j])
-                    X3 = delta_decs[i].flatten() - A3 * D_delta
-
-                    # Update position by averaging X1, X2, X3
-                    decs[i][j] = (X1 + X2 + X3) / 3.0
-
-                # Boundary constraint handling: clip to [0,1] space
-                decs[i] = np.clip(decs[i], 0, 1)
+                # New population: mean of the three leader-guided positions,
+                # full replacement without elitism, clipped to [0,1] space
+                decs[i] = np.clip((x1 + x2 + x3) / 3.0, 0, 1)
 
                 # Evaluate new positions (evaluation_single will transform to real space)
                 objs[i], cons[i] = evaluation_single(problem, decs[i], i)
-
-                # Update alpha, beta, delta
-                # Sort by constraint violation first, then by objective
-                cvs = np.sum(np.maximum(0, cons[i]), axis=1)
-                sort_indices = np.lexsort((objs[i].flatten(), cvs))
-
-                sorted_decs = decs[i][sort_indices]
-                sorted_objs = objs[i][sort_indices]
-
-                # Update if better solutions found
-                if sorted_objs[0] < alpha_objs[i][0]:
-                    # Shift: alpha -> beta -> delta
-                    delta_decs[i] = beta_decs[i].copy()
-                    delta_objs[i] = beta_objs[i].copy()
-                    beta_decs[i] = alpha_decs[i].copy()
-                    beta_objs[i] = alpha_objs[i].copy()
-                    alpha_decs[i] = sorted_decs[0:1, :]
-                    alpha_objs[i] = sorted_objs[0:1, :]
-                elif sorted_objs[0] < beta_objs[i][0]:
-                    # Shift: beta -> delta
-                    delta_decs[i] = beta_decs[i].copy()
-                    delta_objs[i] = beta_objs[i].copy()
-                    beta_decs[i] = sorted_decs[0:1, :]
-                    beta_objs[i] = sorted_objs[0:1, :]
-                elif sorted_objs[0] < delta_objs[i][0]:
-                    delta_decs[i] = sorted_decs[0:1, :]
-                    delta_objs[i] = sorted_objs[0:1, :]
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])

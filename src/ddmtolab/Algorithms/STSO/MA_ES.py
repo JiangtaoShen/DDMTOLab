@@ -109,7 +109,7 @@ class MA_ES:
             else:
                 lam = int(4 + 3 * np.log(dim))
 
-            mu = int(np.round(lam / 2))
+            mu = lam // 2  # Beyer & Sendhoff (2017): mu = floor(lambda / 2)
 
             # Recombination weights
             weights = np.log(mu + 0.5) - np.log(np.arange(1, mu + 1))

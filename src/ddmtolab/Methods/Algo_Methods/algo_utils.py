@@ -2414,7 +2414,7 @@ def cmaes_init_params(dim, lam=None, sigma0=0.3):
     """
     if lam is None:
         lam = int(4 + 3 * np.log(dim))
-    mu = lam // 2
+    mu = (lam + 1) // 2  # MATLAB: mu = round(lambda / 2), round-half-away-from-zero
 
     weights = np.log(mu + 0.5) - np.log(np.arange(1, mu + 1))
     weights = weights / np.sum(weights)

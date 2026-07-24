@@ -130,16 +130,18 @@ class AO:
         nfes_per_task = n_per_task.copy()
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Initialize best solution for each task
+        # Initialize best solution for each task (feasibility priority:
+        # minimal constraint violation first, then minimal objective)
         best_decs = [None] * nt
         best_objs = [None] * nt
+        best_cvs = [None] * nt
 
         for i in range(nt):
-            # Sort by constraint violation first, then by objective
             cvs = np.sum(np.maximum(0, cons[i]), axis=1)
             sort_indices = np.lexsort((objs[i].flatten(), cvs))
-            best_decs[i] = decs[i][sort_indices[0]:sort_indices[0] + 1, :]
-            best_objs[i] = objs[i][sort_indices[0]:sort_indices[0] + 1, :]
+            best_decs[i] = decs[i][sort_indices[0]].copy()
+            best_objs[i] = objs[i][sort_indices[0], 0]
+            best_cvs[i] = cvs[sort_indices[0]]
 
         total_nfes = sum(max_nfes_per_task)
         pbar = tqdm(total=total_nfes, initial=sum(n_per_task), desc=f"{self.name}",
@@ -153,10 +155,12 @@ class AO:
 
             for i in active_tasks:
                 dim = problem.dims[i]
+                n = n_per_task[i]
+                max_nfes_i = max_nfes_per_task[i]
 
-                # Calculate dynamic parameters
+                # Per-generation dynamic parameters
                 G1 = 2 * np.random.rand() - 1
-                G2 = 2 * (1 - nfes_per_task[i] / max_nfes_per_task[i])
+                G2 = 2 * (1 - nfes_per_task[i] / max_nfes_i)
 
                 # Spiral shape parameters
                 to = np.arange(1, dim + 1)
@@ -169,78 +173,75 @@ class AO:
                 x = r * np.sin(phi)
                 y = r * np.cos(phi)
 
-                # Quality function
-                QF = nfes_per_task[i] ** (
-                        (2 * np.random.rand() - 1) /
-                        (1 - max_nfes_per_task[i]) ** 2
-                )
+                # Quality function: QF = Gen^((2*rand-1)/(1-MaxGen)^2), where the
+                # generation counter Gen = FE/N and MaxGen = maxFE/N
+                gen = nfes_per_task[i] / n
+                max_gen = max_nfes_i / n
+                QF = gen ** ((2 * np.random.rand() - 1) / (1 - max_gen) ** 2)
 
-                # Mean position
-                mean_dec = np.mean(decs[i], axis=0)
-
-                # Generate offspring
-                new_decs = np.zeros_like(decs[i])
-
-                for j in range(n_per_task[i]):
-                    if nfes_per_task[i] <= 2 / 3 * max_nfes_per_task[i]:
+                # Sequential per-individual generate -> evaluate -> select, so the
+                # population mean, the random member, and the best solution all
+                # reflect the partially updated population within the generation
+                for j in range(n):
+                    if nfes_per_task[i] <= 2 / 3 * max_nfes_i:
                         # Exploration phase
                         if np.random.rand() < 0.5:
                             # Method 1: Expanded exploration
-                            new_decs[j] = best_decs[i].flatten() * (
-                                    1 - nfes_per_task[i] / max_nfes_per_task[i]
-                            ) + (mean_dec - best_decs[i].flatten()) * np.random.rand()
+                            new_dec = best_decs[i] * (
+                                    1 - nfes_per_task[i] / max_nfes_i
+                            ) + (np.mean(decs[i], axis=0) - best_decs[i]) * np.random.rand()
                         else:
                             # Method 2: Narrowed exploration
-                            random_idx = np.random.randint(0, n_per_task[i])
-                            levy = self.levy_flight(dim)
-                            new_decs[j] = (best_decs[i].flatten() * levy +
-                                           decs[i][random_idx] +
-                                           (y - x) * np.random.rand())
+                            random_idx = np.random.randint(0, n)
+                            new_dec = (best_decs[i] * self.levy_flight(dim) +
+                                       decs[i][random_idx] +
+                                       (y - x) * np.random.rand())
                     else:
                         # Exploitation phase
                         if np.random.rand() < 0.5:
                             # Method 1: Vertical stooping
-                            new_decs[j] = (
-                                    (best_decs[i].flatten() - mean_dec) * self.alpha -
+                            new_dec = (
+                                    (best_decs[i] - np.mean(decs[i], axis=0)) * self.alpha -
                                     np.random.rand() +
                                     np.random.rand() * self.delta
                             )
                         else:
                             # Method 2: Short glide attack
-                            levy = self.levy_flight(dim)
-                            new_decs[j] = (
-                                    QF * best_decs[i].flatten() -
+                            new_dec = (
+                                    QF * best_decs[i] -
                                     (G1 * decs[i][j] * np.random.rand()) -
-                                    G2 * levy +
+                                    G2 * self.levy_flight(dim) +
                                     np.random.rand() * G1
                             )
 
-                # Boundary constraint handling: clip to [0,1] space
-                new_decs = np.clip(new_decs, 0, 1)
+                    # Boundary constraint handling: clip to [0,1] space
+                    new_dec = np.clip(new_dec, 0, 1)
 
-                # Evaluate new solutions
-                new_objs, new_cons = evaluation_single(problem, new_decs, i)
+                    # Evaluate offspring
+                    new_obj, new_con = evaluation_single(problem, new_dec.reshape(1, -1), i)
+                    new_obj = new_obj[0, 0]
+                    new_con = new_con[0]
+                    new_cv = np.sum(np.maximum(0, new_con))
+                    nfes_per_task[i] += 1
+                    pbar.update(1)
 
-                # Tournament selection: keep better solution
-                new_cvs = np.sum(np.maximum(0, new_cons), axis=1)
-                old_cvs = np.sum(np.maximum(0, cons[i]), axis=1)
+                    # Update global best (feasibility priority, ties keep the newer)
+                    if (new_cv < best_cvs[i]) or \
+                            (new_cv == best_cvs[i] and new_obj <= best_objs[i]):
+                        best_decs[i] = new_dec.copy()
+                        best_objs[i] = new_obj
+                        best_cvs[i] = new_cv
 
-                for j in range(n_per_task[i]):
-                    # Compare by constraint violation first, then objective
-                    if (new_cvs[j] < old_cvs[j]) or \
-                            (new_cvs[j] == old_cvs[j] and new_objs[j] < objs[i][j]):
-                        decs[i][j] = new_decs[j]
-                        objs[i][j] = new_objs[j]
-                        cons[i][j] = new_cons[j]
-
-                        # Update best solution if improved
-                        if (new_cvs[j] == 0 and new_objs[j] < best_objs[i][0]) or \
-                                (new_cvs[j] < np.sum(np.maximum(0, cons[i][sort_indices[0]]))):
-                            best_decs[i] = new_decs[j:j + 1, :]
-                            best_objs[i] = new_objs[j:j + 1, :]
-
-                nfes_per_task[i] += n_per_task[i]
-                pbar.update(n_per_task[i])
+                    # Tournament selection (MToP Selection_Tournament, Ep=0):
+                    # replace if both infeasible and offspring CV is strictly lower,
+                    # or both feasible and offspring objective is strictly lower
+                    old_cv = np.sum(np.maximum(0, cons[i][j]))
+                    old_obj = objs[i][j, 0]
+                    if (old_cv > new_cv and old_cv > 0 and new_cv > 0) or \
+                            (old_cv <= 0 and new_cv <= 0 and old_obj > new_obj):
+                        decs[i][j] = new_dec
+                        objs[i][j, 0] = new_obj
+                        cons[i][j] = new_con
 
                 # Append current population to history
                 append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
