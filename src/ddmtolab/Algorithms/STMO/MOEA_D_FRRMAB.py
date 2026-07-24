@@ -199,8 +199,8 @@ class MOEA_D_FRRMAB:
 
                         # Choose the parents
                         if np.random.rand() < 0.9:
-                            # From neighborhood
-                            P = B[i][idx, np.random.permutation(self.T)]
+                            # From neighborhood (whole shuffled neighborhood)
+                            P = B[i][idx, np.random.permutation(B[i].shape[1])]
                         else:
                             # From entire population
                             P = np.random.permutation(n_per_task[i])
@@ -224,25 +224,23 @@ class MOEA_D_FRRMAB:
                         Z[i] = np.minimum(Z[i], off_obj)
 
                         # Update the solutions in P by Tchebycheff approach
-                        P_subset = P[:self.nr * 5]  # Consider more neighbors for replacement
-                        g_old = np.max(np.abs((objs[i][P_subset] - Z[i]) * Weight[i][P_subset]), axis=1)
-                        g_new = np.max(np.abs((off_obj - Z[i]) * Weight[i][P_subset]), axis=1)
+                        # (PlatEMO scans the WHOLE mating pool P, replacing at most nr)
+                        g_old = np.max(np.abs((objs[i][P] - Z[i]) * Weight[i][P]), axis=1)
+                        g_new = np.max(np.abs((off_obj - Z[i]) * Weight[i][P]), axis=1)
 
-                        # Find solutions that can be replaced
-                        better_mask = g_old >= g_new
-                        replace_indices = np.where(better_mask)[0][:self.nr]
+                        # Find the first nr solutions that can be replaced
+                        replace_indices = np.where(g_old >= g_new)[0][:self.nr]
 
                         if len(replace_indices) > 0:
                             # Replace solutions
-                            actual_replace = P_subset[replace_indices]
-                            for r_idx in actual_replace:
-                                decs[i][r_idx] = off_dec
-                                objs[i][r_idx] = off_obj
+                            actual_replace = P[replace_indices]
+                            decs[i][actual_replace] = off_dec
+                            objs[i][actual_replace] = off_obj
 
                             # Calculate Fitness Improvement Rate (FIR)
                             FIR = np.sum((g_old[replace_indices] - g_new[replace_indices]) / g_old[replace_indices])
                         else:
-                            FIR = 0
+                            FIR = 0.0
 
                         # Update sliding window
                         SW[i] = np.column_stack([SW[i][:, 1:], [op, FIR]])
@@ -284,7 +282,11 @@ class MOEA_D_FRRMAB:
 
     def _tournament_selection(self, tournament_size, n_select, fitness):
         """
-        Tournament selection based on fitness values.
+        Tournament selection with PlatEMO TournamentSelection semantics.
+
+        Candidates are drawn with replacement and the candidate with the
+        MINIMUM fitness value wins (ties share the same rank, so the first
+        drawn candidate wins among ties).
 
         Parameters
         ----------
@@ -293,24 +295,18 @@ class MOEA_D_FRRMAB:
         n_select : int
             Number of individuals to select
         fitness : ndarray
-            Fitness values (higher is better after negation)
+            Fitness values (lower is better)
 
         Returns
         -------
         ndarray
             Selected indices
         """
-        pop_size = len(fitness)
-        selected = []
-
-        for _ in range(n_select):
-            # Randomly select tournament_size individuals
-            candidates = np.random.choice(pop_size, size=min(tournament_size, pop_size), replace=False)
-            # Select the best one
-            winner = candidates[np.argmax(fitness[candidates])]
-            selected.append(winner)
-
-        return np.array(selected)
+        fitness = np.asarray(fitness, dtype=float).ravel()
+        _, ranks = np.unique(fitness, return_inverse=True)
+        parents = np.random.randint(0, fitness.shape[0], size=(tournament_size, n_select))
+        best = np.argmin(ranks[parents], axis=0)
+        return parents[best, np.arange(n_select)]
 
     def _frrmab(self, FRR, SW, C):
         """
@@ -321,28 +317,28 @@ class MOEA_D_FRRMAB:
         FRR : ndarray
             Credit value of each operator (4 operators)
         SW : ndarray
-            Sliding window [operator_indices; rewards]
+            Sliding window [operator indices (1-4, 0 = empty slot); rewards]
         C : float
             Scaling factor
 
         Returns
         -------
         int
-            Selected operator index (0-3)
+            Selected operator index (1-4)
         """
-        # If any operator has zero credit or hasn't been used
+        # If any operator has zero credit or the sliding window is not full
         if np.any(FRR == 0) or np.any(SW[0, :] == 0):
             # Random selection
-            return np.random.randint(0, 4)
+            return np.random.randint(1, 5)
         else:
-            # Count how many times each operator has been used
-            n = np.zeros(4)
-            for op_idx in range(4):
-                n[op_idx] = np.sum(SW[0, :] == op_idx)
+            # Count how many times each operator appears in the window
+            n = np.array([np.sum(SW[0, :] == k) for k in range(1, 5)], dtype=float)
 
-            # UCB (Upper Confidence Bound) selection
-            ucb = FRR + C * np.sqrt(2 * np.log(np.sum(n)) / (n + 1e-10))
-            return np.argmax(ucb)
+            # UCB (Upper Confidence Bound) selection; an unused operator gets
+            # an infinite bonus and is explored first (as in MATLAB)
+            with np.errstate(divide='ignore'):
+                ucb = FRR + C * np.sqrt(2 * np.log(np.sum(n)) / n)
+            return int(np.argmax(ucb)) + 1
 
     def _credit_assignment(self, SW, D):
         """
@@ -351,7 +347,7 @@ class MOEA_D_FRRMAB:
         Parameters
         ----------
         SW : ndarray
-            Sliding window [operator_indices; rewards]
+            Sliding window [operator indices (1-4, 0 = empty slot); rewards]
         D : float
             Decaying factor
 
@@ -361,28 +357,24 @@ class MOEA_D_FRRMAB:
             Credit values (FRR) for each operator
         """
         K = 4  # Number of operators
-        Reward = np.zeros(K)
 
         # Calculate total reward for each operator
-        for i in range(K):
-            Reward[i] = np.sum(SW[1, SW[0, :] == i])
+        Reward = np.array([np.sum(SW[1, SW[0, :] == k]) for k in range(1, K + 1)])
 
-        # Rank operators by reward (descending)
-        Rank = np.argsort(-Reward)  # Sort descending
-        Rank_inverse = np.zeros(K, dtype=int)
-        Rank_inverse[Rank] = np.arange(K)
+        # Rank operators by reward (descending, stable like MATLAB sort)
+        order = np.argsort(-Reward, kind='stable')
+        Rank = np.empty(K, dtype=int)
+        Rank[order] = np.arange(1, K + 1)
 
         # Apply decaying factor based on rank
-        Decay = (D ** Rank_inverse) * Reward
+        Decay = (D ** Rank) * Reward
 
-        # Normalize to get FRR
+        # Normalize to get FRR (MATLAB: 0/0 yields NaN, which disables the
+        # zero-credit random fallback and makes UCB pick operator 1)
         total = np.sum(Decay)
-        if total > 0:
-            FRR = Decay / total
-        else:
-            FRR = np.ones(K) / K
-
-        return FRR
+        if total == 0:
+            return np.full(K, np.nan)
+        return Decay / total
 
     def _four_de(self, op, x, x1, x2, x3, x4, x5):
         """
@@ -391,7 +383,7 @@ class MOEA_D_FRRMAB:
         Parameters
         ----------
         op : int
-            Operator index (0-3)
+            Operator index (1-4)
         x : ndarray
             Current solution
         x1, x2, x3, x4, x5 : ndarray
@@ -411,22 +403,22 @@ class MOEA_D_FRRMAB:
         D = len(x)
 
         # Differential evolution
-        if op == 0:
+        if op == 1:
             # DE/rand/1
             v = x + F * (x1 - x2)
-        elif op == 1:
+        elif op == 2:
             # DE/rand/2
             v = x + F * (x1 - x2) + F * (x3 - x4)
-        elif op == 2:
+        elif op == 3:
             # DE/current-to-rand/2
             v = x + K * (x - x1) + F * (x2 - x3) + F * (x4 - x5)
-        else:  # op == 3
+        else:  # op == 4
             # DE/current-to-rand/1
             v = x + K * (x - x1) + F * (x2 - x3)
 
         # Crossover
         offspring = x.copy()
-        CR_adjust = CR + (1 if op > 1 else 0)  # Higher CR for current-to-rand operators
+        CR_adjust = CR + (1 if op > 2 else 0)  # Higher CR for current-to-rand operators
         site = np.random.rand(D) < CR_adjust
         offspring[site] = v[site]
 

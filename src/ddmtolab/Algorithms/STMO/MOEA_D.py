@@ -49,7 +49,7 @@ class MOEA_D:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, decomp_type=1, muc=20.0, mum=15.0, save_data=True,
+    def __init__(self, problem, n=None, max_nfes=None, decomp_type=1, muc=20.0, mum=20.0, save_data=True,
                  save_path='./Data', name='MOEA-D', disable_tqdm=True):
         """
         Initialize MOEA/D algorithm.
@@ -71,7 +71,7 @@ class MOEA_D:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -149,7 +149,7 @@ class MOEA_D:
                 # Process each subproblem
                 for subproblem_id in range(n_per_task[task_id]):
                     # Select parents from neighborhood
-                    P = B[task_id][subproblem_id]
+                    P = B[task_id][subproblem_id].copy()
                     np.random.shuffle(P)
                     parent_indices = P[:2]
 
@@ -171,13 +171,9 @@ class MOEA_D:
                                                     W[task_id][P], Z[task_id],
                                                     objs[task_id], self.decomp_type)
 
-                    # Update neighbors if offspring is better
-                    CV_old = np.sum(np.maximum(0, cons[task_id][P]), axis=1)
-                    CV_new = np.sum(np.maximum(0, off_con[0]))
-
-                    # Update solutions: offspring replaces parent if it's better
-                    # Better means: same constraint violation and better fitness, or less constraint violation
-                    update_mask = (g_new < g_old) & (CV_old == CV_new) | (CV_old > CV_new)
+                    # Update the neighbours (PlatEMO: Population(P(g_old>=g_new)) = Offspring;
+                    # PlatEMO's MOEAD does not use constraints in this replacement)
+                    update_mask = g_old >= g_new
                     update_indices = P[update_mask]
 
                     for idx in update_indices:
@@ -224,12 +220,10 @@ class MOEA_D:
         fitness : np.ndarray
             Fitness values of shape (N,) or scalar
         """
-        # Handle single solution case
+        # Handle single solution case: a (1, M) row broadcasts against all
+        # weight vectors, yielding one fitness value per weight vector
         if objs.ndim == 1:
             objs = objs.reshape(1, -1)
-            single_solution = True
-        else:
-            single_solution = False
 
         N, M = objs.shape
 
@@ -277,9 +271,5 @@ class MOEA_D:
 
         else:
             raise ValueError(f"Invalid decomposition type: {decomp_type}. Must be 1, 2, 3, or 4.")
-
-        if single_solution:
-            # Return repeated fitness for each neighbor
-            return np.full(weights.shape[0], fitness[0])
 
         return fitness

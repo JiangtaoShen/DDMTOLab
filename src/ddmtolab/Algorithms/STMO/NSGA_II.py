@@ -46,7 +46,7 @@ class NSGA_II:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0, save_data=True, save_path='./Data',
                  name='NSGA-II', disable_tqdm=True):
         """
         Initialize NSGA-II algorithm.
@@ -62,7 +62,7 @@ class NSGA_II:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -104,10 +104,11 @@ class NSGA_II:
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Perform initial non-dominated sorting for each task
-        rank = []
+        front_no, crowd_dis = [], []
         for i in range(nt):
-            rank_i, _, _ = nsga2_sort(objs[i], cons[i])
-            rank.append(rank_i.copy())
+            _, front_i, crowd_i = nsga2_sort(objs[i], cons[i])
+            front_no.append(front_i)
+            crowd_dis.append(crowd_i)
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -119,8 +120,9 @@ class NSGA_II:
                 break
 
             for i in active_tasks:
-                # Parent selection via binary tournament based on rank
-                matingpool = tournament_selection(2, n_per_task[i], rank[i])
+                # Parent selection via binary tournament on front number, then crowding distance
+                # (PlatEMO: TournamentSelection(2,N,FrontNo,-CrowdDis))
+                matingpool = platemo_tournament_selection(2, n_per_task[i], front_no[i], -crowd_dis[i])
 
                 # Generate offspring through crossover and mutation
                 off_decs = ga_generation(decs[i][matingpool, :], muc=self.muc, mum=self.mum)
@@ -131,9 +133,10 @@ class NSGA_II:
                                                           (cons[i], off_cons))
 
                 # Environmental selection: sort and keep best n individuals
-                rank[i], _, _ = nsga2_sort(objs[i], cons[i])
-                index = np.argsort(rank[i])[:n_per_task[i]]
-                objs[i], decs[i], cons[i], rank[i] = select_by_index(index, objs[i], decs[i], cons[i], rank[i])
+                rank_i, front_i, crowd_i = nsga2_sort(objs[i], cons[i])
+                index = np.argsort(rank_i)[:n_per_task[i]]
+                objs[i], decs[i], cons[i], front_no[i], crowd_dis[i] = select_by_index(
+                    index, objs[i], decs[i], cons[i], front_i, crowd_i)
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])
@@ -149,6 +152,38 @@ class NSGA_II:
                                      filename=self.name, save_data=self.save_data)
 
         return results
+
+
+def platemo_tournament_selection(K, N, *fitness):
+    """
+    Exact port of PlatEMO's TournamentSelection.
+
+    Candidates are compared lexicographically on the given fitness keys
+    (lower values are better). Solutions with identical fitness values share
+    the same rank, so a tournament among tied candidates is decided by the
+    (random) draw order, i.e. uniformly at random. This differs from ranking
+    with a composite total order, which would break ties deterministically.
+
+    Parameters
+    ----------
+    K : int
+        Tournament size
+    N : int
+        Number of parents to select
+    *fitness : np.ndarray
+        One or more fitness vectors of equal length (primary key first)
+
+    Returns
+    -------
+    index : np.ndarray
+        Indices of the selected parents, shape (N,)
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
 
 
 def nsga2_sort(objs, cons=None):

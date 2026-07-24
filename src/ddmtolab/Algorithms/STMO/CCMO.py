@@ -52,7 +52,7 @@ class CCMO:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0,
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0,
                  save_data=True, save_path='./Data', name='CCMO',
                  disable_tqdm=True):
         """
@@ -69,7 +69,7 @@ class CCMO:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -158,9 +158,10 @@ class CCMO:
                 matingpool1 = tournament_selection(2, n_per_task[i], fitness1[i])
                 matingpool2 = tournament_selection(2, n_per_task[i], fitness2[i])
 
-                # Generate offspring from both populations
-                off_decs1 = ga_generation(decs1[i][matingpool1, :], muc=self.muc, mum=self.mum)
-                off_decs2 = ga_generation(decs2[i][matingpool2, :], muc=self.muc, mum=self.mum)
+                # Generate offspring from both populations (OperatorGAhalf:
+                # floor(N/2) offspring from an N-parent mating pool)
+                off_decs1 = self._ga_generation_half(decs1[i][matingpool1, :])
+                off_decs2 = self._ga_generation_half(decs2[i][matingpool2, :])
 
                 # Combine offspring from both populations
                 off_decs_combined = np.vstack([off_decs1, off_decs2])
@@ -198,9 +199,10 @@ class CCMO:
                 cons2[i] = cons2[i][selected_indices2] if cons2[i] is not None else None
                 fitness2[i] = selected_fitness2
 
-                # Update evaluation count (2*N offspring evaluated)
-                nfes_per_task[i] += 2 * n_per_task[i]
-                pbar.update(2 * n_per_task[i])
+                # Update evaluation count (both offspring sets count toward FE)
+                n_off = off_decs_combined.shape[0]
+                nfes_per_task[i] += n_off
+                pbar.update(n_off)
 
                 # Update history with population 1 (strict constraints)
                 append_history(all_decs[i], decs1[i], all_objs[i], objs1[i], all_cons[i], cons1[i])
@@ -214,6 +216,32 @@ class CCMO:
                                      filename=self.name, save_data=self.save_data)
 
         return results
+
+    def _ga_generation_half(self, parents):
+        """
+        Generate offspring following PlatEMO's OperatorGAhalf.
+
+        The first half of the mating pool is paired with the second half, and
+        only the first child of each SBX pair is kept and mutated, yielding
+        floor(N/2) offspring from an N-parent mating pool.
+
+        Parameters
+        ----------
+        parents : ndarray
+            Mating pool decision variables with shape (N, dim)
+
+        Returns
+        -------
+        off_decs : ndarray
+            Offspring decision variables with shape (N // 2, dim)
+        """
+        n, d = parents.shape
+        half = n // 2
+        off_decs = np.zeros((half, d))
+        for j in range(half):
+            child, _ = crossover(parents[j], parents[half + j], mu=self.muc)
+            off_decs[j] = mutation(child, mu=self.mum)
+        return off_decs
 
     def _selection_spea2(self, objs, cons, N, epsilon=0):
         """

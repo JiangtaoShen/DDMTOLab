@@ -12,7 +12,7 @@ Notes
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.12.13
-Version: 1.0
+Version: 1.1
 """
 from tqdm import tqdm
 import time
@@ -106,15 +106,17 @@ class TwoArch2:
         # Initialize archives for each task
         CAs = []  # Convergence Archive
         DAs = []  # Diversity Archive
+        CA_sizes = []
+        ps = []
 
         for i in range(nt):
             # Set CA size and p parameter for this task
-            CA_size_i = self.CA_size if self.CA_size is not None else n_per_task[i]
-            p_i = self.p if self.p is not None else 1.0 / objs[i].shape[1]
+            CA_sizes.append(self.CA_size if self.CA_size is not None else n_per_task[i])
+            ps.append(self.p if self.p is not None else 1.0 / objs[i].shape[1])
 
             # Initialize archives
-            CA_i = self._update_CA([], objs[i], decs[i], CA_size_i)
-            DA_i = self._update_DA([], [], objs[i], decs[i], n_per_task[i], p_i)
+            CA_i = self._update_CA(None, objs[i], decs[i], CA_sizes[i])
+            DA_i = self._update_DA(None, objs[i], decs[i], n_per_task[i], ps[i])
 
             CAs.append(CA_i)
             DAs.append(DA_i)
@@ -134,42 +136,27 @@ class TwoArch2:
                 DA_objs_i, DA_decs_i = DAs[i]
 
                 # Mating selection
-                parentC_indices, parentM_indices = self._mating_selection(
+                parentC_decs, parentM_decs = self._mating_selection(
                     CA_objs_i, CA_decs_i, DA_objs_i, DA_decs_i, n_per_task[i]
                 )
 
-                # Generate offspring through crossover and mutation
-                # ParentC: for convergence (SBX + polynomial mutation)
-                parentC_decs = np.vstack([CA_decs_i[parentC_indices[:len(parentC_indices) // 2]],
-                                          DA_decs_i[parentC_indices[len(parentC_indices) // 2:]]])
-                off_decs_C = ga_generation(parentC_decs, muc=20.0, mum=0)
+                # ParentC: SBX crossover only (proC=1, disC=20, proM=0),
+                # pairing CA tournament winners with random DA members
+                off_decs_C = operator_ga_real(parentC_decs, 1.0, 20.0, 0.0, 0.0)
 
-                # ParentM: for diversity (only mutation)
-                parentM_decs = CA_decs_i[parentM_indices]
-                off_decs_M = ga_generation(parentM_decs, muc=0, mum=20.0)
+                # ParentM: polynomial mutation only (proC=0, proM=1, disM=20)
+                off_decs_M = operator_ga_real(parentM_decs, 0.0, 0.0, 1.0, 20.0)
 
                 # Combine offspring
                 off_decs = np.vstack([off_decs_C, off_decs_M])
                 off_objs, _ = evaluation_single(problem, off_decs, i)
 
                 # Update archives
-                CA_objs_i, CA_decs_i = self._update_CA(
-                    (CA_objs_i, CA_decs_i), off_objs, off_decs,
-                    self.CA_size if self.CA_size is not None else n_per_task[i]
-                )
-                DA_objs_i, DA_decs_i = self._update_DA(
-                    (DA_objs_i, DA_decs_i), (CA_objs_i, CA_decs_i),
-                    off_objs, off_decs, n_per_task[i],
-                    self.p if self.p is not None else 1.0 / objs[i].shape[1]
-                )
-
-                # Update archives
-                CAs[i] = (CA_objs_i, CA_decs_i)
-                DAs[i] = (DA_objs_i, DA_decs_i)
+                CAs[i] = self._update_CA((CA_objs_i, CA_decs_i), off_objs, off_decs, CA_sizes[i])
+                DAs[i] = self._update_DA((DA_objs_i, DA_decs_i), off_objs, off_decs, n_per_task[i], ps[i])
 
                 # Update main population with DA for tracking
-                objs[i] = DA_objs_i
-                decs[i] = DA_decs_i
+                objs[i], decs[i] = DAs[i]
 
                 nfes_per_task[i] += off_decs.shape[0]
                 pbar.update(off_decs.shape[0])
@@ -191,7 +178,7 @@ class TwoArch2:
 
     def _mating_selection(self, CA_objs, CA_decs, DA_objs, DA_decs, N):
         """
-        Mating selection for Two_Arch2.
+        Mating selection of Two_Arch2.
 
         Parameters
         ----------
@@ -208,55 +195,35 @@ class TwoArch2:
 
         Returns
         -------
-        parentC_indices : ndarray
-            Indices for convergence parents
-        parentM_indices : ndarray
-            Indices for diversity parents
+        parentC_decs : ndarray
+            Parents for crossover: ceil(N/2) CA tournament winners followed by
+            ceil(N/2) random DA members (pairing CA x DA in the crossover operator)
+        parentM_decs : ndarray
+            Parents for mutation: N random CA members
         """
         CA_size = CA_objs.shape[0]
         DA_size = DA_objs.shape[0]
+        half = int(np.ceil(N / 2))
 
-        # Select parents from CA (for convergence)
-        CA_parent1 = np.random.randint(0, CA_size, size=int(np.ceil(N / 2)))
-        CA_parent2 = np.random.randint(0, CA_size, size=int(np.ceil(N / 2)))
+        # Pareto-dominance tournament between two random CA members
+        CA_parent1 = np.random.randint(0, CA_size, size=half)
+        CA_parent2 = np.random.randint(0, CA_size, size=half)
+        dominate = (np.any(CA_objs[CA_parent1] < CA_objs[CA_parent2], axis=1).astype(int)
+                    - np.any(CA_objs[CA_parent1] > CA_objs[CA_parent2], axis=1).astype(int))
+        winners = np.where(dominate == 1, CA_parent1, CA_parent2)
 
-        # Determine dominance between CA parents
-        dominate = np.zeros(len(CA_parent1))
-        for idx in range(len(CA_parent1)):
-            p1 = CA_parent1[idx]
-            p2 = CA_parent2[idx]
+        # First half: CA winners; second half: random DA members
+        parentC_decs = np.vstack([CA_decs[winners],
+                                  DA_decs[np.random.randint(0, DA_size, size=half)]])
 
-            # Check if p1 dominates p2
-            less = np.any(CA_objs[p1] < CA_objs[p2])
-            greater = np.any(CA_objs[p1] > CA_objs[p2])
+        # Parents for mutation: random CA members
+        parentM_decs = CA_decs[np.random.randint(0, CA_size, size=N)]
 
-            if less and not greater:
-                dominate[idx] = 1
-            elif greater and not less:
-                dominate[idx] = -1
-
-        # Select based on dominance
-        parentC_from_CA = []
-        for idx in range(len(dominate)):
-            if dominate[idx] == 1:
-                parentC_from_CA.append(CA_parent1[idx])
-            else:
-                parentC_from_CA.append(CA_parent2[idx])
-
-        # Add random parents from DA
-        parentC_from_DA = np.random.randint(0, DA_size, size=int(np.ceil(N / 2)))
-
-        # Combine parents for convergence
-        parentC_indices = np.concatenate([parentC_from_CA, parentC_from_DA])
-
-        # Select parents from CA for mutation (diversity)
-        parentM_indices = np.random.randint(0, CA_size, size=N)
-
-        return parentC_indices, parentM_indices
+        return parentC_decs, parentM_decs
 
     def _update_CA(self, CA, new_objs, new_decs, max_size):
         """
-        Update Convergence Archive (CA).
+        Update Convergence Archive (CA) by indicator-based (IBEA-style) selection.
 
         Parameters
         ----------
@@ -276,7 +243,7 @@ class TwoArch2:
         CA_decs : ndarray
             Updated CA decisions
         """
-        if CA is None or len(CA) == 0:
+        if CA is None:
             CA_objs = new_objs
             CA_decs = new_decs
         else:
@@ -288,66 +255,28 @@ class TwoArch2:
         if N <= max_size:
             return CA_objs, CA_decs
 
-        # Normalize objectives
-        min_vals = np.min(CA_objs, axis=0)
-        max_vals = np.max(CA_objs, axis=0)
-        range_vals = max_vals - min_vals
-        range_vals[range_vals == 0] = 1  # Avoid division by zero
-
-        CA_objs_norm = (CA_objs - min_vals) / range_vals
-
-        # Calculate indicator matrix I
-        I = np.zeros((N, N))
-        for i in range(N):
-            for j in range(N):
-                I[i, j] = np.max(CA_objs_norm[i] - CA_objs_norm[j])
-
-        # Calculate normalization constants
-        C = np.max(np.abs(I), axis=0)
-        C[C == 0] = 1.0  # Avoid division by zero
-
-        # Calculate fitness (IBEA fitness)
+        # IBEA fitness with kappa = 0.05 (normalized additive epsilon indicator)
         kappa = 0.05
-        C_matrix = np.tile(C, (N, 1))
+        F, I, C = ibea_fitness(CA_objs, kappa)
 
-        # Add small epsilon to avoid division by zero
-        epsilon = 1e-10
-        C_matrix = np.maximum(C_matrix, epsilon)
-
-        # Calculate fitness with numerical stability
-        exponent = -I / C_matrix / kappa
-        # Clip exponent to avoid overflow/underflow
-        exponent = np.clip(exponent, -100, 100)
-        F = np.sum(-np.exp(exponent), axis=0) + 1
-
-        # Delete solutions based on fitness
+        # Iteratively delete the worst solution and update the fitness
         choose = np.arange(N)
         while len(choose) > max_size:
-            # Find solution with minimum fitness
-            min_idx = np.argmin(F[choose])
-            to_remove = choose[min_idx]
-
-            # Update fitness values with numerical stability
-            if C[to_remove] > epsilon:
-                exponent_update = -I[to_remove, :] / C[to_remove] / kappa
-                exponent_update = np.clip(exponent_update, -100, 100)
-                F = F + np.exp(exponent_update)
-
-            # Remove solution
-            choose = np.delete(choose, min_idx)
+            x = np.argmin(F[choose])
+            F = F + np.exp(-I[choose[x], :] / C[choose[x]] / kappa)
+            choose = np.delete(choose, x)
 
         return CA_objs[choose], CA_decs[choose]
 
-    def _update_DA(self, DA, CA, new_objs, new_decs, max_size, p):
+    def _update_DA(self, DA, new_objs, new_decs, max_size, p):
         """
-        Update Diversity Archive (DA).
+        Update Diversity Archive (DA): non-dominated solutions truncated by
+        Lp-norm-based diversity maintenance.
 
         Parameters
         ----------
         DA : tuple or None
             Current DA (objs, decs) or None
-        CA : tuple or None
-            Current CA (objs, decs) or None
         new_objs : ndarray
             New objectives to add
         new_decs : ndarray
@@ -355,7 +284,7 @@ class TwoArch2:
         max_size : int
             Maximum size of DA
         p : float
-            Parameter for fractional distance
+            Parameter of the fractional (Lp) distance
 
         Returns
         -------
@@ -365,7 +294,7 @@ class TwoArch2:
             Updated DA decisions
         """
         # Combine current DA and new solutions
-        if DA is None or len(DA) == 0:
+        if DA is None:
             DA_objs = new_objs
             DA_decs = new_decs
         else:
@@ -373,13 +302,9 @@ class TwoArch2:
             DA_objs = np.vstack([DA_objs, new_objs])
             DA_decs = np.vstack([DA_decs, new_decs])
 
-        # Non-dominated sorting using existing nd_sort function
+        # Keep only the non-dominated solutions
         N = DA_objs.shape[0]
-
-        # Use nd_sort to get non-dominated front
-        front_no, max_fno = nd_sort(DA_objs, N)
-
-        # Get non-dominated solutions (front number 1)
+        front_no, _ = nd_sort(DA_objs, N)
         non_dominated_mask = front_no == 1
 
         DA_objs = DA_objs[non_dominated_mask]
@@ -389,61 +314,82 @@ class TwoArch2:
         if N <= max_size:
             return DA_objs, DA_decs
 
-        # Select extreme solutions first
+        # Select the extreme solutions first (min and max of each objective)
         choose = np.zeros(N, dtype=bool)
+        choose[np.argmin(DA_objs, axis=0)] = True
+        choose[np.argmax(DA_objs, axis=0)] = True
 
-        # Minimum values for each objective
-        for m in range(DA_objs.shape[1]):
-            min_idx = np.argmin(DA_objs[:, m])
-            choose[min_idx] = True
-
-        # Maximum values for each objective
-        for m in range(DA_objs.shape[1]):
-            max_idx = np.argmax(DA_objs[:, m])
-            choose[max_idx] = True
-
-        # Adjust selection size
         if np.sum(choose) > max_size:
-            # Randomly delete some solutions
+            # Randomly delete several solutions
             chosen_indices = np.where(choose)[0]
             to_remove = np.random.choice(chosen_indices, size=np.sum(choose) - max_size, replace=False)
             choose[to_remove] = False
         elif np.sum(choose) < max_size:
-            # Add solutions using truncation strategy
-            # Calculate distance matrix with p-norm
-            distance = np.full((N, N), np.inf)
-
-            # More efficient calculation using vectorization
-            for i in range(N):
-                diff = DA_objs - DA_objs[i]
-                # Calculate p-norm distance
-                if p == 1:
-                    # Manhattan distance
-                    distance[i, :] = np.sum(np.abs(diff), axis=1)
-                elif p == 2:
-                    # Euclidean distance
-                    distance[i, :] = np.sqrt(np.sum(diff ** 2, axis=1))
-                else:
-                    # General p-norm
-                    distance[i, :] = np.sum(np.abs(diff) ** p, axis=1) ** (1 / p)
-
-            # Set diagonal to infinity
+            # Add several solutions by truncation strategy (Lp-norm distance)
+            diff = np.abs(DA_objs[:, np.newaxis, :] - DA_objs[np.newaxis, :, :])
+            distance = np.sum(diff ** p, axis=2) ** (1.0 / p)
             np.fill_diagonal(distance, np.inf)
 
-            # Add solutions until reaching max_size
             while np.sum(choose) < max_size:
                 remaining = np.where(~choose)[0]
-                chosen = np.where(choose)[0]
-
-                if len(chosen) == 0:
-                    # If no solutions chosen yet, choose randomly
-                    choose[np.random.choice(remaining)] = True
-                else:
-                    # Calculate minimum distance to chosen solutions for each remaining solution
-                    min_distances = np.min(distance[np.ix_(remaining, chosen)], axis=1)
-
-                    # Select solution with maximum minimum distance
-                    max_idx = np.argmax(min_distances)
-                    choose[remaining[max_idx]] = True
+                # Select the remaining solution farthest from the chosen ones
+                min_distances = np.min(distance[np.ix_(remaining, np.where(choose)[0])], axis=1)
+                choose[remaining[np.argmax(min_distances)]] = True
 
         return DA_objs[choose], DA_decs[choose]
+
+
+def operator_ga_real(parent_decs, proC, disC, proM, disM):
+    """
+    Real-coded genetic operators (PlatEMO OperatorGA, GAreal) in [0, 1] space.
+
+    The parents are split into two halves; row k of the first half is paired
+    with row k of the second half, and each pair generates two offspring.
+
+    Parameters
+    ----------
+    parent_decs : ndarray
+        Parent decision variables in [0, 1], shape (n, d)
+    proC : float
+        Probability of doing crossover
+    disC : float
+        Distribution index of simulated binary crossover
+    proM : float
+        Expectation of the number of mutated variables
+    disM : float
+        Distribution index of polynomial mutation
+
+    Returns
+    -------
+    offspring : ndarray
+        Offspring decision variables in [0, 1], shape (2 * floor(n/2), d)
+    """
+    n = parent_decs.shape[0]
+    half = n // 2
+    parent1 = parent_decs[:half, :]
+    parent2 = parent_decs[half:2 * half, :]
+    N, D = parent1.shape
+
+    # Simulated binary crossover
+    beta = np.zeros((N, D))
+    mu = np.random.rand(N, D)
+    beta[mu <= 0.5] = (2 * mu[mu <= 0.5]) ** (1 / (disC + 1))
+    beta[mu > 0.5] = (2 - 2 * mu[mu > 0.5]) ** (-1 / (disC + 1))
+    beta = beta * (-1.0) ** np.random.randint(0, 2, size=(N, D))
+    beta[np.random.rand(N, D) < 0.5] = 1
+    beta[np.repeat(np.random.rand(N, 1) > proC, D, axis=1)] = 1
+    offspring = np.vstack([(parent1 + parent2) / 2 + beta * (parent1 - parent2) / 2,
+                           (parent1 + parent2) / 2 - beta * (parent1 - parent2) / 2])
+
+    # Polynomial mutation (lower = 0, upper = 1)
+    offspring = np.clip(offspring, 0, 1)
+    site = np.random.rand(2 * N, D) < proM / D
+    mu = np.random.rand(2 * N, D)
+    temp = site & (mu <= 0.5)
+    offspring[temp] = offspring[temp] + ((2 * mu[temp] + (1 - 2 * mu[temp]) *
+                      (1 - offspring[temp]) ** (disM + 1)) ** (1 / (disM + 1)) - 1)
+    temp = site & (mu > 0.5)
+    offspring[temp] = offspring[temp] + (1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) *
+                      offspring[temp] ** (disM + 1)) ** (1 / (disM + 1)))
+
+    return np.clip(offspring, 0, 1)

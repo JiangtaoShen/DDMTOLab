@@ -155,25 +155,27 @@ class MOEA_D_STM:
             for i in active_tasks:
                 # Perform 5 sub-generations
                 for subgen in range(5):
+                    if nfes_per_task[i] >= max_nfes_per_task[i]:
+                        break
+
                     # Choose I: boundary solutions + tournament selection
                     # Boundary solutions are those with weight close to axes
                     boundary = np.where(np.sum(Weight[i] < 1e-3, axis=1) == no[i] - 1)[0]
                     n_select = int(np.floor(n_per_task[i] / 5)) - len(boundary)
 
                     if n_select > 0:
-                        # Tournament selection based on negative utility
+                        # Tournament selection on -Pi (i.e., highest utility wins)
                         tournament_indices = self._tournament_selection(10, n_select, -Pi[i])
                         I = np.concatenate([boundary, tournament_indices])
                     else:
                         I = boundary
 
-                    # Generate offspring for each solution in I
+                    if len(I) == 0:
+                        continue
+
+                    # Choose the parents for each solution in I
                     P = np.zeros((len(I), 3), dtype=int)
                     for idx, sol_idx in enumerate(I):
-                        if nfes_per_task[i] >= max_nfes_per_task[i]:
-                            break
-
-                        # Choose the parents
                         if np.random.rand() < 0.9:
                             # From neighborhood
                             P[idx, :] = B[i][sol_idx, np.random.permutation(T_per_task[i])[:3]]
@@ -182,33 +184,30 @@ class MOEA_D_STM:
                             P[idx, :] = np.random.permutation(n_per_task[i])[:3]
 
                     # Generate offspring using DE
-                    if len(I) > 0 and nfes_per_task[i] < max_nfes_per_task[i]:
-                        # Prepare parent arrays
-                        parent1 = decs[i][P[:, 0]]
-                        parent2 = decs[i][P[:, 1]]
-                        parent3 = decs[i][P[:, 2]]
+                    parent1 = decs[i][P[:, 0]]
+                    parent2 = decs[i][P[:, 1]]
+                    parent3 = decs[i][P[:, 2]]
+                    off_decs = self._operator_de(parent1, parent2, parent3)
 
-                        # DE operator
-                        off_decs = self._operator_de(parent1, parent2, parent3)
+                    # Evaluate offspring
+                    off_objs, _ = evaluation_single(problem, off_decs, i)
 
-                        # Evaluate offspring
-                        off_objs, _ = evaluation_single(problem, off_decs, i)
+                    # Update ideal point
+                    z[i] = np.minimum(z[i], np.min(off_objs, axis=0))
 
-                        # Update ideal point
-                        z[i] = np.minimum(z[i], np.min(off_objs, axis=0))
+                    # Combine population and offspring
+                    combined_decs = np.vstack([decs[i], off_decs])
+                    combined_objs = np.vstack([objs[i], off_objs])
 
-                        # Combine population and offspring
-                        combined_decs = np.vstack([decs[i], off_decs])
-                        combined_objs = np.vstack([objs[i], off_objs])
+                    # STM selection (znad = max of the CURRENT population,
+                    # evaluated before the merge, as in PlatEMO)
+                    decs[i], objs[i] = self._stm_selection(
+                        combined_objs, combined_decs, Weight[i], z[i],
+                        np.max(objs[i], axis=0)
+                    )
 
-                        # STM selection
-                        decs[i], objs[i] = self._stm_selection(
-                            combined_objs, combined_decs, Weight[i], z[i],
-                            np.max(objs[i], axis=0)
-                        )
-
-                        nfes_per_task[i] += len(off_decs)
-                        pbar.update(len(off_decs))
+                    nfes_per_task[i] += len(off_decs)
+                    pbar.update(len(off_decs))
 
                 # Update Pi every 10 generations
                 current_gen = int(np.ceil(nfes_per_task[i] / n_per_task[i]))
@@ -241,7 +240,11 @@ class MOEA_D_STM:
 
     def _tournament_selection(self, tournament_size, n_select, fitness):
         """
-        Tournament selection based on fitness values.
+        Tournament selection with PlatEMO TournamentSelection semantics.
+
+        Candidates are drawn with replacement and the candidate with the
+        MINIMUM fitness value wins (ties share the same rank, so the first
+        drawn candidate wins among ties).
 
         Parameters
         ----------
@@ -250,24 +253,18 @@ class MOEA_D_STM:
         n_select : int
             Number of individuals to select
         fitness : ndarray
-            Fitness values (higher is better after negation)
+            Fitness values (lower is better)
 
         Returns
         -------
         ndarray
             Selected indices
         """
-        pop_size = len(fitness)
-        selected = []
-
-        for _ in range(n_select):
-            # Randomly select tournament_size individuals
-            candidates = np.random.choice(pop_size, size=min(tournament_size, pop_size), replace=False)
-            # Select the best one
-            winner = candidates[np.argmax(fitness[candidates])]
-            selected.append(winner)
-
-        return np.array(selected)
+        fitness = np.asarray(fitness, dtype=float).ravel()
+        _, ranks = np.unique(fitness, return_inverse=True)
+        parents = np.random.randint(0, fitness.shape[0], size=(tournament_size, n_select))
+        best = np.argmin(ranks[parents], axis=0)
+        return parents[best, np.arange(n_select)]
 
     def _operator_de(self, parent1, parent2, parent3, CR=1.0, F=0.5):
         """

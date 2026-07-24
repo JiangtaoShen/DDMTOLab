@@ -50,7 +50,7 @@ class MOEA_DD:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, delta=0.9, muc=20.0, mum=15.0, save_data=True,
+    def __init__(self, problem, n=None, max_nfes=None, delta=0.9, muc=20.0, mum=20.0, save_data=True,
                  save_path='./Data', name='MOEA-DD', disable_tqdm=True):
         """
         Initialize MOEA/DD.
@@ -68,7 +68,7 @@ class MOEA_DD:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -139,9 +139,10 @@ class MOEA_DD:
             region.append(region_i)
 
         # Initialize front_no for each task
+        # (PlatEMO: NDSort(Population.objs,inf) — objectives only, no constraints)
         front_no = []
         for i in range(nt):
-            front_no_i, _ = nd_sort(objs[i], cons[i], n_per_task[i])
+            front_no_i, _ = nd_sort(objs[i], n_per_task[i])
             front_no.append(front_no_i)
 
         # Initialize ideal point Z for each task
@@ -170,13 +171,13 @@ class MOEA_DD:
                         cv_ei = np.sum(np.maximum(0, cons[task_id][ei]), axis=1) if cons[
                                                                                         task_id] is not None else np.zeros(
                             len(ei))
-                        parents = tournament_selection(2, 2, cv_ei)
+                        parents = matlab_tournament_selection(2, 2, cv_ei)
                         parents = ei[parents]
                     else:
                         # Global selection
                         cv = np.sum(np.maximum(0, cons[task_id]), axis=1) if cons[task_id] is not None else np.zeros(
                             n_per_task[task_id])
-                        parents = tournament_selection(2, 2, cv)
+                        parents = matlab_tournament_selection(2, 2, cv)
 
                     # Generate an offspring
                     parent_decs = decs[task_id][parents, :]
@@ -208,7 +209,8 @@ class MOEA_DD:
 
                     # Delete a solution from the population
                     if np.any(cv > 0):
-                        S = np.argsort(cv)[::-1]
+                        # Stable descending sort (MATLAB sort(CV,'descend') is stable)
+                        S = np.argsort(-cv, kind='stable')
                         S = S[:np.sum(cv > 0)]
                         flag = False
                         x = None
@@ -256,15 +258,14 @@ class MOEA_DD:
                                 x = locate_worst(objs[task_id], W[task_id], region[task_id], front_no[task_id],
                                                  Z[task_id])
 
-                    # Update front_no before removing (delete mode)
-                    front_no[task_id] = update_front(objs[task_id], front_no[task_id], x)
-
-                    # Remove the worst solution
+                    # Remove the worst solution first, then update the front numbers
+                    # (PlatEMO order: Population(x)=[] before UpdateFront(...,x))
                     decs[task_id] = np.delete(decs[task_id], x, axis=0)
                     objs[task_id] = np.delete(objs[task_id], x, axis=0)
                     if cons[task_id] is not None:
                         cons[task_id] = np.delete(cons[task_id], x, axis=0)
                     region[task_id] = np.delete(region[task_id], x)
+                    front_no[task_id] = update_front(objs[task_id], front_no[task_id], x)
 
                     # Update evaluation count
                     nfes_per_task[task_id] += 1
@@ -355,9 +356,12 @@ def update_front(pop_obj, front_no, x=None):
             move = next_move
 
     else:
-        # Delete the x-th solution
+        # Delete the x-th solution. Faithful to PlatEMO, where MOEADD.m calls
+        # UpdateFront AFTER Population(x)=[]: pop_obj has N rows while front_no
+        # still has N+1 old-indexed entries, and MATLAB's Move(x)=true
+        # auto-grows the logical array when x equals the last old index.
         x = int(x)
-        move = np.zeros(N, dtype=bool)
+        move = np.zeros(max(N, x + 1), dtype=bool)
         move[x] = True
         current_f = int(front_no[x]) + 1
 
@@ -389,13 +393,42 @@ def update_front(pop_obj, front_no, x=None):
                                 break
                     next_move[i] = not dominated
 
-            front_no[move] = current_f - 2
+            front_no[:len(move)][move] = current_f - 2
             current_f += 1
             move = next_move
 
         front_no = np.delete(front_no, x)
 
     return front_no
+
+
+def matlab_tournament_selection(K, N, fitness):
+    """
+    Binary/K-ary tournament selection with PlatEMO TournamentSelection semantics.
+
+    Candidates are drawn with replacement; equal fitness values share the same
+    rank (MATLAB unique-rows ranking), so among tied candidates the first drawn
+    one wins, making selection uniform when all fitness values are equal.
+
+    Parameters
+    ----------
+    K : int
+        Tournament size.
+    N : int
+        Number of individuals to select.
+    fitness : ndarray
+        Fitness values; the candidate with the minimum value wins.
+
+    Returns
+    -------
+    ndarray
+        Selected indices, shape (N,).
+    """
+    fitness = np.asarray(fitness, dtype=float).ravel()
+    _, ranks = np.unique(fitness, return_inverse=True)
+    parents = np.random.randint(0, fitness.shape[0], size=(K, N))
+    best = np.argmin(ranks[parents], axis=0)
+    return parents[best, np.arange(N)]
 
 
 def locate_worst(pop_obj, W, region, front_no, Z):

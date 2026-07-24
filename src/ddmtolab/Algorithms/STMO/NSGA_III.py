@@ -49,7 +49,7 @@ class NSGA_III:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0, save_data=True, save_path='./Data',
                  name='NSGA-III', disable_tqdm=True):
         """
         Initialize NSGA-III algorithm.
@@ -65,7 +65,7 @@ class NSGA_III:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -114,14 +114,16 @@ class NSGA_III:
         nfes_per_task = n_per_task.copy()
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Initialize ideal point (minimum objective values among feasible solutions)
+        # Initialize ideal point (minimum objective values among feasible solutions).
+        # PlatEMO keeps Zmin empty until a feasible solution appears; an empty Zmin
+        # is replaced by ones(1,M) inside the environmental selection.
         Zmin = []
         for i in range(nt):
-            feasible_mask = np.sum(np.maximum(0, cons[i]), axis=1) <= 0
+            feasible_mask = np.all(cons[i] <= 0, axis=1)
             if np.any(feasible_mask):
                 Zmin.append(np.min(objs[i][feasible_mask], axis=0))
             else:
-                Zmin.append(np.min(objs[i], axis=0))
+                Zmin.append(None)
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -137,16 +139,18 @@ class NSGA_III:
                 CV = np.sum(np.maximum(0, cons[i]), axis=1)
 
                 # Parent selection via binary tournament based on constraint violation
-                matingpool = tournament_selection(2, n_per_task[i], CV)
+                # (uniformly random among tied candidates, as in PlatEMO)
+                matingpool = platemo_tournament_selection(2, n_per_task[i], CV)
 
                 # Generate offspring through crossover and mutation
                 off_decs = ga_generation(decs[i][matingpool, :], muc=self.muc, mum=self.mum)
                 off_objs, off_cons = evaluation_single(problem, off_decs, i)
 
                 # Update ideal point with feasible offspring
-                feasible_mask = np.sum(np.maximum(0, off_cons), axis=1) <= 0
+                feasible_mask = np.all(off_cons <= 0, axis=1)
                 if np.any(feasible_mask):
-                    Zmin[i] = np.minimum(Zmin[i], np.min(off_objs[feasible_mask], axis=0))
+                    zmin_off = np.min(off_objs[feasible_mask], axis=0)
+                    Zmin[i] = zmin_off if Zmin[i] is None else np.minimum(Zmin[i], zmin_off)
 
                 # Merge parent and offspring populations
                 objs[i], decs[i], cons[i] = vstack_groups((objs[i], off_objs), (decs[i], off_decs),
@@ -187,8 +191,9 @@ class NSGA_III:
             Number of solutions to select
         Z : np.ndarray
             Reference points of shape (NZ, M)
-        Zmin : np.ndarray
-            Ideal point of shape (M,)
+        Zmin : np.ndarray or None
+            Ideal point of shape (M,), or None if no feasible solution has been
+            found yet (replaced by ones, as in PlatEMO)
 
         Returns
         -------
@@ -199,6 +204,9 @@ class NSGA_III:
         selected_cons : np.ndarray
             Selected constraint values
         """
+        if Zmin is None:
+            Zmin = np.ones(objs.shape[1])
+
         # Perform non-dominated sorting
         front_no, max_front = nd_sort(objs, cons, N)
 
@@ -266,22 +274,22 @@ class NSGA_III:
             max_ratios = np.max(ratios, axis=1)
             Extreme[i] = np.argmin(max_ratios)
 
-        # Step 2: Calculate intercepts
+        # Step 2: Calculate intercepts of the hyperplane constructed by the
+        # extreme points and the axes. PlatEMO falls back to the maximum
+        # objective values only when the intercepts contain NaN (a singular
+        # system in NumPy raises instead of returning NaN/Inf).
         try:
-            # Solve the linear system to find hyperplane intercepts
             Hyperplane = np.linalg.solve(PopObj[Extreme, :], np.ones(M))
-            a = 1.0 / Hyperplane
+            with np.errstate(divide='ignore'):
+                a = 1.0 / Hyperplane
+            if np.any(np.isnan(a)):
+                a = np.max(PopObj, axis=0)
         except np.linalg.LinAlgError:
-            # If extreme points are degenerate, use max values as intercepts
-            a = np.max(PopObj, axis=0)
-
-        # Handle invalid intercepts
-        if np.any(np.isnan(a)) or np.any(a <= 0):
             a = np.max(PopObj, axis=0)
 
         # Step 3: Normalize objectives
-        a = np.maximum(a, 1e-10)  # Avoid division by zero
-        PopObj = PopObj / a
+        with np.errstate(divide='ignore', invalid='ignore'):
+            PopObj = PopObj / a
 
         # Associate each solution with reference points
         # Calculate cosine distance to each reference point
@@ -335,3 +343,36 @@ class NSGA_III:
                 Zchoose[j] = False
 
         return Choose
+
+
+def platemo_tournament_selection(K, N, *fitness):
+    """
+    Exact port of PlatEMO's TournamentSelection.
+
+    Candidates are compared lexicographically on the given fitness keys
+    (lower values are better). Solutions with identical fitness values share
+    the same rank, so a tournament among tied candidates is decided by the
+    (random) draw order, i.e. uniformly at random. In particular, when all
+    fitness values are equal (e.g. all-zero constraint violations), mating
+    selection is uniformly random, as in PlatEMO.
+
+    Parameters
+    ----------
+    K : int
+        Tournament size
+    N : int
+        Number of parents to select
+    *fitness : np.ndarray
+        One or more fitness vectors of equal length (primary key first)
+
+    Returns
+    -------
+    index : np.ndarray
+        Indices of the selected parents, shape (N,)
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]

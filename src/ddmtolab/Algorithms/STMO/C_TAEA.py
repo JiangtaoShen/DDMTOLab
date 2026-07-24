@@ -53,7 +53,7 @@ class C_TAEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0,
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0,
                  save_data=True, save_path='./Data', name='C-TAEA',
                  disable_tqdm=True):
         """
@@ -70,7 +70,7 @@ class C_TAEA:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -150,10 +150,10 @@ class C_TAEA:
 
                 # Calculate the ratio of non-dominated solutions in CA and DA
                 Hm_objs = np.vstack([CA_i['objs'], DA_i['objs']])
-                Hm_cons = np.vstack([CA_i['cons'], DA_i['cons']]) if CA_i['cons'] is not None else None
 
                 # Non-dominated sorting for the combined archive
-                front_no, _ = nd_sort(Hm_objs, Hm_cons, Hm_objs.shape[0])
+                # (objectives only, as in the MATLAB reference: NDSort(Hm.objs,inf))
+                front_no, _ = nd_sort(Hm_objs, Hm_objs.shape[0])
 
                 # Calculate proportions
                 CA_size = CA_i['objs'].shape[0]
@@ -166,11 +166,12 @@ class C_TAEA:
                 Pd = Nd / len(front_no)
 
                 # Calculate the proportion of non-dominated solutions in CA
-                front_no_CA, _ = nd_sort(CA_i['objs'], CA_i['cons'], CA_i['objs'].shape[0])
+                # (objectives only, as in the MATLAB reference: NDSort(CA.objs,inf))
+                front_no_CA, _ = nd_sort(CA_i['objs'], CA_i['objs'].shape[0])
                 NC = np.sum(front_no_CA == 1)
                 PC = NC / CA_size
 
-                # Generate offspring
+                # Generate offspring: one child per parent pair (OperatorGAhalf)
                 off_decs_list = []
                 for j in range(n_per_task[i]):
                     # Select first parent based on Pc and Pd
@@ -186,10 +187,10 @@ class C_TAEA:
                     else:
                         P2 = self._mating_selection(DA_i)
 
-                    # Combine parents
-                    mating_pool = np.vstack([P1['decs'], P2['decs']])
-                    offspring = ga_generation(mating_pool, muc=self.muc, mum=self.mum)
-                    off_decs_list.append(offspring)
+                    # OperatorGAhalf: keep only the first child of the SBX pair
+                    child, _ = crossover(P1['decs'][0], P2['decs'][0], mu=self.muc)
+                    child = mutation(child, mu=self.mum)
+                    off_decs_list.append(child[np.newaxis, :])
 
                 # Combine all offspring
                 off_decs = np.vstack(off_decs_list)
@@ -254,10 +255,9 @@ class C_TAEA:
             # x_2 is feasible
             selected_idx = x_2
         else:
-            # Both feasible, use non-dominated sorting
+            # Both feasible, use non-dominated sorting on objectives only
             rnd_objs = np.vstack([archive['objs'][x_1], archive['objs'][x_2]])
-            rnd_cons = np.vstack([archive['cons'][x_1], archive['cons'][x_2]]) if archive['cons'] is not None else None
-            front_no, _ = nd_sort(rnd_objs, rnd_cons, 2)
+            front_no, _ = nd_sort(rnd_objs, 2)
 
             if front_no[0] <= front_no[1]:
                 selected_idx = x_1
@@ -355,18 +355,15 @@ class C_TAEA:
         tuple
             Truncated (objs, decs, cons)
         """
-        # Non-dominated sorting
-        front_no, max_fno = nd_sort(objs, cons, objs.shape[0])
+        # Non-dominated sorting (objectives only; all solutions are feasible)
+        front_no, max_fno = nd_sort(objs, objs.shape[0])
 
-        # Add solutions front by front
+        # Add solutions front by front until the size reaches N
         S_indices = []
         for i in range(1, max_fno + 1):
             current_front = np.where(front_no == i)[0]
-            if len(S_indices) + len(current_front) <= N:
-                S_indices.extend(current_front)
-            else:
-                # Need to select from this front
-                S_indices.extend(current_front)
+            S_indices.extend(current_front.tolist())
+            if len(S_indices) >= N:
                 break
 
         S_indices = np.array(S_indices)
@@ -397,30 +394,23 @@ class C_TAEA:
             crowded_indices = np.where(crowded_mask)[0]
             S_crowded_objs = S_objs[crowded_mask]
 
-            # Calculate distances
+            # Pairwise distances; all zero distances become inf (as in MATLAB)
             dist = cdist(S_crowded_objs, S_crowded_objs)
-            np.fill_diagonal(dist, np.inf)
+            dist[dist == 0] = np.inf
 
-            # Find the closest pair
+            # St: the individuals involved in the smallest-distance pair(s)
             min_dist = np.min(dist)
-            closest_indices = np.where(dist == min_dist)
-            row = closest_indices[0][0]
+            St_rows = np.unique(np.where(dist == min_dist)[0])
+            St_objs = S_crowded_objs[St_rows]
 
-            # Map back to S indices
-            closest_in_S = crowded_indices[row]
-
-            # Calculate Tchebycheff distance for tie-breaking
-            St_objs = S_objs[crowded_indices]
-            Region_St = Region[crowded_indices]
+            # Tchebycheff distance of St, with association on raw objectives
+            cosine_St = 1 - cdist(St_objs, W, metric='cosine')
+            Region_St = np.argmax(cosine_St, axis=1)
             Z = np.min(St_objs, axis=0)
-
             g_tch = np.max(np.abs(St_objs - Z) / W[Region_St], axis=1)
-            worst_idx = np.argmax(g_tch)
 
-            # Map to S indices
-            worst_in_S = crowded_indices[worst_idx]
-
-            # Remove the worst solution
+            # Remove the member of St with the largest Tchebycheff distance
+            worst_in_S = crowded_indices[St_rows[np.argmax(g_tch)]]
             mask = np.ones(len(S_objs), dtype=bool)
             mask[worst_in_S] = False
             S_objs = S_objs[mask]
@@ -458,51 +448,45 @@ class C_TAEA:
             Combined (objs, decs, cons)
         """
         # Create two-objective optimization problem: minimize CV and Tchebycheff
-        CV_SI = np.sum(np.maximum(0, SI_cons), axis=1, keepdims=True)
+        CV_SI = np.sum(np.maximum(0, SI_cons), axis=1)
 
         # Associate with subregions
         cosine = 1 - cdist(SI_objs, W, metric='cosine')
         Region_SI = np.argmax(cosine, axis=1)
         Z = np.min(SI_objs, axis=0)
 
-        g_tch = np.max(np.abs(SI_objs - Z) / W[Region_SI], axis=1, keepdims=True)
+        g_tch = np.max(np.abs(SI_objs - Z) / W[Region_SI], axis=1)
 
         # Combine CV and Tchebycheff as bi-objective
-        PopObj = np.hstack([CV_SI, g_tch])
+        PopObj = np.column_stack([CV_SI, g_tch])
 
         # Non-dominated sorting
-        front_no, max_fno = nd_sort(PopObj, None, PopObj.shape[0])
+        front_no, max_fno = nd_sort(PopObj, PopObj.shape[0])
 
-        # Start with feasible solutions
-        S_objs = Sc_objs
-        S_decs = Sc_decs
-        S_cons = Sc_cons
-
-        # Add infeasible solutions front by front
+        # Add infeasible solutions front by front until |Sc| + |selected| >= N
+        n_feasible = Sc_objs.shape[0]
+        selected = []
+        last_front = None
         for i in range(1, max_fno + 1):
             current_front = np.where(front_no == i)[0]
-
-            if len(S_objs) + len(current_front) <= N:
-                S_objs = np.vstack([S_objs, SI_objs[current_front]])
-                S_decs = np.vstack([S_decs, SI_decs[current_front]])
-                S_cons = np.vstack([S_cons, SI_cons[current_front]]) if S_cons is not None else SI_cons[current_front]
-            else:
-                # Need to select from this front
-                needed = N - len(S_objs)
-                last_front_indices = current_front
-
-                # Sort by CV
-                CV_last = CV_SI[last_front_indices].flatten()
-                sorted_indices = np.argsort(CV_last)[:needed]
-
-                S_objs = np.vstack([S_objs, SI_objs[last_front_indices[sorted_indices]]])
-                S_decs = np.vstack([S_decs, SI_decs[last_front_indices[sorted_indices]]])
-                S_cons = np.vstack([S_cons, SI_cons[last_front_indices[sorted_indices]]]) if S_cons is not None else \
-                SI_cons[last_front_indices[sorted_indices]]
+            selected.extend(current_front.tolist())
+            if n_feasible + len(selected) >= N:
+                last_front = i
                 break
 
-            if len(S_objs) >= N:
-                break
+        selected = np.array(selected, dtype=int)
+
+        # Delete the worst members (largest CV) of the last front joined into S
+        delete_n = n_feasible + len(selected) - N
+        if delete_n > 0 and last_front is not None:
+            last_indices = selected[front_no[selected] == last_front]
+            order = np.argsort(-CV_SI[last_indices], kind='stable')
+            to_delete = set(last_indices[order[:delete_n]].tolist())
+            selected = np.array([idx for idx in selected if idx not in to_delete], dtype=int)
+
+        S_objs = np.vstack([Sc_objs, SI_objs[selected]])
+        S_decs = np.vstack([Sc_decs, SI_decs[selected]])
+        S_cons = np.vstack([Sc_cons, SI_cons[selected]]) if Sc_cons is not None else SI_cons[selected]
 
         return S_objs, S_decs, S_cons
 
@@ -581,12 +565,12 @@ class C_TAEA:
                             available_indices = np.where(available_mask)[0]
                             candidates_in_Hd = available_indices[candidates_in_subset]
 
-                            # Get objectives and constraints for candidates
+                            # Get objectives for candidates
                             cand_objs = Hd_objs[candidates_in_Hd]
-                            cand_cons = Hd_cons[candidates_in_Hd] if Hd_cons is not None else None
 
-                            # Non-dominated sorting
-                            front_no, _ = nd_sort(cand_objs, cand_cons, len(candidates_in_Hd))
+                            # Non-dominated sorting (objectives only, as in the
+                            # MATLAB reference: constraints are ignored in DA)
+                            front_no, _ = nd_sort(cand_objs, len(candidates_in_Hd))
                             nd_mask = front_no == 1
                             nd_indices_in_Hd = candidates_in_Hd[nd_mask]
 

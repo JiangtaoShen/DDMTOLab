@@ -48,7 +48,7 @@ class MSEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0, save_data=True, save_path='./Data',
                  name='MSEA', disable_tqdm=True):
         """
         Initialize MSEA algorithm.
@@ -64,7 +64,7 @@ class MSEA:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -152,28 +152,31 @@ class MSEA:
                         stage = 3  # Exploration stage
 
                     # Stage 2: Parent selection based on stage
+                    # tournament_selection: lower fitness values are better (as in PlatEMO)
                     if stage == 1:
-                        # Convergence: select based on front number (lower better) and convergence (lower better)
+                        # Convergence: select by front number (lower better), then convergence (lower better)
                         convergence = np.sum(pop_obj_norm, axis=1)
-                        # tournament_selection: higher fitness is better, so negate values we want to minimize
-                        # Priority: front_no (first), then convergence (second) via lexsort
-                        mating_pool = tournament_selection(2, 2, -front_no[task_id], -convergence)
+                        mating_pool = tournament_selection(2, 2, front_no[task_id], convergence)
                     elif stage == 2:
-                        # Exploitation: select most crowded (max div) and one with high diversity (max div)
+                        # Exploitation: the most isolated solution (max div) and one with high diversity
                         mating_pool = np.zeros(2, dtype=int)
                         mating_pool[0] = np.argmax(div)
-                        mating_pool[1] = tournament_selection(2, 1, div)[0]
+                        mating_pool[1] = tournament_selection(2, 1, -div)[0]
                     else:
-                        # Exploration: select one with low convergence and one with high diversity
+                        # Exploration: one with low convergence and one with high diversity
                         mating_pool = np.zeros(2, dtype=int)
                         convergence = np.sum(pop_obj_norm, axis=1)
-                        mating_pool[0] = tournament_selection(2, 1, -convergence)[0]
-                        mating_pool[1] = tournament_selection(2, 1, div)[0]
+                        mating_pool[0] = tournament_selection(2, 1, convergence)[0]
+                        mating_pool[1] = tournament_selection(2, 1, -div)[0]
 
-                    # Generate one offspring
-                    parent_decs = decs[task_id][mating_pool, :]
-                    off_dec = ga_generation(parent_decs, muc=self.muc, mum=self.mum)[:1]
+                    # Generate one offspring (OperatorGAhalf: SBX child of the ordered
+                    # parent pair followed by polynomial mutation; parent order matters)
+                    off_dec, _ = crossover(decs[task_id][mating_pool[0], :],
+                                           decs[task_id][mating_pool[1], :], mu=self.muc)
+                    off_dec = mutation(off_dec, mu=self.mum)[np.newaxis, :]
                     off_obj, _ = evaluation_single(problem, off_dec, task_id)
+                    nfes_per_task[task_id] += 1
+                    pbar.update(1)
                     off_obj_norm = (off_obj - fmin) / frange
 
                     # Update front numbers with the new offspring
@@ -186,11 +189,6 @@ class MSEA:
 
                     # Calculate distances from offspring to all population members
                     off_dist = np.linalg.norm(pop_obj_norm - off_obj_norm, axis=1)
-
-                    # Recalculate diversity with offspring included
-                    sorted_off_dist = np.sort(off_dist)
-                    off_div = sorted_off_dist[0] + 0.01 * sorted_off_dist[1] if len(sorted_off_dist) > 1 else \
-                    sorted_off_dist[0]
 
                     # Stage 3: Determine replacement strategy
                     if np.max(new_front) > 1:
@@ -217,8 +215,7 @@ class MSEA:
                         q = np.argmin(div)
                         off_dist[q] = np.inf
                         sorted_off_dist = np.sort(off_dist)
-                        off_div = sorted_off_dist[0] + 0.01 * sorted_off_dist[1] if len(sorted_off_dist) > 1 else \
-                        sorted_off_dist[0]
+                        off_div = sorted_off_dist[0] + 0.01 * sorted_off_dist[1]
                         if off_div >= div[q]:
                             replace = True
                     else:
@@ -226,8 +223,7 @@ class MSEA:
                         q = np.argmin(off_dist)
                         off_dist[q] = np.inf
                         sorted_off_dist = np.sort(off_dist)
-                        off_div = sorted_off_dist[0] + 0.01 * sorted_off_dist[1] if len(sorted_off_dist) > 1 else \
-                        sorted_off_dist[0]
+                        off_div = sorted_off_dist[0] + 0.01 * sorted_off_dist[1]
                         if np.sum(off_obj_norm[0]) <= np.sum(pop_obj_norm[q]) and off_div >= div[q]:
                             replace = True
 
@@ -251,9 +247,6 @@ class MSEA:
                         distance[q, :] = off_dist
                         distance[:, q] = off_dist
 
-                    nfes_per_task[task_id] += 1
-                    pbar.update(1)
-
                 append_history(all_decs[task_id], decs[task_id], all_objs[task_id], objs[task_id])
 
         pbar.close()
@@ -269,6 +262,10 @@ class MSEA:
         """
         Update front numbers when adding a new solution (last in pop_obj).
 
+        Mirrors PlatEMO's UpdateFront.m (add branch). Note that, as in the
+        MATLAB code, weak dominance (all objectives <=) is used, so a
+        duplicate of an existing solution is pushed to the next front.
+
         Parameters
         ----------
         pop_obj : np.ndarray
@@ -282,39 +279,29 @@ class MSEA:
             Updated front numbers of shape (N+1,)
         """
         N, M = pop_obj.shape
-        new_front_no = np.append(front_no, 0)
+        new_front_no = np.append(np.asarray(front_no, dtype=float), 0.0)
         move = np.zeros(N, dtype=bool)
         move[-1] = True
         current_f = 1
 
-        # Locate the front number of the new solution
+        # Locate the front number of the new solution: the first front in which
+        # no member weakly dominates it
         while True:
-            dominated = False
-            for i in range(N - 1):
-                if new_front_no[i] == current_f:
-                    # Check if solution i dominates the new solution
-                    if np.all(pop_obj[i] <= pop_obj[-1]) and np.any(pop_obj[i] < pop_obj[-1]):
-                        dominated = True
-                        break
-            if not dominated:
-                break
-            else:
+            members = np.where(new_front_no[:N - 1] == current_f)[0]
+            if members.size > 0 and np.any(np.all(pop_obj[members] <= pop_obj[-1], axis=1)):
                 current_f += 1
+            else:
+                break
 
         # Move down the dominated solutions front by front
         while np.any(move):
             next_move = np.zeros(N, dtype=bool)
-            for i in range(N):
-                if new_front_no[i] == current_f:
-                    dominated = False
-                    for j in range(N):
-                        if move[j]:
-                            # Check if solution j dominates solution i
-                            if np.all(pop_obj[j] <= pop_obj[i]) and np.any(pop_obj[j] < pop_obj[i]):
-                                dominated = True
-                                break
-                    next_move[i] = dominated
-
+            members = np.where(new_front_no == current_f)[0]
+            if members.size > 0:
+                movers = pop_obj[move]
+                dominated = np.any(np.all(movers[np.newaxis, :, :] <= pop_obj[members][:, np.newaxis, :],
+                                          axis=2), axis=1)
+                next_move[members] = dominated
             new_front_no[move] = current_f
             current_f += 1
             move = next_move
@@ -324,6 +311,9 @@ class MSEA:
     def _update_front_remove(self, pop_obj, front_no, x):
         """
         Update front numbers when removing the x-th solution.
+
+        Mirrors PlatEMO's UpdateFront.m (delete branch), using weak dominance
+        (all objectives <=) as in the MATLAB code.
 
         Parameters
         ----------
@@ -340,6 +330,7 @@ class MSEA:
             Updated front numbers of shape (N-1,)
         """
         N, M = pop_obj.shape
+        front_no = np.asarray(front_no, dtype=float).copy()
         move = np.zeros(N, dtype=bool)
         move[x] = True
         current_f = front_no[x] + 1
@@ -347,29 +338,24 @@ class MSEA:
         while np.any(move):
             next_move = np.zeros(N, dtype=bool)
 
-            # Find solutions that might be promoted
-            for i in range(N):
-                if front_no[i] == current_f:
-                    dominated = False
-                    for j in range(N):
-                        if move[j]:
-                            # Check if solution j dominates solution i
-                            if np.all(pop_obj[j] <= pop_obj[i]) and np.any(pop_obj[j] < pop_obj[i]):
-                                dominated = True
-                                break
-                    next_move[i] = dominated
+            # Solutions in the current front weakly dominated by a moved solution
+            members = np.where(front_no == current_f)[0]
+            if members.size > 0:
+                movers = pop_obj[move]
+                dominated = np.any(np.all(movers[np.newaxis, :, :] <= pop_obj[members][:, np.newaxis, :],
+                                          axis=2), axis=1)
+                candidates = members[dominated]
 
-            # Check if solutions can actually be promoted
-            for i in range(N):
-                if next_move[i]:
-                    dominated = False
-                    for j in range(N):
-                        if front_no[j] == current_f - 1 and not move[j]:
-                            # Check if solution j dominates solution i
-                            if np.all(pop_obj[j] <= pop_obj[i]) and np.any(pop_obj[j] < pop_obj[i]):
-                                dominated = True
-                                break
-                    next_move[i] = not dominated
+                # They are promoted only if no remaining solution of the previous
+                # front weakly dominates them
+                if candidates.size > 0:
+                    keepers = pop_obj[(front_no == current_f - 1) & ~move]
+                    if keepers.shape[0] > 0:
+                        blocked = np.any(np.all(keepers[np.newaxis, :, :] <= pop_obj[candidates][:, np.newaxis, :],
+                                                axis=2), axis=1)
+                        next_move[candidates] = ~blocked
+                    else:
+                        next_move[candidates] = True
 
             front_no[move] = current_f - 2
             current_f += 1

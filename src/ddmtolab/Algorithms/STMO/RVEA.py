@@ -126,18 +126,25 @@ class RVEA:
                 break
 
             for i in active_tasks:
-                # Random parent selection
+                # Random parent selection (the population may be smaller than n after selection)
                 matingpool = np.random.randint(0, decs[i].shape[0], size=n_per_task[i])
+                # PlatEMO's OperatorGA pairs the first and second halves of the mating pool,
+                # discarding the last parent when the pool size is odd (2*floor(n/2) offspring)
+                if matingpool.shape[0] % 2 == 1:
+                    matingpool = matingpool[:-1]
 
                 # Generate offspring through crossover and mutation
-                off_decs = ga_generation(decs[i][matingpool, :], muc=20.0, mum=15.0)
+                off_decs = ga_generation(decs[i][matingpool, :], muc=20.0, mum=20.0)
                 off_objs, off_cons = evaluation_single(problem, off_decs, i)
+                nfes_per_task[i] += off_decs.shape[0]
+                pbar.update(off_decs.shape[0])
 
                 # Merge parent and offspring populations
                 objs[i], decs[i], cons[i] = vstack_groups((objs[i], off_objs), (decs[i], off_decs),
                                                           (cons[i], off_cons))
 
-                # Environmental selection using angle-penalized distance
+                # Environmental selection using angle-penalized distance;
+                # theta uses the evaluation count after the offspring evaluations, as in PlatEMO
                 index = rvea_selection(objs[i], cons[i], v[i], (nfes_per_task[i] / max_nfes_per_task[i]) ** self.alpha)
                 objs[i], decs[i], cons[i] = select_by_index(index, objs[i], decs[i], cons[i])
 
@@ -146,9 +153,6 @@ class RVEA:
                 update_interval = int(np.ceil(self.fr * max_nfes_per_task[i] / n_per_task[i]))
                 if current_gen % update_interval == 0:
                     v[i] = v0[i] * (objs[i].max(axis=0) - objs[i].min(axis=0))
-
-                nfes_per_task[i] += n_per_task[i]
-                pbar.update(n_per_task[i])
 
                 append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
 

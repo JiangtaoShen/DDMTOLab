@@ -47,7 +47,7 @@ class IBEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, kappa=0.05, muc=20.0, mum=15.0, save_data=True,
+    def __init__(self, problem, n=None, max_nfes=None, kappa=0.05, muc=20.0, mum=20.0, save_data=True,
                  save_path='./Data', name='IBEA', disable_tqdm=True):
         """
         Initialize IBEA algorithm.
@@ -65,7 +65,7 @@ class IBEA:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -107,12 +107,6 @@ class IBEA:
         nfes_per_task = n_per_task.copy()
         all_decs, all_objs = init_history(decs, objs)
 
-        # Calculate initial fitness for each task
-        fitness = []
-        for i in range(nt):
-            fitness_i, _, _ = ibea_fitness(objs[i], self.kappa)
-            fitness.append(fitness_i.copy())
-
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
@@ -123,8 +117,10 @@ class IBEA:
                 break
 
             for i in active_tasks:
-                # Parent selection via binary tournament based on fitness
-                matingpool = tournament_selection(2, n_per_task[i], -fitness[i])
+                # Parent selection via binary tournament based on freshly computed fitness
+                # (higher IBEA fitness is better, tournament_selection prefers lower values)
+                fitness_i, _, _ = ibea_fitness(objs[i], self.kappa)
+                matingpool = tournament_selection(2, n_per_task[i], -fitness_i)
 
                 # Generate offspring through crossover and mutation
                 off_decs = ga_generation(decs[i][matingpool, :], muc=self.muc, mum=self.mum)
@@ -134,7 +130,7 @@ class IBEA:
                 objs[i], decs[i] = vstack_groups((objs[i], off_objs), (decs[i], off_decs))
 
                 # Environmental selection: keep best n individuals based on fitness
-                index, fitness[i] = ibea_selection(objs[i], n_per_task[i], self.kappa)
+                index, _ = ibea_selection(objs[i], n_per_task[i], self.kappa)
                 objs[i], decs[i]  = select_by_index(index, objs[i], decs[i])
 
                 nfes_per_task[i] += n_per_task[i]

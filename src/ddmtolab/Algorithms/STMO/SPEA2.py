@@ -12,12 +12,11 @@ Notes
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.12.13
-Version: 1.0
+Version: 1.1
 """
 from tqdm import tqdm
 import time
 import numpy as np
-from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
@@ -48,7 +47,7 @@ class SPEA2:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=15.0, epsilon=0, save_data=True,
+    def __init__(self, problem, n=None, max_nfes=None, muc=20.0, mum=20.0, epsilon=0, save_data=True,
                  save_path='./Data', name='SPEA2', disable_tqdm=True):
         """
         Initialize SPEA2 algorithm.
@@ -64,7 +63,7 @@ class SPEA2:
         muc : float, optional
             Distribution index for simulated binary crossover (SBX) (default: 20.0)
         mum : float, optional
-            Distribution index for polynomial mutation (PM) (default: 15.0)
+            Distribution index for polynomial mutation (PM) (default: 20.0)
         epsilon : float, optional
             Constraint epsilon value for epsilon-constraint method (default: 0)
         save_data : bool, optional
@@ -111,9 +110,7 @@ class SPEA2:
         # Calculate initial fitness for each task
         fitness = []
         for i in range(nt):
-            cv = self._calculate_constraint_violations(cons[i])
-            fitness_i = self._cal_fitness(objs[i], cv)
-            fitness.append(fitness_i.copy())
+            fitness.append(self._cal_fitness(objs[i], cons[i]))
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_per_task), desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -125,13 +122,6 @@ class SPEA2:
                 break
 
             for i in active_tasks:
-                # Environmental selection to get current population
-                selected_indices, selected_fitness = self._spea2_selection(objs[i], cons[i], n_per_task[i])
-                objs[i] = objs[i][selected_indices]
-                decs[i] = decs[i][selected_indices]
-                cons[i] = cons[i][selected_indices] if cons[i] is not None else None
-                fitness[i] = selected_fitness
-
                 # Parent selection via binary tournament based on fitness
                 matingpool = tournament_selection(2, n_per_task[i], fitness[i])
 
@@ -142,6 +132,10 @@ class SPEA2:
                 # Merge parent and offspring populations
                 objs[i], decs[i], cons[i] = vstack_groups((objs[i], off_objs), (decs[i], off_decs),
                                                           (cons[i], off_cons))
+
+                # Environmental selection to obtain the next population
+                selected_indices, fitness[i] = self._spea2_selection(objs[i], cons[i], n_per_task[i])
+                objs[i], decs[i], cons[i] = select_by_index(selected_indices, objs[i], decs[i], cons[i])
 
                 nfes_per_task[i] += n_per_task[i]
                 pbar.update(n_per_task[i])
@@ -158,26 +152,30 @@ class SPEA2:
 
         return results
 
-    def _calculate_constraint_violations(self, cons):
+    def _cal_fitness(self, objs, cons):
         """
-        Calculate constraint violations.
+        Calculate SPEA2 fitness with (epsilon-relaxed) constrained dominance.
 
         Parameters
         ----------
+        objs : ndarray
+            Objective values with shape (pop_size, n_objs)
         cons : ndarray or None
             Constraint values with shape (pop_size, n_cons)
 
         Returns
         -------
-        cv : ndarray
-            Constraint violation values with shape (pop_size,)
+        fitness : ndarray
+            SPEA2 fitness values with shape (pop_size,). Lower is better;
+            values < 1 indicate non-dominated solutions.
         """
-        if cons is not None:
-            cv = np.sum(np.maximum(0, cons), axis=1)
-            cv[cv < self.epsilon] = 0
-        else:
-            cv = np.zeros(cons.shape[0]) if cons is not None else np.array([])
-        return cv
+        if cons is None:
+            return spea2_fitness(objs)
+
+        # Epsilon-constraint handling: violations below epsilon count as feasible
+        cv = np.sum(np.maximum(0, cons), axis=1)
+        cv[cv < self.epsilon] = 0
+        return spea2_fitness(objs, cv[:, None])
 
     def _spea2_selection(self, objs, cons, N):
         """
@@ -195,174 +193,28 @@ class SPEA2:
         Returns
         -------
         selected_indices : ndarray
-            Indices of selected individuals
+            Indices of selected individuals (in original order)
         selected_fitness : ndarray
             Fitness values of selected individuals
         """
-        pop_size = objs.shape[0]
-
-        # Calculate constraint violations
-        cv = self._calculate_constraint_violations(cons)
-
         # Calculate fitness for all individuals
-        fitness = self._cal_fitness(objs, cv)
+        fitness = self._cal_fitness(objs, cons)
 
-        # Environmental selection
+        # Environmental selection: keep non-dominated solutions (fitness < 1)
         next_selected = fitness < 1
 
         if np.sum(next_selected) < N:
-            # Need to add more individuals
-            sorted_indices = np.argsort(fitness)
+            # Fill with the best dominated solutions by fitness
+            sorted_indices = np.argsort(fitness, kind='stable')
             next_selected[sorted_indices[:N]] = True
         elif np.sum(next_selected) > N:
-            # Need to remove some individuals using truncation
-            to_remove = self._truncation(objs[next_selected], np.sum(next_selected) - N)
-            temp_indices = np.where(next_selected)[0]
-            next_selected[temp_indices[to_remove]] = False
+            # Truncate the non-dominated set by iteratively deleting the most crowded
+            candidates = np.where(next_selected)[0]
+            keep = spea2_truncation(objs[candidates], N)
+            next_selected = np.zeros_like(next_selected)
+            next_selected[candidates[keep]] = True
 
-        # Get selected indices and fitness
         selected_indices = np.where(next_selected)[0]
         selected_fitness = fitness[selected_indices]
 
-        # Sort selected individuals by fitness
-        sort_order = np.argsort(selected_fitness)
-        selected_indices = selected_indices[sort_order]
-        selected_fitness = selected_fitness[sort_order]
-
         return selected_indices, selected_fitness
-
-    def _cal_fitness(self, objs, cv):
-        """
-        Calculate SPEA2 fitness values.
-
-        Parameters
-        ----------
-        objs : ndarray
-            Objective values with shape (N, M)
-        cv : ndarray
-            Constraint violation values with shape (N,)
-
-        Returns
-        -------
-        fitness : ndarray
-            Fitness values with shape (N,)
-        """
-        N = objs.shape[0]
-
-        # Detect dominance relations
-        dominate = np.zeros((N, N), dtype=bool)
-
-        for i in range(N):
-            for j in range(N):
-                if i == j:
-                    continue
-
-                # Compare constraint violations
-                if cv[i] < cv[j]:
-                    dominate[i, j] = True
-                elif cv[i] > cv[j]:
-                    dominate[j, i] = True
-                else:
-                    # Same constraint violation, compare objectives
-                    less = np.any(objs[i, :] < objs[j, :])
-                    greater = np.any(objs[i, :] > objs[j, :])
-
-                    if less and not greater:
-                        dominate[i, j] = True
-                    elif greater and not less:
-                        dominate[j, i] = True
-
-        S = np.sum(dominate, axis=1)
-
-        # Calculate R(i): sum of S values of solutions that dominate i
-        R = np.zeros(N)
-        for i in range(N):
-            # Find solutions that dominate i
-            dominating_i = dominate[:, i]
-
-            if np.any(dominating_i):
-                R[i] = np.sum(S[dominating_i])
-
-        # Calculate D(i): density estimation
-        distances = cdist(objs, objs, metric='euclidean')
-
-        # Set diagonal to infinity
-        np.fill_diagonal(distances, np.inf)
-
-        # Sort distances for each solution
-        sorted_distances = np.sort(distances, axis=1)
-
-        k = int(np.floor(np.sqrt(N)))
-
-        if k > 0:
-            k_idx = min(k, sorted_distances.shape[1]) - 1  # -1 for 0-based indexing
-            D = 1.0 / (sorted_distances[:, k_idx] + 2)
-        else:
-            D = np.zeros(N)
-
-        # Calculate fitness: F = R + D
-        fitness = R + D
-
-        return fitness
-
-    def _truncation(self, objs, K):
-        """
-        Truncation operator for SPEA2.
-
-        Parameters
-        ----------
-        objs : ndarray
-            Objective values of candidate solutions
-        K : int
-            Number of solutions to remove
-
-        Returns
-        -------
-        to_remove : ndarray
-            Boolean array indicating which solutions to remove
-        """
-        N = objs.shape[0]
-        to_remove = np.zeros(N, dtype=bool)
-
-        if K <= 0:
-            return to_remove
-
-        # Calculate pairwise distances
-        distances = cdist(objs, objs, metric='euclidean')
-
-        # Set diagonal to infinity
-        np.fill_diagonal(distances, np.inf)
-
-        while np.sum(to_remove) < K:
-            # Find remaining solutions
-            remaining = np.where(~to_remove)[0]
-
-            if len(remaining) <= 1:
-                # If only one or zero remaining, break
-                break
-
-            # Get distances between remaining solutions
-            remaining_distances = distances[np.ix_(remaining, remaining)]
-
-            # Sort distances for each remaining solution
-            sorted_distances = np.sort(remaining_distances, axis=1)
-
-            # Find solution with smallest distance to its nearest neighbor
-            min_idx = 0
-            for i in range(1, len(remaining)):
-                # Compare rows element-wise
-                for j in range(sorted_distances.shape[1]):
-                    if sorted_distances[i, j] < sorted_distances[min_idx, j]:
-                        min_idx = i
-                        break
-                    elif sorted_distances[i, j] > sorted_distances[min_idx, j]:
-                        break
-                # If all equal, keep the smaller index
-                else:
-                    if remaining[i] < remaining[min_idx]:
-                        min_idx = i
-
-            # Remove the selected solution
-            to_remove[remaining[min_idx]] = True
-
-        return to_remove
