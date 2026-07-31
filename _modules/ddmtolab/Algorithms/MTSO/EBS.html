@@ -81,7 +81,9 @@
 
 <span class="sd">References</span>
 <span class="sd">----------</span>
-<span class="sd">    [1] Liaw, R. T., &amp; Ting, C. K. (2019). Evolutionary many-tasking based on biocoenosis through symbiosis: A framework and benchmark problems. In 2019 IEEE Congress on Evolutionary Computation (CEC) (pp. 2266-2273). IEEE.</span>
+<span class="sd">    [1] Liaw, R. T., &amp; Ting, C. K. (2017). Evolutionary many-tasking based on biocoenosis through symbiosis: A framework and benchmark problems. In 2017 IEEE Congress on Evolutionary Computation (CEC) (pp. 2266-2273). IEEE. doi:10.1109/CEC.2017.7969579</span>
+<span class="sd">    [2] Liaw, R. T., &amp; Ting, C. K. (2020). Evolution of biocoenosis through symbiosis with fitness approximation for many-tasking optimization. Memetic Computing, 12(4), 399-417. doi:10.1007/s12293-020-00317-2</span>
+<span class="sd">    [3] Tan, X. (2018). EBSGA.m, reference implementation of [1], in drwuHUST/MTGA. https://github.com/drwuHUST/MTGA/blob/master/EBSGA.m</span>
 
 <span class="sd">Notes</span>
 <span class="sd">-----</span>
@@ -108,8 +110,34 @@
 <span class="sd">    - One updated when knowledge transfer occurs</span>
 <span class="sd">    - One updated when no knowledge transfer occurs</span>
 
-<span class="sd">    The information exchange probability is controlled adaptively based on the</span>
-<span class="sd">    improvement ratio from self-generated offspring versus offspring from other tasks.</span>
+<span class="sd">    The information exchange probability ``gamma_i`` is recomputed every generation</span>
+<span class="sd">    from the transfer-rate formula of [2] (attributed there to [1])::</span>
+
+<span class="sd">        gamma_i = S_io / (S_is + S_io)</span>
+<span class="sd">        S_is = #Surpassing_is / #Evals_is</span>
+<span class="sd">        S_io = #Surpassing_io / #Evals_io</span>
+
+<span class="sd">    where the ``_is`` counters are credited to the task&#39;s own EA and the ``_io``</span>
+<span class="sd">    counters to the union of the other tasks&#39; EAs. There is no warm-up phase:</span>
+<span class="sd">    generation 1 only initialises the populations, and ``gamma`` is seeded with</span>
+<span class="sd">    ``rmp0`` and updated from generation 2 onward, matching the reference</span>
+<span class="sd">    implementation [3].</span>
+
+<span class="sd">    Known defect (reference-faithful, not a porting bug)</span>
+<span class="sd">    ----------------------------------------------------</span>
+<span class="sd">    ``gamma_i`` has an absorbing zero state. Transfer is the only way foreign</span>
+<span class="sd">    offspring are ever evaluated, so once ``gamma_i`` reaches 0 (or NaN) the</span>
+<span class="sd">    ``_io`` counters can never grow again and transfer stays dead for the rest of</span>
+<span class="sd">    the run. Two entry conditions exist, both present in [3]:</span>
+
+<span class="sd">    - ``#Evals_io == 0`` (the transfer coin has never fired): ``S_io = 0/0 = NaN``,</span>
+<span class="sd">      ``gamma_i = NaN``, and ``rand() &lt; NaN`` is False forever.</span>
+<span class="sd">    - ``#Evals_io &gt; 0`` but ``#Surpassing_io == 0``: ``S_io = 0`` and</span>
+<span class="sd">      ``gamma_i = 0``.</span>
+
+<span class="sd">    Seeding with ``rmp0 = 0.3`` makes the first condition unlikely but does not</span>
+<span class="sd">    remove it. The optional ``gamma_min`` guard restores ergodicity but is a</span>
+<span class="sd">    deviation from the published algorithm and is disabled by default.</span>
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
@@ -137,7 +165,7 @@
 <div class="viewcode-block" id="EBS.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.EBS.EBS.__init__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma0</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">use_n</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                 <span class="n">gen_init</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+                 <span class="n">rmp0</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">gamma_min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
                  <span class="n">name</span><span class="o">=</span><span class="s1">&#39;EBS&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize EBS Algorithm.</span>
@@ -154,9 +182,17 @@
 <span class="sd">            Initial step size for CMA-ES (default: 0.3)</span>
 <span class="sd">        use_n : bool, optional</span>
 <span class="sd">            If True, use provided n; if False, use 4+3*log(D) (default: True)</span>
-<span class="sd">        gen_init : int, optional</span>
-<span class="sd">            Number of initial generations for alternating CMA-ES before using gamma (default: 10)</span>
-<span class="sd">            During this phase, two CMA-ES alternate (one without transfer, one with transfer)</span>
+<span class="sd">        rmp0 : float, optional</span>
+<span class="sd">            Initial information-exchange probability, used for generation 2</span>
+<span class="sd">            before any transfer statistics exist (default: 0.3, the value the</span>
+<span class="sd">            reference implementation&#39;s driver passes to ``EBSGA.m``)</span>
+<span class="sd">        gamma_min : float, optional</span>
+<span class="sd">            Lower bound applied to gamma, also used in place of NaN</span>
+<span class="sd">            (default: 0.0, i.e. disabled). Any value &gt; 0 is a deliberate</span>
+<span class="sd">            DEVIATION from the published algorithm: it removes the absorbing</span>
+<span class="sd">            zero state described in the class docstring by guaranteeing that</span>
+<span class="sd">            transfer generations keep occurring, at the cost of no longer</span>
+<span class="sd">            reproducing the reference behaviour.</span>
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
@@ -171,7 +207,8 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">10000</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">sigma0</span> <span class="o">=</span> <span class="n">sigma0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">use_n</span> <span class="o">=</span> <span class="n">use_n</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">gen_init</span> <span class="o">=</span> <span class="n">gen_init</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rmp0</span> <span class="o">=</span> <span class="n">rmp0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">gamma_min</span> <span class="o">=</span> <span class="n">gamma_min</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
@@ -222,27 +259,35 @@
         <span class="n">decs</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>  <span class="c1"># In unified space</span>
         <span class="n">objs</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">cons</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
-        <span class="n">best_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>  <span class="c1"># Best-so-far objective for each task</span>
+        <span class="n">origins</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>  <span class="c1"># Originating task of each retained individual</span>
         <span class="n">all_decs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
         <span class="n">all_objs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
         <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
 
-        <span class="c1"># Initialize information exchange statistics</span>
+        <span class="c1"># Information exchange statistics (cumulative over the whole run, never</span>
+        <span class="c1"># reset). improvements_* are #Surpassing_is / #Surpassing_io and</span>
+        <span class="c1"># evals_* are #Evals_is / #Evals_io in the formula of [2].</span>
         <span class="n">improvements_s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">evals_s</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">improvements_o</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">evals_o</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
-        <span class="n">gamma</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>  <span class="c1"># Probability of information exchange (will be computed after init phase)</span>
+        <span class="c1"># gamma is seeded with rmp0 and first updated at the end of generation 2,</span>
+        <span class="c1"># exactly as EBSGA.m does (RMP = rmp*ones(1,nTasks), rmp = 0.3).</span>
+        <span class="n">gamma</span> <span class="o">=</span> <span class="p">[</span><span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rmp0</span><span class="p">)]</span> <span class="o">*</span> <span class="n">nt</span>
 
-        <span class="c1"># Initialize generation counter for each task (for alternating during init phase)</span>
-        <span class="n">gen_count</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
-
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
         <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
             <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
+
+            <span class="n">gen</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="c1"># Generation 1 only establishes the initial populations: EBSGA.m</span>
+            <span class="c1"># evaluates a random population at gen 1 and starts the transfer</span>
+            <span class="c1"># loop at gen 2. Its evaluations still count towards #Evals_is.</span>
+            <span class="n">is_init_gen</span> <span class="o">=</span> <span class="p">(</span><span class="n">gen</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
 
             <span class="c1"># Step 1: Determine transfer flags and generate offspring accordingly</span>
             <span class="n">transfer_flags</span> <span class="o">=</span> <span class="p">[]</span>
@@ -251,16 +296,9 @@
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="n">p</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 
-                <span class="c1"># Decide whether to perform knowledge transfer</span>
-                <span class="k">if</span> <span class="n">gen_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">gen_init</span><span class="p">:</span>
-                    <span class="c1"># During init phase: alternate between no transfer and transfer</span>
-                    <span class="c1"># Even generations: no transfer (is_transfer=False)</span>
-                    <span class="c1"># Odd generations: transfer (is_transfer=True)</span>
-                    <span class="n">is_transfer</span> <span class="o">=</span> <span class="p">(</span><span class="n">gen_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">1</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># After init phase: use gamma probability</span>
-                    <span class="n">is_transfer</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-
+                <span class="c1"># Per-generation Bernoulli draw on gamma (Algorithm 2, line 9).</span>
+                <span class="c1"># A NaN gamma compares False, which is the reference behaviour.</span>
+                <span class="n">is_transfer</span> <span class="o">=</span> <span class="p">(</span><span class="ow">not</span> <span class="n">is_init_gen</span><span class="p">)</span> <span class="ow">and</span> <span class="nb">bool</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
                 <span class="n">transfer_flags</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">is_transfer</span><span class="p">)</span>
 
                 <span class="c1"># Select distribution based on transfer decision</span>
@@ -275,42 +313,45 @@
                 <span class="p">)</span>
                 <span class="n">offspring_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sample_decs</span><span class="p">)</span>
 
-            <span class="c1"># Concatenate all offspring (all in unified space d_max)</span>
-            <span class="n">concat_offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">offspring_list</span><span class="p">)</span>
-
             <span class="c1"># Step 2: For each task, select candidates based on transfer decision</span>
+            <span class="n">n_act</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">active_tasks</span><span class="p">)</span>
             <span class="n">candidate_list</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="n">candidate_origins</span> <span class="o">=</span> <span class="p">[]</span>
 
             <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_tasks</span><span class="p">):</span>
                 <span class="n">p</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                <span class="n">is_transfer</span> <span class="o">=</span> <span class="n">transfer_flags</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">lam_i</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
 
-                <span class="k">if</span> <span class="n">is_transfer</span><span class="p">:</span>
-                    <span class="c1"># Perform knowledge transfer: sample from concatenate offspring</span>
-                    <span class="c1"># Randomly select lambda candidates from concatenate offspring</span>
-                    <span class="n">n_candidates</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">],</span> <span class="n">concat_offspring</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-                    <span class="n">candidate_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span>
-                        <span class="n">concat_offspring</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span>
-                        <span class="n">size</span><span class="o">=</span><span class="n">n_candidates</span><span class="p">,</span>
-                        <span class="n">replace</span><span class="o">=</span><span class="kc">False</span>
-                    <span class="p">)</span>
-                    <span class="n">candidate_decs</span> <span class="o">=</span> <span class="n">concat_offspring</span><span class="p">[</span><span class="n">candidate_indices</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-
-                    <span class="c1"># If we need more candidates, duplicate some</span>
-                    <span class="k">while</span> <span class="n">candidate_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]:</span>
-                        <span class="n">extra_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">concat_offspring</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-                        <span class="n">candidate_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">candidate_decs</span><span class="p">,</span> <span class="n">concat_offspring</span><span class="p">[</span><span class="n">extra_idx</span><span class="p">:</span><span class="n">extra_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]])</span>
-
+                <span class="k">if</span> <span class="n">transfer_flags</span><span class="p">[</span><span class="n">idx</span><span class="p">]:</span>
+                    <span class="c1"># EBSGA.m lines 83-92: every candidate slot independently</span>
+                    <span class="c1"># picks a source task uniformly over ALL tasks (the target</span>
+                    <span class="c1"># task included), then takes an offspring of that task</span>
+                    <span class="c1"># through a per-task permutation indexed by the slot. Slots</span>
+                    <span class="c1"># that pick the same source therefore get distinct members,</span>
+                    <span class="c1"># while the number taken from each source is free to vary</span>
+                    <span class="c1"># (unlike a without-replacement draw over the flat pool).</span>
+                    <span class="n">slot_src</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_act</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">lam_i</span><span class="p">)</span>
+                    <span class="n">perms</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">o</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">offspring_list</span><span class="p">]</span>
+                    <span class="n">candidate_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="n">lam_i</span><span class="p">,</span> <span class="n">d_max</span><span class="p">))</span>
+                    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">lam_i</span><span class="p">):</span>
+                        <span class="n">src</span> <span class="o">=</span> <span class="n">slot_src</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
+                        <span class="c1"># Modulo generalises the reference (which assumes one</span>
+                        <span class="c1"># common popSize) to unequal per-task lambda.</span>
+                        <span class="n">candidate_decs</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring_list</span><span class="p">[</span><span class="n">src</span><span class="p">][</span><span class="n">perms</span><span class="p">[</span><span class="n">src</span><span class="p">][</span><span class="n">j</span> <span class="o">%</span> <span class="nb">len</span><span class="p">(</span><span class="n">perms</span><span class="p">[</span><span class="n">src</span><span class="p">])]]</span>
                     <span class="n">candidate_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">candidate_decs</span><span class="p">)</span>
+                    <span class="n">candidate_origins</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">active_tasks</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)[</span><span class="n">slot_src</span><span class="p">])</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="c1"># No knowledge transfer: use self-generated offspring</span>
                     <span class="n">candidate_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">offspring_list</span><span class="p">[</span><span class="n">idx</span><span class="p">])</span>
+                    <span class="n">candidate_origins</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">lam_i</span><span class="p">,</span> <span class="n">i</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">))</span>
 
             <span class="c1"># Step 3: Evaluate, update population and CMA-ES parameters</span>
             <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_tasks</span><span class="p">):</span>
                 <span class="n">p</span> <span class="o">=</span> <span class="n">params</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">candidate_decs</span> <span class="o">=</span> <span class="n">candidate_list</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>  <span class="c1"># In unified space</span>
+                <span class="n">cand_origin</span> <span class="o">=</span> <span class="n">candidate_origins</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">is_transfer</span> <span class="o">=</span> <span class="n">transfer_flags</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+                <span class="n">lam_i</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
 
                 <span class="c1"># Convert to real space for evaluation (truncate to real dimension)</span>
                 <span class="n">candidate_decs_real</span> <span class="o">=</span> <span class="n">candidate_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
@@ -318,6 +359,13 @@
 
                 <span class="c1"># Evaluate candidates (in real space)</span>
                 <span class="n">sample_objs</span><span class="p">,</span> <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_decs_real</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+
+                <span class="c1"># #Evals_io / #Evals_is: split the batch by the ORIGINATING task</span>
+                <span class="c1"># of each candidate, not by the generation&#39;s transfer flag</span>
+                <span class="c1"># (EBSGA.m line 93 counts length(find(idt ~= idxTask))).</span>
+                <span class="n">n_foreign</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">cand_origin</span> <span class="o">!=</span> <span class="n">i</span><span class="p">))</span>
+                <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n_foreign</span>
+                <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">cand_origin</span><span class="p">)</span> <span class="o">-</span> <span class="n">n_foreign</span>
 
                 <span class="c1"># Sort by constraint violation first, then by objective</span>
                 <span class="n">cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">sample_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -327,56 +375,51 @@
                 <span class="n">sorted_decs</span> <span class="o">=</span> <span class="n">candidate_decs</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
                 <span class="n">sorted_objs</span> <span class="o">=</span> <span class="n">sample_objs</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
                 <span class="n">sorted_cons</span> <span class="o">=</span> <span class="n">sample_cons</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
+                <span class="n">sorted_origin</span> <span class="o">=</span> <span class="n">cand_origin</span><span class="p">[</span><span class="n">sort_indices</span><span class="p">]</span>
 
-                <span class="c1"># Update evaluation counts</span>
-                <span class="k">if</span> <span class="n">is_transfer</span><span class="p">:</span>
-                    <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+                <span class="c1"># Elitist population update (store in unified space): merge the</span>
+                <span class="c1"># retained population with the newly evaluated candidates and keep</span>
+                <span class="c1"># the best lam (EBSGA.m lines 101-104 and 116-117). The origin tag</span>
+                <span class="c1"># travels with the individual, mirroring Chromosome.skill_factor,</span>
+                <span class="c1"># so a surviving foreign solution keeps being credited to the task</span>
+                <span class="c1"># that produced it.</span>
+                <span class="k">if</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sorted_decs</span><span class="p">,</span> <span class="n">sorted_objs</span>
+                    <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">origins</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sorted_cons</span><span class="p">,</span> <span class="n">sorted_origin</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
+                    <span class="n">pool_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_decs</span><span class="p">])</span>
+                    <span class="n">pool_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_objs</span><span class="p">])</span>
+                    <span class="n">pool_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_cons</span><span class="p">])</span>
+                    <span class="n">pool_origin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">origins</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_origin</span><span class="p">])</span>
+                    <span class="n">pool_cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pool_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">keep</span> <span class="o">=</span> <span class="n">constrained_sort</span><span class="p">(</span><span class="n">pool_objs</span><span class="p">,</span> <span class="n">pool_cvs</span><span class="p">)[:</span><span class="n">lam_i</span><span class="p">]</span>
+                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pool_decs</span><span class="p">[</span><span class="n">keep</span><span class="p">],</span> <span class="n">pool_objs</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+                    <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">origins</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pool_cons</span><span class="p">[</span><span class="n">keep</span><span class="p">],</span> <span class="n">pool_origin</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
 
-                <span class="c1"># Check if best-so-far is improved</span>
-                <span class="n">best_candidate_obj</span> <span class="o">=</span> <span class="n">sorted_objs</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
-                <span class="k">if</span> <span class="n">best_candidate_obj</span> <span class="o">&lt;</span> <span class="n">best_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
-                    <span class="n">best_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">best_candidate_obj</span>
-                    <span class="k">if</span> <span class="n">is_transfer</span><span class="p">:</span>
-                        <span class="n">improvements_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-                    <span class="k">else</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">is_init_gen</span><span class="p">:</span>
+                    <span class="c1"># #Surpassing: EBSGA.m lines 106-114 credit exactly one</span>
+                    <span class="c1"># counter per task per generation, chosen by the origin of</span>
+                    <span class="c1"># the best individual of the merged pool. The test there is</span>
+                    <span class="c1"># `&lt;= bestFitness(gen-1)`, which under elitist survival is</span>
+                    <span class="c1"># always true because the previous best is in the pool, so</span>
+                    <span class="c1"># the credit fires unconditionally.</span>
+                    <span class="k">if</span> <span class="n">origins</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">i</span><span class="p">:</span>
                         <span class="n">improvements_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-
-                <span class="c1"># Increment generation counter</span>
-                <span class="n">gen_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-
-                <span class="c1"># Update gamma after init phase is complete</span>
-                <span class="k">if</span> <span class="n">gen_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">gen_init</span><span class="p">:</span>
-                    <span class="c1"># Compute gamma based on accumulated statistics</span>
-                    <span class="k">if</span> <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">R_s</span> <span class="o">=</span> <span class="n">improvements_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="n">R_o</span> <span class="o">=</span> <span class="n">improvements_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="k">if</span> <span class="p">(</span><span class="n">R_s</span> <span class="o">+</span> <span class="n">R_o</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                            <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">R_o</span> <span class="o">/</span> <span class="p">(</span><span class="n">R_s</span> <span class="o">+</span> <span class="n">R_o</span><span class="p">)</span>
-                        <span class="k">else</span><span class="p">:</span>
-                            <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>  <span class="c1"># Default if no improvements</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>  <span class="c1"># Default</span>
-                <span class="k">elif</span> <span class="n">gen_count</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">gen_init</span><span class="p">:</span>
-                    <span class="c1"># Continue updating gamma based on accumulated statistics</span>
-                    <span class="k">if</span> <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">R_s</span> <span class="o">=</span> <span class="n">improvements_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="n">R_o</span> <span class="o">=</span> <span class="n">improvements_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                        <span class="k">if</span> <span class="p">(</span><span class="n">R_s</span> <span class="o">+</span> <span class="n">R_o</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                            <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">R_o</span> <span class="o">/</span> <span class="p">(</span><span class="n">R_s</span> <span class="o">+</span> <span class="n">R_o</span><span class="p">)</span>
+                        <span class="n">improvements_o</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
 
-                <span class="c1"># Update current population (store in unified space)</span>
-                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sorted_decs</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sorted_objs</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sorted_cons</span>
+                    <span class="c1"># Update the probability of information exchange</span>
+                    <span class="c1"># (EBSGA.m lines 126-129), from generation 2 onward.</span>
+                    <span class="n">gamma</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_transfer_rate</span><span class="p">(</span>
+                        <span class="n">improvements_s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">evals_s</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                        <span class="n">improvements_o</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">evals_o</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma_min</span><span class="p">)</span>
 
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">]</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;params_s&#39;</span><span class="p">][</span><span class="s1">&#39;lam&#39;</span><span class="p">])</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">lam_i</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">lam_i</span><span class="p">)</span>
 
                 <span class="c1"># Convert to real space for history (truncate to real dimension)</span>
-                <span class="n">decs_real</span> <span class="o">=</span> <span class="n">sorted_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
-                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs_real</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_objs</span><span class="p">,</span> <span class="n">all_cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">sorted_cons</span><span class="p">)</span>
+                <span class="n">decs_real</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs_real</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">all_cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
                 <span class="c1"># Update the appropriate CMA-ES distribution</span>
                 <span class="k">if</span> <span class="n">is_transfer</span><span class="p">:</span>
@@ -399,6 +442,47 @@
         <span class="k">return</span> <span class="n">results</span></div>
 </div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_transfer_rate</span><span class="p">(</span><span class="n">improve_s</span><span class="p">,</span> <span class="n">evals_s</span><span class="p">,</span> <span class="n">improve_o</span><span class="p">,</span> <span class="n">evals_o</span><span class="p">,</span> <span class="n">gamma_min</span><span class="o">=</span><span class="mf">0.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Information-exchange probability of EBS.</span>
+
+<span class="sd">    Implements ``gamma_i = S_io / (S_is + S_io)`` with</span>
+<span class="sd">    ``S_ix = #Surpassing_ix / #Evals_ix`` (Liaw &amp; Ting 2020, attributed to the</span>
+<span class="sd">    CEC 2017 EBS paper; identical to ``RMP = RO/(RO+RS)`` in EBSGA.m lines</span>
+<span class="sd">    127-129).</span>
+
+<span class="sd">    No smoothing, prior or clipping is applied: the reference divides straight</span>
+<span class="sd">    through, so an unexercised branch yields ``0/0 = NaN`` and a branch with no</span>
+<span class="sd">    surpasses yields 0. Both propagate to ``gamma`` and both are absorbing,</span>
+<span class="sd">    because ``rand() &lt; NaN`` and ``rand() &lt; 0`` are always False and transfer is</span>
+<span class="sd">    the only source of foreign evaluations. This is a defect of the published</span>
+<span class="sd">    algorithm, reproduced here deliberately.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    improve_s, evals_s : int</span>
+<span class="sd">        #Surpassing_is and #Evals_is (the task&#39;s own EA).</span>
+<span class="sd">    improve_o, evals_o : int</span>
+<span class="sd">        #Surpassing_io and #Evals_io (the union of the other tasks&#39; EAs).</span>
+<span class="sd">    gamma_min : float, optional</span>
+<span class="sd">        If &gt; 0, a lower bound that also replaces NaN. DEVIATION from the</span>
+<span class="sd">        reference, disabled by default (see EBS.__init__).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    float</span>
+<span class="sd">        gamma in [0, 1], or NaN when a branch has never been exercised.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">):</span>
+        <span class="n">R_o</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">improve_o</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">evals_o</span><span class="p">)</span>
+        <span class="n">R_s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">improve_s</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">(</span><span class="n">evals_s</span><span class="p">)</span>
+        <span class="n">gamma</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">R_o</span> <span class="o">/</span> <span class="p">(</span><span class="n">R_o</span> <span class="o">+</span> <span class="n">R_s</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="n">gamma_min</span> <span class="o">&gt;</span> <span class="mf">0.0</span> <span class="ow">and</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">gamma</span><span class="p">)</span> <span class="ow">or</span> <span class="n">gamma</span> <span class="o">&lt;</span> <span class="n">gamma_min</span><span class="p">):</span>
+        <span class="n">gamma</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">gamma_min</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">gamma</span>
 
 </pre></div>
 

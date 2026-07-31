@@ -206,10 +206,6 @@
         <span class="n">n_objs</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span>
         <span class="n">n_cons</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_cons</span>
 
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">11</span> <span class="o">*</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
@@ -220,6 +216,15 @@
             <span class="n">W_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">w_i</span><span class="p">)</span>
             <span class="n">V0_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">w_i</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
             <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">actual_n</span>
+
+        <span class="c1"># [V0,NI] = UniformPoint(Problem.N,Problem.M): the size of the initial</span>
+        <span class="c1"># Latin hypercube design equals the (adjusted) number of reference</span>
+        <span class="c1"># vectors, so the very first CDP environmental selection receives</span>
+        <span class="c1"># exactly Problem.N solutions.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
         <span class="c1"># Cluster weight vectors for local constraint models</span>
         <span class="n">ClW_list</span><span class="p">,</span> <span class="n">lc_num_list</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
@@ -278,6 +283,8 @@
 
                 <span class="k">if</span> <span class="n">new_decs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_decs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">new_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                    <span class="c1"># Respect the remaining budget</span>
+                    <span class="n">new_decs</span> <span class="o">=</span> <span class="n">new_decs</span><span class="p">[:</span><span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
 
                 <span class="k">if</span> <span class="n">new_decs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">new_decs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">new_objs</span><span class="p">,</span> <span class="n">new_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
@@ -296,10 +303,13 @@
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
 
+        <span class="c1"># Stage 1 infills a single solution (mu1 = 1) while stage 2 infills up to</span>
+        <span class="c1"># mu, so the number of new evaluations per iteration is not constant and</span>
+        <span class="c1"># the history must be built with a unit step.</span>
         <span class="k">if</span> <span class="n">has_cons</span><span class="p">:</span>
-            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="n">db_cons</span><span class="o">=</span><span class="n">cons</span><span class="p">)</span>
+            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">db_cons</span><span class="o">=</span><span class="n">cons</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">)</span>
+            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
             <span class="n">all_cons</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">kwargs</span> <span class="o">=</span> <span class="p">{}</span>
         <span class="k">if</span> <span class="n">has_cons</span><span class="p">:</span>
@@ -380,10 +390,10 @@
             <span class="n">add_idx</span> <span class="o">=</span> <span class="n">not_selected</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">not_selected</span><span class="p">))[:</span><span class="n">n_add</span><span class="p">]]</span>
             <span class="n">V1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">V1</span><span class="p">,</span> <span class="n">V_1</span><span class="p">[</span><span class="n">add_idx</span><span class="p">]])</span>
 
-    <span class="c1"># Evolve sub-population 1 with V1</span>
+    <span class="c1"># Evolve sub-population 1 with V1 (mating pool always resampled)</span>
     <span class="n">pop1_decs</span><span class="p">,</span> <span class="n">pop1_objs</span><span class="p">,</span> <span class="n">pop1_mse</span> <span class="o">=</span> <span class="n">_surrogate_evolve</span><span class="p">(</span>
         <span class="n">train_decs</span><span class="p">,</span> <span class="n">obj_models</span><span class="p">,</span> <span class="n">V1</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">wmax</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kk</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span>
-        <span class="n">scale</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">train_decs</span><span class="p">,</span> <span class="n">accumulate</span><span class="o">=</span><span class="kc">False</span>
+        <span class="n">scale</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">train_decs</span><span class="p">,</span> <span class="n">accumulate</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">always_resample</span><span class="o">=</span><span class="kc">True</span>
     <span class="p">)</span>
 
     <span class="c1"># --- Sub-population 2: V (full reference vectors) ---</span>
@@ -398,7 +408,8 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_surrogate_evolve</span><span class="p">(</span><span class="n">init_decs</span><span class="p">,</span> <span class="n">obj_models</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">wmax</span><span class="p">,</span> <span class="n">alpha</span><span class="p">,</span> <span class="n">kk</span><span class="p">,</span> <span class="n">data_type</span><span class="p">,</span>
-                       <span class="n">scale</span><span class="p">,</span> <span class="n">archive_decs</span><span class="p">,</span> <span class="n">accumulate</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">V0</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+                       <span class="n">scale</span><span class="p">,</span> <span class="n">archive_decs</span><span class="p">,</span> <span class="n">accumulate</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">V0</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                       <span class="n">always_resample</span><span class="o">=</span><span class="kc">False</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Run GA evolution on surrogate models with K-RVEA environmental selection.</span>
 
@@ -430,6 +441,11 @@
 <span class="sd">        If True, accumulate solutions from all generations</span>
 <span class="sd">    V0 : np.ndarray or None</span>
 <span class="sd">        Original reference vectors (needed if accumulate=True for V init)</span>
+<span class="sd">    always_resample : bool</span>
+<span class="sd">        If True the mating pool is always drawn with replacement</span>
+<span class="sd">        (``randi(size(PopDec,1),1,Problem.N)``), as done for the first</span>
+<span class="sd">        sub-population; otherwise the population itself is mated whenever it</span>
+<span class="sd">        already holds at least N solutions.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -437,11 +453,13 @@
 <span class="sd">        Evolved population (filtered: unique, not in archive)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">pop_decs</span> <span class="o">=</span> <span class="n">init_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="k">if</span> <span class="n">V0</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">V0</span> <span class="o">=</span> <span class="n">V0</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
     <span class="n">all_gen_decs</span><span class="p">,</span> <span class="n">all_gen_objs</span><span class="p">,</span> <span class="n">all_gen_mse</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
 
     <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">wmax</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
         <span class="c1"># Generate offspring</span>
-        <span class="k">if</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">always_resample</span> <span class="ow">or</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
             <span class="n">pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
             <span class="n">off_decs</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">pool</span><span class="p">],</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
@@ -474,9 +492,21 @@
             <span class="n">fno</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">pop_objs_aug</span><span class="p">,</span> <span class="n">pop_objs_aug</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
             <span class="n">nd_objs</span> <span class="o">=</span> <span class="n">pop_objs_aug</span><span class="p">[</span><span class="n">fno</span> <span class="o">==</span> <span class="mi">1</span><span class="p">]</span>
             <span class="k">if</span> <span class="n">nd_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">w_scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">nd_objs</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">nd_objs</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="mf">1e-6</span><span class="p">)</span>
+                <span class="n">w_scale</span> <span class="o">=</span> <span class="n">nd_objs</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">nd_objs</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">w_scale</span><span class="p">[</span><span class="n">w_scale</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1e-6</span>
                 <span class="n">V</span> <span class="o">=</span> <span class="n">V0</span> <span class="o">*</span> <span class="n">w_scale</span>
                 <span class="n">scale</span> <span class="o">=</span> <span class="n">w_scale</span>
+
+                <span class="c1"># Augment V0 with normalized non-dominated directions whenever</span>
+                <span class="c1"># fewer than N reference vectors are active.</span>
+                <span class="n">ang</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">nd_objs</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="s1">&#39;cosine&#39;</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+                <span class="n">active</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">ang</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+                <span class="k">if</span> <span class="n">active</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+                    <span class="n">nd_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">nd_objs</span> <span class="o">-</span> <span class="n">nd_objs</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span> <span class="o">/</span> <span class="n">w_scale</span>
+                    <span class="n">n_add</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="n">active</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">nd_norm</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="n">add_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">nd_norm</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])[:</span><span class="n">n_add</span><span class="p">]</span>
+                    <span class="n">V0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">V0</span><span class="p">,</span> <span class="n">nd_norm</span><span class="p">[</span><span class="n">add_idx</span><span class="p">]])</span>
+                    <span class="n">V</span> <span class="o">=</span> <span class="n">V0</span> <span class="o">*</span> <span class="n">w_scale</span>
 
         <span class="c1"># K-RVEA environmental selection</span>
         <span class="n">cons_zero</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mi">1</span><span class="p">))</span>
@@ -572,23 +602,17 @@
     <span class="n">n_train</span> <span class="o">=</span> <span class="n">train_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="c1"># --- CDP environmental selection to get initial population ---</span>
+    <span class="c1"># Zmin = min objs of the feasible part of the archive (ArcFZ)</span>
+    <span class="k">if</span> <span class="n">train_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">train_cons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">feasible_arc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">train_cons</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">feasible_arc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">n_train</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">arc_fz</span> <span class="o">=</span> <span class="n">train_objs</span><span class="p">[</span><span class="n">feasible_arc</span><span class="p">]</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">feasible_arc</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+
     <span class="k">if</span> <span class="n">n_train</span> <span class="o">&lt;=</span> <span class="n">N</span><span class="p">:</span>
         <span class="n">pop_decs</span> <span class="o">=</span> <span class="n">train_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">pop_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_train</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">train_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">train_objs</span><span class="p">,</span> <span class="n">train_cons</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">train_objs</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">&lt;</span> <span class="n">max_fno</span>
-        <span class="n">last_front</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">front_no</span> <span class="o">==</span> <span class="n">max_fno</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">n_needed</span> <span class="o">=</span> <span class="n">N</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">mask</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">n_needed</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">last_front</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">cd</span> <span class="o">=</span> <span class="n">crowding_distance</span><span class="p">(</span><span class="n">train_objs</span><span class="p">[</span><span class="n">last_front</span><span class="p">])</span>
-            <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">cd</span><span class="p">)</span>
-            <span class="n">selected_last</span> <span class="o">=</span> <span class="n">last_front</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[:</span><span class="n">n_needed</span><span class="p">]]</span>
-            <span class="n">mask</span><span class="p">[</span><span class="n">selected_last</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="n">pop_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">][:</span><span class="n">N</span><span class="p">]</span>
+        <span class="n">pop_idx</span> <span class="o">=</span> <span class="n">_cdp_environmental_selection</span><span class="p">(</span><span class="n">train_objs</span><span class="p">,</span> <span class="n">train_cons</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">W</span><span class="p">,</span> <span class="n">arc_fz</span><span class="p">)</span>
         <span class="n">pop_decs</span> <span class="o">=</span> <span class="n">train_decs</span><span class="p">[</span><span class="n">pop_idx</span><span class="p">]</span>
 
     <span class="c1"># --- Build constraint models ---</span>
@@ -783,6 +807,129 @@
 <span class="c1"># =============================================================================</span>
 <span class="c1"># Helper Functions</span>
 <span class="c1"># =============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_cdp_environmental_selection</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_con</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">Zmin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    NSGA-III environmental selection with the constrained-dominance principle.</span>
+
+<span class="sd">    Port of ``CDPEnvironmentalSelection``: constrained non-dominated sorting</span>
+<span class="sd">    followed by the NSGA-III reference-point niching on the last front.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pop_obj : np.ndarray</span>
+<span class="sd">        Objective values, shape (n, M)</span>
+<span class="sd">    pop_con : np.ndarray or None</span>
+<span class="sd">        Constraint values, shape (n, C)</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of solutions to keep</span>
+<span class="sd">    Z : np.ndarray</span>
+<span class="sd">        Reference points, shape (NZ, M)</span>
+<span class="sd">    Zmin : np.ndarray or None</span>
+<span class="sd">        Ideal point of the feasible archive; ``ones(1,M)`` when empty</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    index : np.ndarray</span>
+<span class="sd">        Ascending indices of the selected solutions</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">Zmin</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="n">Zmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">Z</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
+
+    <span class="k">if</span> <span class="n">pop_con</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">pop_con</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_con</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
+
+    <span class="n">next_mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">&lt;</span> <span class="n">max_fno</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">front_no</span> <span class="o">==</span> <span class="n">max_fno</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">K</span> <span class="o">=</span> <span class="n">N</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">))</span>
+    <span class="k">if</span> <span class="n">K</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">last</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">choose</span> <span class="o">=</span> <span class="n">_nsga3_last_selection</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">pop_obj</span><span class="p">[</span><span class="n">last</span><span class="p">],</span> <span class="n">K</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">Zmin</span><span class="p">)</span>
+        <span class="n">next_mask</span><span class="p">[</span><span class="n">last</span><span class="p">[</span><span class="n">choose</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+
+    <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">if</span> <span class="n">index</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">index</span><span class="p">[:</span><span class="n">N</span><span class="p">]</span>
+    <span class="k">elif</span> <span class="n">index</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">N</span><span class="p">:</span>
+        <span class="c1"># Numerical fallback (never triggered by the reference, which always</span>
+        <span class="c1"># has enough solutions in the last front)</span>
+        <span class="n">rest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">setdiff1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">),</span> <span class="n">index</span><span class="p">)</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">index</span><span class="p">,</span> <span class="n">rest</span><span class="p">[:</span><span class="n">N</span> <span class="o">-</span> <span class="n">index</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]]]))</span>
+    <span class="k">return</span> <span class="n">index</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_nsga3_last_selection</span><span class="p">(</span><span class="n">objs_before</span><span class="p">,</span> <span class="n">objs_last</span><span class="p">,</span> <span class="n">K</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">Zmin</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    NSGA-III niching on the last front (``LastSelection``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    objs_before : np.ndarray</span>
+<span class="sd">        Objectives already selected, shape (N1, M)</span>
+<span class="sd">    objs_last : np.ndarray</span>
+<span class="sd">        Objectives of the last front, shape (N2, M)</span>
+<span class="sd">    K : int</span>
+<span class="sd">        Number of solutions to pick from the last front</span>
+<span class="sd">    Z : np.ndarray</span>
+<span class="sd">        Reference points, shape (NZ, M)</span>
+<span class="sd">    Zmin : np.ndarray</span>
+<span class="sd">        Ideal point, shape (M,)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    choose : np.ndarray</span>
+<span class="sd">        Boolean mask over the last front, shape (N2,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs_before</span><span class="p">,</span> <span class="n">objs_last</span><span class="p">])</span> <span class="o">-</span> <span class="n">Zmin</span>
+    <span class="n">n</span><span class="p">,</span> <span class="n">M</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">N1</span> <span class="o">=</span> <span class="n">objs_before</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">N2</span> <span class="o">=</span> <span class="n">objs_last</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">NZ</span> <span class="o">=</span> <span class="n">Z</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># --- Normalization ---</span>
+    <span class="n">extreme</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">M</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-6</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+        <span class="n">extreme</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_obj</span> <span class="o">/</span> <span class="n">w</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">hyperplane</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">solve</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">[</span><span class="n">extreme</span><span class="p">,</span> <span class="p">:],</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">M</span><span class="p">))</span>
+        <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">):</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">hyperplane</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">a</span><span class="p">)):</span>
+            <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+        <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="n">a</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-12</span><span class="p">,</span> <span class="mf">1e-12</span><span class="p">,</span> <span class="n">a</span><span class="p">)</span>
+    <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">pop_obj</span> <span class="o">/</span> <span class="n">a</span>
+
+    <span class="c1"># --- Association ---</span>
+    <span class="n">cosine</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">Z</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">)</span>
+    <span class="n">cosine</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">nan_to_num</span><span class="p">(</span><span class="n">cosine</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">distance</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">cosine</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+    <span class="n">pi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">rho</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">pi</span><span class="p">[:</span><span class="n">N1</span><span class="p">],</span> <span class="n">minlength</span><span class="o">=</span><span class="n">NZ</span><span class="p">)</span>
+
+    <span class="n">choose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N2</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">zchoose</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">NZ</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">choose</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">K</span><span class="p">:</span>
+        <span class="n">temp</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">zchoose</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">temp</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">jmin</span> <span class="o">=</span> <span class="n">temp</span><span class="p">[</span><span class="n">rho</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">rho</span><span class="p">[</span><span class="n">temp</span><span class="p">])]</span>
+        <span class="n">j</span> <span class="o">=</span> <span class="n">jmin</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">jmin</span><span class="p">))]</span>
+        <span class="n">I</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="o">~</span><span class="n">choose</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">pi</span><span class="p">[</span><span class="n">N1</span><span class="p">:]</span> <span class="o">==</span> <span class="n">j</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">I</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">s</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">d</span><span class="p">[</span><span class="n">N1</span> <span class="o">+</span> <span class="n">I</span><span class="p">]))</span> <span class="k">if</span> <span class="n">rho</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">I</span><span class="p">))</span>
+            <span class="n">choose</span><span class="p">[</span><span class="n">I</span><span class="p">[</span><span class="n">s</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">rho</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">zchoose</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="k">return</span> <span class="n">choose</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_k_env_selection</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="n">theta</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -1053,10 +1200,13 @@
             <span class="n">dominates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">sol</span> <span class="o">&lt;</span> <span class="n">A2Obj</span><span class="p">[</span><span class="n">nearest_id</span><span class="p">])</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">sol</span> <span class="o">&gt;</span> <span class="n">A2Obj</span><span class="p">[</span><span class="n">nearest_id</span><span class="p">])</span>
             <span class="n">cd</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">dist_to_archive</span><span class="p">[</span><span class="n">nearest_id</span><span class="p">]</span> <span class="k">if</span> <span class="n">dominates</span> <span class="k">else</span> <span class="mf">0.0</span>
 
-        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">cd</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">cbest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmax</span><span class="p">(</span><span class="n">cd</span><span class="p">)</span>
-            <span class="n">cbest_dec</span> <span class="o">=</span> <span class="n">pop1_dec</span><span class="p">[</span><span class="n">cbest</span><span class="p">:</span><span class="n">cbest</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
-            <span class="n">cbest_obj</span> <span class="o">=</span> <span class="n">pop1_obj</span><span class="p">[</span><span class="n">cbest</span><span class="p">]</span>
+        <span class="c1"># flagMu == 1: cbest = a uniformly random index among the maxima of cd</span>
+        <span class="c1"># (cid = find(cd == cd(cbest)); cbest = cid(randperm(end,1))).  The tie</span>
+        <span class="c1"># is resolved randomly even when every cd is zero.</span>
+        <span class="n">ties</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">cd</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">cd</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">cbest</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">ties</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">ties</span><span class="p">))])</span>
+        <span class="n">cbest_dec</span> <span class="o">=</span> <span class="n">pop1_dec</span><span class="p">[</span><span class="n">cbest</span><span class="p">:</span><span class="n">cbest</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
+        <span class="n">cbest_obj</span> <span class="o">=</span> <span class="n">pop1_obj</span><span class="p">[</span><span class="n">cbest</span><span class="p">]</span>
 
     <span class="c1"># --- Diversity metric (dd) from sub-pop 2 ---</span>
     <span class="n">dbest_dec</span> <span class="o">=</span> <span class="kc">None</span>

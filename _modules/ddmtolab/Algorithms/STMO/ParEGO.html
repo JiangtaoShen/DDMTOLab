@@ -149,9 +149,12 @@
 <span class="sd">        n_initial : int or List[int], optional</span>
 <span class="sd">            Number of initial samples per task (default: 11*dim - 1, following Knowles 2006)</span>
 <span class="sd">        n_weights : int or List[int], optional</span>
-<span class="sd">            Number of reference weight vectors per task (default: 10)</span>
+<span class="sd">            Number of reference weight vectors per task (default: 100, matching</span>
+<span class="sd">            PlatEMO&#39;s ``Problem.N``; the actual count is adjusted by</span>
+<span class="sd">            ``uniform_point``)</span>
 <span class="sd">        max_nfes : int or List[int], optional</span>
-<span class="sd">            Maximum number of function evaluations per task (default: 100)</span>
+<span class="sd">            Maximum number of function evaluations per task, including the</span>
+<span class="sd">            initial design (default: 200)</span>
 <span class="sd">        rho : float, optional</span>
 <span class="sd">            Augmentation coefficient for augmented Tchebycheff scalarization (default: 0.05)</span>
 <span class="sd">        save_data : bool, optional</span>
@@ -230,8 +233,12 @@
                 <span class="c1"># Scalarize multi-objective values to single objective using augmented Tchebycheff</span>
                 <span class="n">scalar_objs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_scalarize</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">weight</span><span class="p">)</span>
 
+                <span class="c1"># Truncate the training set to the 11*D-1+25 best-scalarized</span>
+                <span class="c1"># solutions and drop duplicated inputs/outputs before fitting</span>
+                <span class="n">train_decs</span><span class="p">,</span> <span class="n">train_objs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_select_training_set</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">scalar_objs</span><span class="p">,</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
                 <span class="c1"># Fit GP surrogate and select next candidate via BO with EI</span>
-                <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">bo_next_point</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">scalar_objs</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+                <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">bo_next_point</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">train_decs</span><span class="p">,</span> <span class="n">train_objs</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
 
                 <span class="c1"># Evaluate the candidate solution (get true multi-objective values)</span>
                 <span class="n">obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
@@ -257,6 +264,80 @@
 
         <span class="k">return</span> <span class="n">results</span></div>
 
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_round6</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        MATLAB-style ``round(x*1e6)/1e6`` (round half away from zero).</span>
+
+<span class="sd">        NumPy&#39;s ``np.round`` uses banker&#39;s rounding, so the tie-breaking rule is</span>
+<span class="sd">        reproduced explicitly to match the duplicate detection in ParEGO.m.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        x : np.ndarray</span>
+<span class="sd">            Values to round.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Values rounded to six decimal places.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">sign</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1e6</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1e6</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_select_training_set</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">scalar_objs</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Build the surrogate training set following ParEGO.m (lines 41-55).</span>
+
+<span class="sd">        Two reductions are applied, in this order:</span>
+
+<span class="sd">        1. If the archive holds more than ``11*dim - 1 + 25`` solutions, only</span>
+<span class="sd">           the best ``11*dim - 1 + 25`` (smallest scalarized value) are kept.</span>
+<span class="sd">           The retained rows are ordered by ascending scalarized value, as in</span>
+<span class="sd">           MATLAB&#39;s ``sort``-based indexing.</span>
+<span class="sd">        2. Solutions whose decision vector (rounded to 1e-6) or scalarized</span>
+<span class="sd">           value (rounded to 1e-6) duplicates an earlier row are removed; a row</span>
+<span class="sd">           survives only if it is the first occurrence of both, matching</span>
+<span class="sd">           ``intersect(distinct1, distinct2)``.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        decs : np.ndarray</span>
+<span class="sd">            Archive of decision variables, shape (N, dim).</span>
+<span class="sd">        scalar_objs : np.ndarray</span>
+<span class="sd">            Augmented Tchebycheff values of the archive, shape (N, 1).</span>
+<span class="sd">        dim : int</span>
+<span class="sd">            Number of decision variables.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        train_decs : np.ndarray</span>
+<span class="sd">            Decision variables used to fit the surrogate, shape (n, dim).</span>
+<span class="sd">        train_objs : np.ndarray</span>
+<span class="sd">            Matching scalarized values, shape (n, 1).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">cheby</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">scalar_objs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="c1"># Keep only the best 11*D-1+25 solutions once the archive grows past it</span>
+        <span class="n">n_keep</span> <span class="o">=</span> <span class="mi">11</span> <span class="o">*</span> <span class="n">dim</span> <span class="o">-</span> <span class="mi">1</span> <span class="o">+</span> <span class="mi">25</span>
+        <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;</span> <span class="n">n_keep</span><span class="p">:</span>
+            <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">cheby</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">n_keep</span><span class="p">]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">p_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+        <span class="n">p_cheby</span> <span class="o">=</span> <span class="n">cheby</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+
+        <span class="c1"># Eliminate solutions with duplicated inputs or duplicated outputs</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">distinct1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_round6</span><span class="p">(</span><span class="n">p_dec</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">_</span><span class="p">,</span> <span class="n">distinct2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_round6</span><span class="p">(</span><span class="n">p_cheby</span><span class="p">),</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">distinct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">intersect1d</span><span class="p">(</span><span class="n">distinct1</span><span class="p">,</span> <span class="n">distinct2</span><span class="p">)</span>
+
+        <span class="c1"># Guard against a degenerate archive collapsing the training set</span>
+        <span class="k">if</span> <span class="n">distinct</span><span class="o">.</span><span class="n">size</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">distinct</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">p_dec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">p_dec</span><span class="p">[</span><span class="n">distinct</span><span class="p">],</span> <span class="n">p_cheby</span><span class="p">[</span><span class="n">distinct</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_scalarize</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">weight</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>

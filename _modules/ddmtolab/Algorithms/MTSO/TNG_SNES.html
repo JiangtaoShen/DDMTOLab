@@ -118,7 +118,7 @@
 
     <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
         <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[2, K]&#39;</span><span class="p">,</span>
-        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
         <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
         <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
         <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
@@ -240,9 +240,6 @@
         <span class="k">while</span> <span class="n">total_nfes</span> <span class="o">&lt;</span> <span class="n">total_max_nfes</span><span class="p">:</span>
             <span class="c1"># === First loop: sampling, evaluation, gradient computation ===</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">total_nfes</span> <span class="o">&gt;=</span> <span class="n">total_max_nfes</span><span class="p">:</span>
-                    <span class="k">break</span>
-
                 <span class="c1"># Sampling: Z ~ N(0,1), X = x + S * Z</span>
                 <span class="n">Z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">maxD</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
                 <span class="n">X</span> <span class="o">=</span> <span class="n">x</span><span class="p">[:,</span> <span class="n">t</span><span class="p">:</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">S</span><span class="p">[:,</span> <span class="n">t</span><span class="p">:</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">Z</span>  <span class="c1"># (maxD, n)</span>
@@ -251,8 +248,9 @@
                 <span class="n">X_clipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
                 <span class="n">bound_cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">X</span> <span class="o">-</span> <span class="n">X_clipped</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># (n,)</span>
 
-                <span class="c1"># Evaluate clipped samples (trimmed to task dimension)</span>
-                <span class="n">eval_decs</span> <span class="o">=</span> <span class="n">X_clipped</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">T</span>  <span class="c1"># (n, dims[t])</span>
+                <span class="c1"># Evaluate the raw (unclipped) decisions, exactly as MATLAB</span>
+                <span class="c1"># does; out-of-range samples are only penalised via bound_cvs</span>
+                <span class="n">eval_decs</span> <span class="o">=</span> <span class="n">X</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">T</span>  <span class="c1"># (n, dims[t])</span>
                 <span class="n">task_objs</span><span class="p">,</span> <span class="n">task_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">eval_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                 <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n</span>
                 <span class="n">total_nfes</span> <span class="o">+=</span> <span class="n">n</span>
@@ -283,15 +281,21 @@
                 <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">task_cons</span>
 
                 <span class="c1"># --- Adaptive transfer control (every adj_gap generations) ---</span>
-                <span class="k">if</span> <span class="n">gen</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">adj_gap</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">total_nfes</span> <span class="o">+</span> <span class="n">n</span> <span class="o">&lt;=</span> <span class="n">total_max_nfes</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">gen</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">adj_gap</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="c1"># Generate virtual samples using same Z but virtual params</span>
                     <span class="n">vX</span> <span class="o">=</span> <span class="n">vx</span><span class="p">[:,</span> <span class="n">t</span><span class="p">:</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">vS</span><span class="p">[:,</span> <span class="n">t</span><span class="p">:</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">*</span> <span class="n">Z</span>
-                    <span class="n">vX_clipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">vX</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                    <span class="n">veval_decs</span> <span class="o">=</span> <span class="n">vX_clipped</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">T</span>
+                    <span class="n">veval_decs</span> <span class="o">=</span> <span class="n">vX</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span><span class="o">.</span><span class="n">T</span>
                     <span class="n">vobjs</span><span class="p">,</span> <span class="n">vcons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">veval_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                     <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n</span>
                     <span class="n">total_nfes</span> <span class="o">+=</span> <span class="n">n</span>
                     <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+
+                    <span class="c1"># The virtual probes are genuine evaluations: keep them in</span>
+                    <span class="c1"># the recorded history so that the evaluation accounting</span>
+                    <span class="c1"># stays consistent with the stored populations.</span>
+                    <span class="n">cur_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cur_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">veval_decs</span><span class="p">])</span>
+                    <span class="n">cur_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cur_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">vobjs</span><span class="p">])</span>
+                    <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">vcons</span><span class="p">])</span>
 
                     <span class="c1"># Compare mean fitness (raw CV, not boundary-penalized)</span>
                     <span class="k">if</span> <span class="n">vcons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>

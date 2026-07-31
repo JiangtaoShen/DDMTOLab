@@ -96,6 +96,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">gp_build</span><span class="p">,</span> <span class="n">gp_predict</span>
@@ -203,6 +204,14 @@
         <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
         <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
+        <span class="c1"># Step 2: generate the reference direction set (once, as in MATLAB)</span>
+        <span class="n">R_per_task</span><span class="p">,</span> <span class="n">N_R_per_task</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">R_i</span><span class="p">,</span> <span class="n">N_R_i</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">H</span><span class="p">,</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">R_i</span> <span class="o">=</span> <span class="n">R_i</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">R_i</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+            <span class="n">R_per_task</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">R_i</span><span class="p">)</span>
+            <span class="n">N_R_per_task</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">N_R_i</span><span class="p">)</span>
+
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
                     <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
@@ -212,12 +221,8 @@
                 <span class="k">break</span>
 
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="n">M</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">D</span> <span class="o">=</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-
-                <span class="c1"># Generate normalized reference directions</span>
-                <span class="n">R</span><span class="p">,</span> <span class="n">N_R</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">H</span><span class="p">,</span> <span class="n">M</span><span class="p">)</span>
-                <span class="n">R</span> <span class="o">=</span> <span class="n">R</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">R</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">))</span>
+                <span class="n">R</span><span class="p">,</span> <span class="n">N_R</span> <span class="o">=</span> <span class="n">R_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">N_R_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 
                 <span class="c1"># Iterate over each reference direction</span>
                 <span class="k">for</span> <span class="n">r_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N_R</span><span class="p">):</span>
@@ -239,8 +244,7 @@
                         <span class="n">dist_b</span> <span class="o">=</span> <span class="n">norm_p</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">cosine_p</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
 
                         <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dist_b</span><span class="p">)</span>
-                        <span class="n">N_sub</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">3</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">*</span> <span class="n">N_pop</span><span class="p">)))</span>
-                        <span class="n">N_sub</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">N_sub</span><span class="p">,</span> <span class="n">N_pop</span><span class="p">)</span>
+                        <span class="n">N_sub</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">*</span> <span class="n">N_pop</span><span class="p">)),</span> <span class="n">N_pop</span><span class="p">)</span>
                         <span class="n">sub_idx</span> <span class="o">=</span> <span class="n">sorted_idx</span><span class="p">[:</span><span class="n">N_sub</span><span class="p">]</span>
 
                         <span class="n">pop_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">sub_idx</span><span class="p">]</span>
@@ -263,12 +267,16 @@
                         <span class="k">try</span><span class="p">:</span>
                             <span class="n">kriging_model</span> <span class="o">=</span> <span class="n">gp_build</span><span class="p">(</span><span class="n">pop_dec</span><span class="p">,</span> <span class="n">pop_smetric</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
                         <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-                            <span class="k">continue</span>
+                            <span class="c1"># Guarantee progress: fall back to the space-filling</span>
+                            <span class="c1"># infill criterion used by MATLAB for degenerate cases</span>
+                            <span class="n">kriging_model</span> <span class="o">=</span> <span class="kc">None</span>
 
-                        <span class="n">f_min</span> <span class="o">=</span> <span class="n">pop_smetric</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
-
-                        <span class="c1"># Maximize EI using GA</span>
-                        <span class="n">best_x</span> <span class="o">=</span> <span class="n">_rga_ei</span><span class="p">(</span><span class="n">kriging_model</span><span class="p">,</span> <span class="n">f_min</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+                        <span class="k">if</span> <span class="n">kriging_model</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                            <span class="n">best_x</span> <span class="o">=</span> <span class="n">_rga_max_distance</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">D</span><span class="p">)</span>
+                        <span class="k">else</span><span class="p">:</span>
+                            <span class="n">f_min</span> <span class="o">=</span> <span class="n">pop_smetric</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
+                            <span class="c1"># Maximize EI using GA</span>
+                            <span class="n">best_x</span> <span class="o">=</span> <span class="n">_rga_ei</span><span class="p">(</span><span class="n">kriging_model</span><span class="p">,</span> <span class="n">f_min</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
 
                         <span class="c1"># If too close to existing points, maximize distance</span>
                         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">cdist</span><span class="p">(</span><span class="n">best_x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span> <span class="o">&lt;</span> <span class="mf">1e-8</span><span class="p">:</span>
@@ -300,6 +308,78 @@
 
 
 <span class="c1"># =============================================================================</span>
+<span class="c1"># GA operators (local ports of PlatEMO&#39;s OperatorGA / UniformPoint &#39;Latin&#39;)</span>
+<span class="c1"># =============================================================================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lhs</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Latin hypercube sample in [0, 1]^d (UniformPoint(N,D,&#39;Latin&#39;)).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_operator_ga</span><span class="p">(</span><span class="n">parent</span><span class="p">,</span> <span class="n">proC</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">disC</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">proM</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">disM</span><span class="o">=</span><span class="mf">20.0</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;PlatEMO ``OperatorGA``/``GAreal`` for real variables in [0, 1]^D.</span>
+
+<span class="sd">    A local port is used instead of the shared ``ga_generation`` helper because</span>
+<span class="sd">    ``rGA.m`` relies on the explicit parameter tuple ``{0.9,2,1/D,20}`` for the</span>
+<span class="sd">    second half of the offspring (per-variable mutation probability ``proM/D``)</span>
+<span class="sd">    and on the un-shuffled first-half/second-half pairing of the sorted parents.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    parent : np.ndarray</span>
+<span class="sd">        Parent population, shape (N, D)</span>
+<span class="sd">    proC : float, optional</span>
+<span class="sd">        Crossover probability (default: 1.0)</span>
+<span class="sd">    disC : float, optional</span>
+<span class="sd">        Distribution index of simulated binary crossover (default: 20.0)</span>
+<span class="sd">    proM : float, optional</span>
+<span class="sd">        Expected number of mutated variables; the per-variable mutation</span>
+<span class="sd">        probability is ``proM / D`` (default: 1.0)</span>
+<span class="sd">    disM : float, optional</span>
+<span class="sd">        Distribution index of polynomial mutation (default: 20.0)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    offspring : np.ndarray</span>
+<span class="sd">        Offspring population, shape (2*floor(N/2), D)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n_half</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">parent1</span> <span class="o">=</span> <span class="n">parent</span><span class="p">[:</span><span class="n">n_half</span><span class="p">]</span>
+    <span class="n">parent2</span> <span class="o">=</span> <span class="n">parent</span><span class="p">[</span><span class="n">n_half</span><span class="p">:</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_half</span><span class="p">]</span>
+    <span class="n">N</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">parent1</span><span class="o">.</span><span class="n">shape</span>
+
+    <span class="c1"># Simulated binary crossover</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">))</span>
+    <span class="n">lo</span> <span class="o">=</span> <span class="n">mu</span> <span class="o">&lt;=</span> <span class="mf">0.5</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">lo</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="n">lo</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disC</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span><span class="p">[</span><span class="o">~</span><span class="n">lo</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="o">~</span><span class="n">lo</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disC</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">beta</span> <span class="o">*</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">))</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">proC</span><span class="p">,</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">D</span><span class="p">))]</span> <span class="o">=</span> <span class="mi">1</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
+        <span class="p">(</span><span class="n">parent1</span> <span class="o">+</span> <span class="n">parent2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">+</span> <span class="n">beta</span> <span class="o">*</span> <span class="p">(</span><span class="n">parent1</span> <span class="o">-</span> <span class="n">parent2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">,</span>
+        <span class="p">(</span><span class="n">parent1</span> <span class="o">+</span> <span class="n">parent2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span> <span class="o">-</span> <span class="n">beta</span> <span class="o">*</span> <span class="p">(</span><span class="n">parent1</span> <span class="o">-</span> <span class="n">parent2</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span>
+    <span class="p">])</span>
+
+    <span class="c1"># Polynomial mutation (bounds are [0, 1] in DDMTOLab&#39;s unified space)</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">proM</span> <span class="o">/</span> <span class="n">D</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span>
+        <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span>
+        <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">])</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+        <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">disM</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
+
+    <span class="k">return</span> <span class="n">offspring</span>
+
+
+<span class="c1"># =============================================================================</span>
 <span class="c1"># GA-based Infill Optimization</span>
 <span class="c1"># =============================================================================</span>
 
@@ -325,15 +405,13 @@
 <span class="sd">        Best candidate decision vector</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">ga_pop_size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">ga_pop_size</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">D</span><span class="p">)</span>
+        <span class="n">ga_pop_size</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">D</span>
 
     <span class="n">best</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">obj_max</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
 
-    <span class="c1"># Initial population (LHS)</span>
-    <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
-    <span class="n">sampler</span> <span class="o">=</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="n">D</span><span class="p">)</span>
-    <span class="n">offspring</span> <span class="o">=</span> <span class="n">sampler</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">ga_pop_size</span><span class="p">)</span>
+    <span class="c1"># The first GA generation, randomly generated (LHS)</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">_lhs</span><span class="p">(</span><span class="n">ga_pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">gen</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ga_generations</span><span class="p">):</span>
         <span class="c1"># Predict and compute EI</span>
@@ -346,7 +424,7 @@
         <span class="n">diff</span> <span class="o">=</span> <span class="n">f_min</span> <span class="o">-</span> <span class="n">pred</span>
         <span class="n">z</span> <span class="o">=</span> <span class="n">diff</span> <span class="o">/</span> <span class="n">s</span>
         <span class="n">ei</span> <span class="o">=</span> <span class="n">diff</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">cdf</span><span class="p">(</span><span class="n">z</span><span class="p">)</span> <span class="o">+</span> <span class="n">s</span> <span class="o">*</span> <span class="n">norm</span><span class="o">.</span><span class="n">pdf</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
-        <span class="n">neg_ei</span> <span class="o">=</span> <span class="o">-</span><span class="n">ei</span>  <span class="c1"># Minimize negative EI</span>
+        <span class="n">neg_ei</span> <span class="o">=</span> <span class="o">-</span><span class="n">ei</span>  <span class="c1"># the genetic algorithm tries to minimize the objective</span>
 
         <span class="c1"># Track best</span>
         <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">neg_ei</span><span class="p">)</span>
@@ -355,19 +433,18 @@
             <span class="n">obj_max</span> <span class="o">=</span> <span class="n">neg_ei</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
 
         <span class="c1"># Select top half as parents</span>
-        <span class="n">half</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">ga_pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)))</span>
+        <span class="n">half</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">ga_pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
         <span class="n">parents</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[:</span><span class="n">half</span><span class="p">]]</span>
         <span class="n">parent_fitness</span> <span class="o">=</span> <span class="n">neg_ei</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[:</span><span class="n">half</span><span class="p">]]</span>
 
-        <span class="c1"># First half: tournament selection + SBX(muc=20) + mutation(mum=20)</span>
+        <span class="c1"># OperatorGA(Problem, Parent(TournamentSelection(2,...),:)) -&gt; {1,20,1,20}</span>
         <span class="n">t_idx</span> <span class="o">=</span> <span class="n">_tournament_selection</span><span class="p">(</span><span class="n">parent_fitness</span><span class="p">,</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-        <span class="n">offspring1</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">t_idx</span><span class="p">],</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+        <span class="n">offspring1</span> <span class="o">=</span> <span class="n">_operator_ga</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">t_idx</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)</span>
 
-        <span class="c1"># Second half: SBX(muc=2) + mutation(mum=20, prob=1/D)</span>
-        <span class="n">offspring2</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+        <span class="c1"># OperatorGA(Problem, Parent, {0.9,2,1/D,20})</span>
+        <span class="n">offspring2</span> <span class="o">=</span> <span class="n">_operator_ga</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">D</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)</span>
 
-        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">offspring1</span><span class="p">,</span> <span class="n">offspring2</span><span class="p">])[:</span><span class="n">ga_pop_size</span><span class="p">]</span>
-        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">offspring1</span><span class="p">,</span> <span class="n">offspring2</span><span class="p">])</span>
 
     <span class="k">return</span> <span class="n">best</span>
 
@@ -388,17 +465,15 @@
 <span class="sd">        Candidate maximizing distance to existing points</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">ga_pop_size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">ga_pop_size</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">20</span><span class="p">,</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">D</span><span class="p">)</span>
+        <span class="n">ga_pop_size</span> <span class="o">=</span> <span class="mi">10</span> <span class="o">*</span> <span class="n">D</span>
 
     <span class="n">best</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">obj_max</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
 
-    <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
-    <span class="n">sampler</span> <span class="o">=</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="n">D</span><span class="p">)</span>
-    <span class="n">offspring</span> <span class="o">=</span> <span class="n">sampler</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">ga_pop_size</span><span class="p">)</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">_lhs</span><span class="p">(</span><span class="n">ga_pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">gen</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">ga_generations</span><span class="p">):</span>
-        <span class="c1"># Compute negative minimum distance (to minimize)</span>
+        <span class="c1"># Infill_Maximal_Distance: -min(pdist2(x, sample_x), [], 2)</span>
         <span class="n">dists</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="n">existing_decs</span><span class="p">)</span>
         <span class="n">neg_min_dist</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">dists</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
@@ -407,16 +482,15 @@
             <span class="n">best</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
             <span class="n">obj_max</span> <span class="o">=</span> <span class="n">neg_min_dist</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span>
 
-        <span class="n">half</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">ga_pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)))</span>
+        <span class="n">half</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">ga_pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
         <span class="n">parents</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[:</span><span class="n">half</span><span class="p">]]</span>
         <span class="n">parent_fitness</span> <span class="o">=</span> <span class="n">neg_min_dist</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">[:</span><span class="n">half</span><span class="p">]]</span>
 
         <span class="n">t_idx</span> <span class="o">=</span> <span class="n">_tournament_selection</span><span class="p">(</span><span class="n">parent_fitness</span><span class="p">,</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
-        <span class="n">offspring1</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">t_idx</span><span class="p">],</span> <span class="n">muc</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
-        <span class="n">offspring2</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
+        <span class="n">offspring1</span> <span class="o">=</span> <span class="n">_operator_ga</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">t_idx</span><span class="p">],</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)</span>
+        <span class="n">offspring2</span> <span class="o">=</span> <span class="n">_operator_ga</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">D</span><span class="p">,</span> <span class="mf">20.0</span><span class="p">)</span>
 
-        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">offspring1</span><span class="p">,</span> <span class="n">offspring2</span><span class="p">])[:</span><span class="n">ga_pop_size</span><span class="p">]</span>
-        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">offspring1</span><span class="p">,</span> <span class="n">offspring2</span><span class="p">])</span>
 
     <span class="k">return</span> <span class="n">best</span>
 

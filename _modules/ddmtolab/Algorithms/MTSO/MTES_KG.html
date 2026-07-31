@@ -206,37 +206,33 @@
         <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
         <span class="n">n_dim</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>  <span class="c1"># CMA-ES operates in max dimension space</span>
         <span class="n">lam</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>  <span class="c1"># lambda: population size per task</span>
-        <span class="n">mu</span> <span class="o">=</span> <span class="n">lam</span> <span class="o">//</span> <span class="mi">2</span>  <span class="c1"># number of effective parents</span>
+        <span class="n">mu</span> <span class="o">=</span> <span class="p">(</span><span class="n">lam</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>  <span class="c1"># number of effective parents (MATLAB round(lambda/2))</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">total_max_nfes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">*</span> <span class="n">nt</span>
 
         <span class="c1"># Per-task CMA-ES state initialization</span>
         <span class="n">cma_params</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">cma_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cmaes_init_params</span><span class="p">(</span><span class="n">n_dim</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="n">lam</span><span class="p">,</span> <span class="n">sigma0</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma0</span><span class="p">))</span>
+            <span class="n">params</span> <span class="o">=</span> <span class="n">cmaes_init_params</span><span class="p">(</span><span class="n">n_dim</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="n">lam</span><span class="p">,</span> <span class="n">sigma0</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma0</span><span class="p">)</span>
+            <span class="c1"># MTES_KG.m:66 starts from the mean of lambda uniform samples</span>
+            <span class="c1"># (near the centre of the unified space), not from a single</span>
+            <span class="c1"># rand(1, n) draw as the shared CMA-ES helper does.</span>
+            <span class="n">params</span><span class="p">[</span><span class="s1">&#39;m_dec&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">lam</span><span class="p">,</span> <span class="n">n_dim</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+            <span class="n">cma_params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">params</span><span class="p">)</span>
 
         <span class="c1"># MTES_KG-specific per-task variables</span>
         <span class="n">m_step</span> <span class="o">=</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">tau</span> <span class="o">=</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">tau0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">num_ex_s</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
         <span class="n">suc_ex_s</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
-        <span class="n">nfes_per_task_eig</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
 
-        <span class="c1"># Generate initial samples and evaluate for history initialization</span>
-        <span class="n">init_decs</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">init_objs</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">init_cons</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">samples_t</span> <span class="o">=</span> <span class="n">cmaes_sample</span><span class="p">(</span><span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;m_dec&#39;</span><span class="p">],</span> <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;sigma&#39;</span><span class="p">],</span>
-                                     <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;B&#39;</span><span class="p">],</span> <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;D&#39;</span><span class="p">],</span> <span class="n">lam</span><span class="p">,</span> <span class="n">clip</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-            <span class="n">eval_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">samples_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="n">objs_t</span><span class="p">,</span> <span class="n">cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">eval_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-            <span class="n">init_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">eval_decs</span><span class="p">)</span>
-            <span class="n">init_objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">objs_t</span><span class="p">)</span>
-            <span class="n">init_cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cons_t</span><span class="p">)</span>
-
-        <span class="n">nfes</span> <span class="o">=</span> <span class="n">lam</span> <span class="o">*</span> <span class="n">nt</span>
-        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">init_decs</span><span class="p">,</span> <span class="n">init_objs</span><span class="p">,</span> <span class="n">init_cons</span><span class="p">)</span>
+        <span class="c1"># MATLAB performs no separate initialization evaluation: the first</span>
+        <span class="c1"># loop body already samples, evaluates and updates the distributions.</span>
+        <span class="n">nfes</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">all_decs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_objs</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[]</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
 
         <span class="c1"># Storage for previous generation data (needed for SaS)</span>
         <span class="n">old_samples</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
@@ -321,10 +317,12 @@
                 <span class="n">clipped</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">all_sample_decs</span><span class="p">,</span> <span class="o">-</span><span class="mf">0.05</span><span class="p">,</span> <span class="mf">1.05</span><span class="p">)</span>
                 <span class="n">bound_cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">all_sample_decs</span> <span class="o">-</span> <span class="n">clipped</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
-                <span class="c1"># Evaluate (trim to task dimensions, clip to [0,1])</span>
-                <span class="n">eval_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">all_sample_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="c1"># Evaluate the raw (unclipped) decisions, exactly as MATLAB</span>
+                <span class="c1"># does; out-of-range samples are only penalised via bound_cv</span>
+                <span class="n">eval_decs</span> <span class="o">=</span> <span class="n">all_sample_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
                 <span class="n">objs_t</span><span class="p">,</span> <span class="n">cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">eval_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                 <span class="n">nfes</span> <span class="o">+=</span> <span class="n">total_samples</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">total_samples</span>
                 <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">total_samples</span><span class="p">)</span>
 
                 <span class="c1"># Compute constraint violation</span>
@@ -361,27 +359,34 @@
                 <span class="n">old_rank</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">rank_t</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
                 <span class="c1"># ===== CMA-ES parameter update =====</span>
-                <span class="n">nfes_per_task_eig</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">total_samples</span>
+                <span class="c1"># MTES_KG.m:154 uses ceil((FE - lambda*(t-1)) / (lambda*T)) + 1</span>
+                <span class="c1"># as the generation counter driving hsig; with the shared helper</span>
+                <span class="c1"># (which divides nfes by lambda) that is exactly (Gen + 1)*lambda.</span>
                 <span class="n">restarted</span> <span class="o">=</span> <span class="n">cmaes_update</span><span class="p">(</span><span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">all_sample_decs</span><span class="p">[</span><span class="n">rank_t</span><span class="p">],</span>
-                                         <span class="n">nfes_per_task_eig</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                                         <span class="p">(</span><span class="n">gen</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">lam</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">restarted</span><span class="p">:</span>
                     <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;ps&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_dim</span><span class="p">)</span>
                     <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;pc&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_dim</span><span class="p">)</span>
                     <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">cma_params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;sigma&#39;</span><span class="p">],</span> <span class="mf">0.01</span><span class="p">),</span> <span class="mf">0.3</span><span class="p">)</span>
 
-                <span class="c1"># Store population for history (top lam individuals in native space)</span>
-                <span class="n">top_lam_idx</span> <span class="o">=</span> <span class="n">rank_t</span><span class="p">[:</span><span class="n">lam</span><span class="p">]</span>
-                <span class="n">cur_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">all_sample_decs</span><span class="p">[</span><span class="n">top_lam_idx</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                <span class="n">cur_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs_t</span><span class="p">[</span><span class="n">top_lam_idx</span><span class="p">]</span>
+                <span class="c1"># Store every evaluated sample (best first) so that the recorded</span>
+                <span class="c1"># history stays consistent with the consumed evaluations</span>
+                <span class="n">cur_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_sample_decs</span><span class="p">[</span><span class="n">rank_t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
+                <span class="n">cur_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs_t</span><span class="p">[</span><span class="n">rank_t</span><span class="p">]</span>
                 <span class="k">if</span> <span class="n">cons_t</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cons_t</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons_t</span><span class="p">[</span><span class="n">top_lam_idx</span><span class="p">]</span>
+                    <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons_t</span><span class="p">[</span><span class="n">rank_t</span><span class="p">]</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">lam</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
+                    <span class="n">cur_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">total_samples</span><span class="p">,</span> <span class="mi">0</span><span class="p">))</span>
 
             <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">cur_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">cur_objs</span><span class="p">,</span> <span class="n">all_cons</span><span class="p">,</span> <span class="n">cur_cons</span><span class="p">)</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="c1"># Samples are stored best-first, so trimming the surplus tail keeps the</span>
+        <span class="c1"># elite of the final generation intact</span>
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">trim_excess_evaluations</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="p">)</span>
 
         <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
             <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>

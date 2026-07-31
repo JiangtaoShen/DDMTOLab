@@ -203,15 +203,21 @@
             <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">objs_t</span><span class="p">)</span>
             <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cons_t</span><span class="p">)</span>
         <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span>
 
-        <span class="c1"># Compute SPEA2 fitness and initialize per-individual parameters</span>
+        <span class="c1"># SPEA2 environmental selection on the initial population (a no-op on the</span>
+        <span class="c1"># membership, but it fixes the fitness values and the population order)</span>
         <span class="n">fitness</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">vel</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">F_param</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">CR_param</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">TRD_param</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">fitness</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
+            <span class="n">idx</span><span class="p">,</span> <span class="n">fit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spea2_select</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span>
+            <span class="n">fitness</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fit</span><span class="p">)</span>
             <span class="n">vel</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">d_max</span><span class="p">)))</span>
             <span class="n">F_param</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
             <span class="n">CR_param</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
@@ -223,10 +229,11 @@
         <span class="n">all_cons</span> <span class="o">=</span> <span class="p">[[</span><span class="n">c</span><span class="o">.</span><span class="n">copy</span><span class="p">()]</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cons</span><span class="p">]</span>
 
         <span class="n">total_nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
-        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">total_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">),</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">total_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span>
                     <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">total_nfes</span><span class="p">:</span>
+        <span class="c1"># Main loop: one shared evaluation budget across all tasks, as in MToP</span>
+        <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">total_nfes</span><span class="p">:</span>
             <span class="c1"># Winner/Loser tournament for each task</span>
             <span class="n">winners</span> <span class="o">=</span> <span class="p">[]</span>
             <span class="n">losers</span> <span class="o">=</span> <span class="p">[]</span>
@@ -249,12 +256,7 @@
                 <span class="n">uni_upper</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">win_idx</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
                 <span class="n">uni_lower</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">win_idx</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
 
-            <span class="n">factor</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">/</span> <span class="n">total_nfes</span>
-
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]:</span>
-                    <span class="k">continue</span>
-
                 <span class="n">N_t</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
                 <span class="n">union_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">winners</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">losers</span><span class="p">[</span><span class="n">t</span><span class="p">]])</span>
 
@@ -268,8 +270,13 @@
                 <span class="c1"># Evaluate DE offspring</span>
                 <span class="n">off_de_objs</span><span class="p">,</span> <span class="n">off_de_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
                     <span class="n">problem</span><span class="p">,</span> <span class="n">off_de_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_de_objs</span><span class="p">)</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_de_objs</span><span class="p">)</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_de_objs</span><span class="p">))</span>
 
-                <span class="c1"># CSO generation with convergent KT (from losers)</span>
+                <span class="c1"># CSO generation with convergent KT (from losers). MToP reads the</span>
+                <span class="c1"># evaluation counter here, i.e. after the DE offspring are spent.</span>
+                <span class="n">factor</span> <span class="o">=</span> <span class="n">nfes</span> <span class="o">/</span> <span class="n">total_nfes</span>
                 <span class="n">off_cso</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation_cso</span><span class="p">(</span>
                     <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
                     <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">factor</span><span class="p">)</span>
@@ -278,10 +285,9 @@
                 <span class="c1"># Evaluate CSO offspring</span>
                 <span class="n">off_cso_objs</span><span class="p">,</span> <span class="n">off_cso_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
                     <span class="n">problem</span><span class="p">,</span> <span class="n">off_cso_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
-
-                <span class="n">n_new</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_de_objs</span><span class="p">)</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_cso_objs</span><span class="p">)</span>
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n_new</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n_new</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_cso_objs</span><span class="p">)</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_cso_objs</span><span class="p">)</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_cso_objs</span><span class="p">))</span>
 
                 <span class="c1"># Merge all populations</span>
                 <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_decs</span><span class="p">,</span> <span class="n">off_cso_decs</span><span class="p">])</span>
@@ -292,8 +298,10 @@
                 <span class="n">merged_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_CR</span><span class="p">,</span> <span class="n">off_cso_CR</span><span class="p">])</span>
                 <span class="n">merged_TRD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_de_TRD</span><span class="p">,</span> <span class="n">off_cso_TRD</span><span class="p">])</span>
 
-                <span class="c1"># SPEA2 environmental selection</span>
-                <span class="n">idx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spea2_select</span><span class="p">(</span><span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">,</span> <span class="n">N_t</span><span class="p">)</span>
+                <span class="c1"># SPEA2 environmental selection. The fitness that drives the next</span>
+                <span class="c1"># winner/loser pairing is the one computed on the merged</span>
+                <span class="c1"># population, not a value recomputed on the survivors.</span>
+                <span class="n">idx</span><span class="p">,</span> <span class="n">fit</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_spea2_select</span><span class="p">(</span><span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">,</span> <span class="n">N_t</span><span class="p">)</span>
                 <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_cons</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
@@ -301,12 +309,11 @@
                 <span class="n">F_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_F</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">CR_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_CR</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">TRD_param</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_TRD</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
-                <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">fit</span>
 
-                <span class="c1"># Append native-space history</span>
-                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span>
-                               <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
-                               <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+            <span class="c1"># Record the maintained populations of every task once per generation</span>
+            <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">,</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)],</span>
+                           <span class="n">all_objs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">all_cons</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -320,7 +327,8 @@
         <span class="k">return</span> <span class="n">results</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_spea2_select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_spea2_select</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        SPEA2 environmental selection.</span>
 
@@ -335,19 +343,24 @@
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        np.ndarray</span>
-<span class="sd">            Indices of selected individuals</span>
+<span class="sd">        idx : np.ndarray</span>
+<span class="sd">            Indices of the selected individuals, ordered by ascending fitness</span>
+<span class="sd">        fit : np.ndarray</span>
+<span class="sd">            Fitness of the selected individuals, computed on the full input</span>
+<span class="sd">            population (never recomputed on the survivors)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">fit</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
         <span class="n">next_mask</span> <span class="o">=</span> <span class="n">fit</span> <span class="o">&lt;</span> <span class="mi">1</span>
-        <span class="n">n_nd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span>
+        <span class="n">n_nd</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">n_nd</span> <span class="o">&lt;=</span> <span class="n">N</span><span class="p">:</span>
-            <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fit</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">rank</span><span class="p">[:</span><span class="n">N</span><span class="p">]</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fit</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">N</span><span class="p">]</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">nd_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">selected</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">nd_indices</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+            <span class="n">selected</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">nd_indices</span><span class="p">],</span> <span class="n">N</span><span class="p">)</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">nd_indices</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span>
+        <span class="c1"># Sort the surviving population by fitness (MToP Selection_SPEA2)</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">idx</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fit</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">idx</span><span class="p">,</span> <span class="n">fit</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_generation_de</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">vel</span><span class="p">,</span> <span class="n">F_param</span><span class="p">,</span> <span class="n">CR_param</span><span class="p">,</span> <span class="n">TRD_param</span><span class="p">,</span>
                        <span class="n">winners</span><span class="p">,</span> <span class="n">losers</span><span class="p">,</span> <span class="n">union_idx</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span>
@@ -582,7 +595,11 @@
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">_de_crossover</span><span class="p">(</span><span class="n">mutant</span><span class="p">,</span> <span class="n">parent</span><span class="p">,</span> <span class="n">cr</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Binomial crossover for 2xD matrix (Dec and V together).</span>
+<span class="sd">        Binomial crossover for a 2xD matrix (Dec and V together).</span>
+
+<span class="sd">        A single 1xD crossover mask is drawn and applied to both rows, so the</span>
+<span class="sd">        position and the velocity of an offspring always inherit the same set of</span>
+<span class="sd">        dimensions from the mutant (MToP ``DE_Crossover`` operates column-wise).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -598,13 +615,11 @@
 <span class="sd">        np.ndarray</span>
 <span class="sd">            Crossed-over vectors, shape (2, D)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">n_rows</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">mutant</span><span class="o">.</span><span class="n">shape</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_rows</span><span class="p">,</span> <span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">cr</span>
-        <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_rows</span><span class="p">):</span>
-            <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
-            <span class="n">mask</span><span class="p">[</span><span class="n">r</span><span class="p">,</span> <span class="n">j_rand</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="n">result</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutant</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">mutant</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">mutant</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">replace</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">cr</span>
+        <span class="n">replace</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">d</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">result</span><span class="p">[:,</span> <span class="n">replace</span><span class="p">]</span> <span class="o">=</span> <span class="n">parent</span><span class="p">[:,</span> <span class="n">replace</span><span class="p">]</span>
         <span class="k">return</span> <span class="n">result</span>
 
     <span class="nd">@staticmethod</span>

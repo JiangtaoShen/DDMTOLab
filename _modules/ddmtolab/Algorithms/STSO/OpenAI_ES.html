@@ -239,30 +239,30 @@
                 <span class="n">X</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">][:,</span> <span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">]</span> <span class="o">+</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;sigma&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">Z</span>  <span class="c1"># Shape: (dim, N)</span>
 
                 <span class="c1"># Decode samples (transpose to get (N, dim))</span>
+                <span class="c1"># MATLAB applies no boundary handling: raw (unclipped) decisions</span>
+                <span class="c1"># are mapped linearly to real space and evaluated as-is</span>
                 <span class="n">sample_decs</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">T</span>
-                <span class="n">sample_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">sample_decs</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># Boundary handling</span>
 
                 <span class="c1"># Also evaluate the mean</span>
                 <span class="c1"># MATLAB: mean_sample.Dec = x{t}&#39;;</span>
                 <span class="n">mean_dec</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;x&#39;</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span>
-                <span class="n">mean_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">mean_dec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
                 <span class="c1"># Combine samples and mean for evaluation</span>
+                <span class="c1"># MATLAB: sample{t} = Algo.Evaluation([sample{t}, mean_sample], Prob, t);</span>
                 <span class="n">all_sample_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">sample_decs</span><span class="p">,</span> <span class="n">mean_dec</span><span class="p">])</span>
 
                 <span class="c1"># Evaluate fitness</span>
-                <span class="n">sample_objs</span><span class="p">,</span> <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">all_sample_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">all_objs_eval</span><span class="p">,</span> <span class="n">all_cons_eval</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">all_sample_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                <span class="c1"># Separate mean evaluation from population</span>
-                <span class="n">mean_obj</span> <span class="o">=</span> <span class="n">sample_objs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span>
-                <span class="n">mean_con</span> <span class="o">=</span> <span class="n">sample_cons</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">:]</span>
-                <span class="n">sample_objs</span> <span class="o">=</span> <span class="n">sample_objs</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">sample_cons</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="c1"># MATLAB: sample{t} = sample{t}(1:N); (mean is dropped from the</span>
+                <span class="c1"># population but its evaluation still counts and enters history)</span>
+                <span class="n">sample_objs</span> <span class="o">=</span> <span class="n">all_objs_eval</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+                <span class="n">sample_cons</span> <span class="o">=</span> <span class="n">all_cons_eval</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 
-                <span class="c1"># Update current population (including mean as the best)</span>
-                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">mean_dec</span><span class="p">,</span> <span class="n">sample_decs</span><span class="p">])</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">mean_obj</span><span class="p">,</span> <span class="n">sample_objs</span><span class="p">])</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">mean_con</span><span class="p">,</span> <span class="n">sample_cons</span><span class="p">])</span>
+                <span class="c1"># Update current population (samples first, mean last, as in MATLAB)</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_sample_decs</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_objs_eval</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_cons_eval</span>
 
                 <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;N&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span>  <span class="c1"># N samples + 1 mean</span>
                 <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;N&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
@@ -275,7 +275,7 @@
                 <span class="c1"># MATLAB: ranks(sortIdx) = N - 1:-1:0; % Minimizing fitness</span>
                 <span class="c1"># MATLAB: shaped = ranks / (N - 1) - 0.5;</span>
                 <span class="n">fitness</span> <span class="o">=</span> <span class="n">sample_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-                <span class="n">sort_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+                <span class="n">sort_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>  <span class="c1"># MATLAB sort is stable</span>
                 <span class="n">ranks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;N&#39;</span><span class="p">])</span>
                 <span class="n">ranks</span><span class="p">[</span><span class="n">sort_idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;N&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
                 <span class="n">shaped</span> <span class="o">=</span> <span class="n">ranks</span> <span class="o">/</span> <span class="p">(</span><span class="n">p</span><span class="p">[</span><span class="s1">&#39;N&#39;</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span>

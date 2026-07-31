@@ -221,19 +221,20 @@
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c1"># MToP increments Algo.Gen inside notTerminated before the first loop body,</span>
+        <span class="c1"># so the first generation executed by the reference runs with Gen == 2 and</span>
+        <span class="c1"># the VAE branch is therefore active for generations 2..25.</span>
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">2</span>
         <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">max_nfes</span><span class="p">:</span>
             <span class="c1"># --- VAE generation (first vae_gens generations, 2-task only) ---</span>
             <span class="n">vae_decs</span> <span class="o">=</span> <span class="kc">None</span>
             <span class="k">if</span> <span class="n">gen</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">vae_gens</span> <span class="ow">and</span> <span class="n">nt</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
                 <span class="n">vae_decs</span> <span class="o">=</span> <span class="n">_generate_vae_individuals</span><span class="p">(</span>
-                    <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="p">)</span>
+                    <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="p">)</span>
 
             <span class="c1"># Merge populations</span>
             <span class="n">m_decs</span><span class="p">,</span> <span class="n">m_objs</span><span class="p">,</span> <span class="n">m_cons</span><span class="p">,</span> <span class="n">m_sfs</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">(</span>
                 <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">)</span>
-
-            <span class="n">maxD</span> <span class="o">=</span> <span class="n">m_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
             <span class="c1"># --- Generation ---</span>
             <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">m_decs</span><span class="p">)</span>
@@ -254,18 +255,15 @@
                 <span class="k">if</span> <span class="n">sf1</span> <span class="o">==</span> <span class="n">sf2</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmp</span><span class="p">:</span>
                     <span class="c1"># --- Transfer: crossover ---</span>
                     <span class="k">if</span> <span class="n">vae_decs</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">vae_decs</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="c1"># VAE-guided crossover: crossover with VAE individual</span>
-                        <span class="n">vi</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vae_decs</span><span class="p">))</span>
-                        <span class="n">vae_dec</span> <span class="o">=</span> <span class="n">vae_decs</span><span class="p">[</span><span class="n">vi</span><span class="p">]</span>
+                        <span class="c1"># One shared VAE partner per pair; the reference calls</span>
+                        <span class="c1"># GA_Crossover twice and keeps only the first child of each</span>
+                        <span class="c1"># call, so the second call overwrites the second offspring.</span>
+                        <span class="n">vae_dec</span> <span class="o">=</span> <span class="n">vae_decs</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">vae_decs</span><span class="p">))]</span>
 
                         <span class="n">off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">],</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span>
                             <span class="n">m_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">],</span> <span class="n">vae_dec</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">)</span>
                         <span class="n">off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">],</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span>
                             <span class="n">m_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">],</span> <span class="n">vae_dec</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">)</span>
-
-                        <span class="c1"># Trim to proper length (in unified space, already maxD)</span>
-                        <span class="n">off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">][:</span><span class="n">maxD</span><span class="p">]</span>
-                        <span class="n">off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">][:</span><span class="n">maxD</span><span class="p">]</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="c1"># Standard SBX crossover</span>
                         <span class="n">off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span>
@@ -338,14 +336,17 @@
 
 <span class="k">class</span><span class="w"> </span><span class="nc">_SimpleVAE</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    VAE matching the MATLAB implementation architecture.</span>
+<span class="sd">    VAE matching the MyVAE network graph of the MToP reference.</span>
 
-<span class="sd">    Encoder: input → FC(H) → ReLU → FC(H) → ReLU → FC(H) → ReLU →</span>
-<span class="sd">             FC(H) → Sigmoid → FC_mean(L) → FC_logvar(L)</span>
-<span class="sd">    Decoder: FC(H) → ReLU → FC(H) → ReLU → FC(H) → ReLU →</span>
-<span class="sd">             FC(H) → Sigmoid → FC(input_size)</span>
+<span class="sd">    Encoder: input -&gt; FC(H) -&gt; ReLU -&gt; FC(H) -&gt; ReLU -&gt; FC(H) -&gt; ReLU -&gt;</span>
+<span class="sd">             FC(H) -&gt; Sigmoid -&gt; FC_mean(L) -&gt; FC_logvar(L)</span>
+<span class="sd">    Reparametrization: z = mu + exp(0.5 * logvar) * eps</span>
+<span class="sd">    Decoder: FC(H) -&gt; ReLU -&gt; FC(H) -&gt; ReLU -&gt; FC(H) -&gt; ReLU -&gt;</span>
+<span class="sd">             FC(H) -&gt; Sigmoid -&gt; FC(input_size)</span>
 
-<span class="sd">    Note: fc_logvar takes fc_mean&#39;s output as input (sequential in MATLAB).</span>
+<span class="sd">    ``fc_logvar`` consumes ``fc_mean``&#39;s output because MyVAE stacks the two</span>
+<span class="sd">    fully connected layers sequentially. A full forward pass therefore already</span>
+<span class="sd">    contains one reparametrization draw, exactly like ``predict(net, x)``.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_size</span><span class="p">,</span> <span class="n">hidden_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">latent_size</span><span class="o">=</span><span class="mi">200</span><span class="p">):</span>
@@ -360,7 +361,7 @@
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_size</span><span class="p">,</span> <span class="n">hidden_size</span><span class="p">),</span>
             <span class="n">nn</span><span class="o">.</span><span class="n">Sigmoid</span><span class="p">(),</span>
         <span class="p">)</span>
-        <span class="c1"># Sequential: sigmoid → fc_mean → fc_logvar (logvar takes mean as input)</span>
+        <span class="c1"># Sequential: sigmoid -&gt; fc_mean -&gt; fc_logvar (logvar takes mean as input)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">fc_mean</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_size</span><span class="p">,</span> <span class="n">latent_size</span><span class="p">)</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">fc_logvar</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">latent_size</span><span class="p">,</span> <span class="n">latent_size</span><span class="p">)</span>
 
@@ -376,49 +377,80 @@
             <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">hidden_size</span><span class="p">,</span> <span class="n">input_size</span><span class="p">),</span>
         <span class="p">)</span>
 
+        <span class="c1"># The network is never trained (MyVAE runs with istraining = false), so</span>
+        <span class="c1"># its weights ARE the transfer operator. Draw them from the NumPy global</span>
+        <span class="c1"># stream instead of torch&#39;s, so that np.random.seed reproduces a whole</span>
+        <span class="c1"># run -- torch keeps an independent RNG that np.random.seed cannot reach.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_init_weights_from_numpy</span><span class="p">()</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_init_weights_from_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Re-draw every Linear layer from NumPy using PyTorch&#39;s own default law.</span>
+
+<span class="sd">        ``nn.Linear`` initialises both weight and bias uniformly on</span>
+<span class="sd">        ``[-1/sqrt(fan_in), 1/sqrt(fan_in)]``; reproducing that law here keeps</span>
+<span class="sd">        the network statistically identical while making it seedable.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+            <span class="k">for</span> <span class="n">module</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">modules</span><span class="p">():</span>
+                <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">module</span><span class="p">,</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">):</span>
+                    <span class="n">bound</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">in_features</span><span class="p">)</span>
+                    <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">bound</span><span class="p">,</span> <span class="n">bound</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+                    <span class="n">module</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+                    <span class="k">if</span> <span class="n">module</span><span class="o">.</span><span class="n">bias</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                        <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="o">-</span><span class="n">bound</span><span class="p">,</span> <span class="n">bound</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">module</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span>
+                        <span class="n">module</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">b</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">module</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reparametrize</span><span class="p">(</span><span class="n">mu</span><span class="p">,</span> <span class="n">logvar</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;z = mu + exp(0.5 * logvar) * eps, guarded against exp() overflow.&quot;&quot;&quot;</span>
+        <span class="c1"># Drawn from NumPy for the same seeding reason as the weights above.</span>
+        <span class="n">eps</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">as_tensor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="o">*</span><span class="nb">tuple</span><span class="p">(</span><span class="n">mu</span><span class="o">.</span><span class="n">shape</span><span class="p">)),</span> <span class="n">dtype</span><span class="o">=</span><span class="n">mu</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mu</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">clamp</span><span class="p">(</span><span class="n">logvar</span><span class="p">,</span> <span class="nb">max</span><span class="o">=</span><span class="mf">30.0</span><span class="p">))</span> <span class="o">*</span> <span class="n">eps</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Full network pass: encoder -&gt; reparametrization -&gt; decoder.&quot;&quot;&quot;</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder_body</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
+        <span class="n">z_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc_mean</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">z_logvar</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc_logvar</span><span class="p">(</span><span class="n">z_mean</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_reparametrize</span><span class="p">(</span><span class="n">z_mean</span><span class="p">,</span> <span class="n">z_logvar</span><span class="p">))</span>
+
     <span class="nd">@torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">()</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">generate</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="mf">0.8</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Encode, reparameterize, and decode.</span>
+<span class="sd">        Reproduce MyVAE.generate: encode(X1, X2) then decode(z * lambda).</span>
+
+<span class="sd">        ``encode`` runs the whole network, splits the *batch* in half and treats</span>
+<span class="sd">        the first half as the mean and the second half as the log-variance;</span>
+<span class="sd">        ``decode`` then runs the whole network again on the scaled result.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        x : torch.Tensor</span>
-<span class="sd">            Combined data from both tasks, shape (n1+n2, input_size).</span>
+<span class="sd">            Combined data from both tasks, shape (n1 + n2, input_size).</span>
 <span class="sd">            First n1 rows = task 1, last n2 rows = task 2.</span>
 <span class="sd">        lam : float</span>
-<span class="sd">            Lambda scaling factor for latent space.</span>
+<span class="sd">            Lambda scaling factor applied before the second forward pass.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        output : np.ndarray</span>
-<span class="sd">            Decoded output, shape (n_generated, input_size)</span>
+<span class="sd">            Decoded output, shape (n1, input_size) for equal halves.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">encoder_body</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-        <span class="n">z_mean_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc_mean</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">z_logvar_all</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">fc_logvar</span><span class="p">(</span><span class="n">z_mean_all</span><span class="p">)</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
 
-        <span class="n">n_total</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">n_half</span> <span class="o">=</span> <span class="n">n_total</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">n_half</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">z_mean</span> <span class="o">=</span> <span class="n">out</span><span class="p">[:</span><span class="n">n_half</span><span class="p">]</span>
+        <span class="n">z_logvar</span> <span class="o">=</span> <span class="n">out</span><span class="p">[</span><span class="n">n_half</span><span class="p">:</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_half</span><span class="p">]</span>
+        <span class="n">z</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reparametrize</span><span class="p">(</span><span class="n">z_mean</span><span class="p">,</span> <span class="n">z_logvar</span><span class="p">)</span>
 
-        <span class="c1"># Task 1&#39;s encoded output → mean, Task 2&#39;s → logvar</span>
-        <span class="n">z_mean</span> <span class="o">=</span> <span class="n">z_mean_all</span><span class="p">[:</span><span class="n">n_half</span><span class="p">]</span>
-        <span class="n">z_logvar</span> <span class="o">=</span> <span class="n">z_logvar_all</span><span class="p">[</span><span class="n">n_half</span><span class="p">:]</span>
-
-        <span class="c1"># Reparameterization</span>
-        <span class="n">eps</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">randn_like</span><span class="p">(</span><span class="n">z_mean</span><span class="p">)</span>
-        <span class="n">z</span> <span class="o">=</span> <span class="n">z_mean</span> <span class="o">+</span> <span class="n">torch</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="mf">0.5</span> <span class="o">*</span> <span class="n">z_logvar</span><span class="p">)</span> <span class="o">*</span> <span class="n">eps</span>
-
-        <span class="c1"># Decode with lambda scaling</span>
-        <span class="n">output</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">decoder</span><span class="p">(</span><span class="n">z</span> <span class="o">*</span> <span class="n">lam</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">output</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">forward</span><span class="p">(</span><span class="n">z</span> <span class="o">*</span> <span class="n">lam</span><span class="p">)</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_generate_vae_individuals</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">lam</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_generate_vae_individuals</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">lam</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate VAE-guided individuals for knowledge transfer.</span>
 
-<span class="sd">    Prepares population data, passes through untrained VAE, and extracts</span>
+<span class="sd">    Prepares population data, passes through the untrained VAE, and extracts</span>
 <span class="sd">    decision variables for use as crossover partners.</span>
 
 <span class="sd">    Parameters</span>
@@ -427,78 +459,74 @@
 <span class="sd">        Population decision variables per task (unified space)</span>
 <span class="sd">    pop_objs : list of np.ndarray</span>
 <span class="sd">        Population objective values per task</span>
-<span class="sd">    pop_sfs : list of np.ndarray</span>
-<span class="sd">        Skill factors per task</span>
 <span class="sd">    nt : int</span>
-<span class="sd">        Number of tasks (must be 2)</span>
+<span class="sd">        Number of tasks (the reference only handles nt == 2)</span>
 <span class="sd">    lam : float</span>
-<span class="sd">        Lambda scaling for VAE latent space</span>
+<span class="sd">        Lambda scaling applied between the two forward passes</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    vae_decs : list of np.ndarray</span>
-<span class="sd">        VAE-generated decision vectors for crossover</span>
+<span class="sd">    vae_decs : np.ndarray</span>
+<span class="sd">        VAE-generated decision vectors for crossover, shape (n_new, maxD)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    The reference builds each column as ``[Dec * 10000; MFObj; TaskLabel * 10000]``</span>
+<span class="sd">    where ``MFObj`` holds one entry per task. From the second generation onwards</span>
+<span class="sd">    the reference leaves the non-skill entries at ``inf``, which propagates NaN</span>
+<span class="sd">    through the network and yields unusable offspring; here the individual&#39;s own</span>
+<span class="sd">    objective is used as a finite stand-in for those entries.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">nt</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
-        <span class="k">return</span> <span class="p">[]</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
 
     <span class="n">maxD</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-    <span class="n">desired_cols</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">desired_rows</span> <span class="o">=</span> <span class="mi">100</span>
+    <span class="n">n_train</span> <span class="o">=</span> <span class="n">desired_rows</span> <span class="o">//</span> <span class="mi">2</span>
 
-    <span class="c1"># Build data matrices: [Dec * 10000; MFObj; TaskLabel * 10000]</span>
+    <span class="c1"># Build data matrices: [Dec * 10000, MFObj (one column per task), Label * 10000]</span>
     <span class="n">data_tasks</span> <span class="o">=</span> <span class="p">[]</span>
     <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
         <span class="n">n_t</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">dec_scaled</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">*</span> <span class="mf">10000.0</span>  <span class="c1"># (n_t, maxD)</span>
-        <span class="n">obj_vals</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>  <span class="c1"># (n_t, n_objs)</span>
+        <span class="n">dec_scaled</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">*</span> <span class="mf">10000.0</span>
+        <span class="n">mf_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="mi">1</span><span class="p">],</span> <span class="n">nt</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
         <span class="n">task_label</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n_t</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="n">t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="mf">10000.0</span><span class="p">)</span>
-        <span class="c1"># data per individual: [Dec*10000, MFObj, TaskLabel*10000]</span>
-        <span class="n">data_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">dec_scaled</span><span class="p">,</span> <span class="n">obj_vals</span><span class="p">,</span> <span class="n">task_label</span><span class="p">])</span>  <span class="c1"># (n_t, maxD+n_objs+1)</span>
-        <span class="n">data_tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">data_t</span><span class="p">)</span>
+        <span class="n">data_tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">dec_scaled</span><span class="p">,</span> <span class="n">mf_objs</span><span class="p">,</span> <span class="n">task_label</span><span class="p">]))</span>
 
-    <span class="c1"># Pad or truncate to desired_cols per task</span>
     <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
         <span class="n">n_t</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="k">if</span> <span class="n">n_t</span> <span class="o">&gt;</span> <span class="n">desired_cols</span><span class="p">:</span>
-            <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">][:</span><span class="n">desired_cols</span><span class="p">]</span>
-        <span class="k">elif</span> <span class="n">n_t</span> <span class="o">&lt;</span> <span class="n">desired_cols</span><span class="p">:</span>
-            <span class="n">extra_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_t</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">desired_cols</span> <span class="o">-</span> <span class="n">n_t</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">n_t</span> <span class="o">&gt;</span> <span class="n">desired_rows</span><span class="p">:</span>
+            <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">][:</span><span class="n">desired_rows</span><span class="p">]</span>
+        <span class="k">elif</span> <span class="n">n_t</span> <span class="o">&lt;</span> <span class="n">desired_rows</span><span class="p">:</span>
+            <span class="c1"># datasample() draws with replacement</span>
+            <span class="n">extra_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n_t</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">desired_rows</span> <span class="o">-</span> <span class="n">n_t</span><span class="p">)</span>
             <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">extra_idx</span><span class="p">]])</span>
 
-    <span class="c1"># 50/50 train split (train = test in MATLAB code)</span>
-    <span class="n">n_train</span> <span class="o">=</span> <span class="n">desired_cols</span> <span class="o">//</span> <span class="mi">2</span>
-    <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-        <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">desired_cols</span><span class="p">)</span>
-        <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">perm</span><span class="p">[:</span><span class="n">n_train</span><span class="p">]]</span>  <span class="c1"># (50, features)</span>
+        <span class="c1"># randperm(numX1) only permutes the first floor(0.5 * 100) = 50 columns</span>
+        <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n_train</span><span class="p">)</span>
+        <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">perm</span><span class="p">]</span>
 
-    <span class="c1"># Remove TaskLabel column for encoder input</span>
-    <span class="n">X1</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="mi">0</span><span class="p">][:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># (50, maxD + n_objs)</span>
-    <span class="n">X2</span> <span class="o">=</span> <span class="n">data_tasks</span><span class="p">[</span><span class="mi">1</span><span class="p">][:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># (50, maxD + n_objs)</span>
-    <span class="n">input_size</span> <span class="o">=</span> <span class="n">X1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+    <span class="c1"># encode() drops the trailing TaskLabel row before running the network</span>
+    <span class="n">x_combined</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">data_tasks</span><span class="p">[</span><span class="mi">0</span><span class="p">][:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span>
+                            <span class="n">data_tasks</span><span class="p">[</span><span class="mi">1</span><span class="p">][:,</span> <span class="p">:</span><span class="o">-</span><span class="mi">1</span><span class="p">]])</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="n">input_size</span> <span class="o">=</span> <span class="n">x_combined</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
-    <span class="c1"># Combine for encoding</span>
-    <span class="n">x_combined</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">X1</span><span class="p">,</span> <span class="n">X2</span><span class="p">])</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>  <span class="c1"># (100, input_size)</span>
-
-    <span class="c1"># Build VAE with random weights (no training, matching MATLAB istraining=false)</span>
+    <span class="c1"># Random weights, never trained (the reference keeps istraining = false)</span>
     <span class="n">vae</span> <span class="o">=</span> <span class="n">_SimpleVAE</span><span class="p">(</span><span class="n">input_size</span><span class="p">,</span> <span class="n">hidden_size</span><span class="o">=</span><span class="mi">256</span><span class="p">,</span> <span class="n">latent_size</span><span class="o">=</span><span class="mi">200</span><span class="p">)</span>
     <span class="n">vae</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
 
-    <span class="c1"># Generate</span>
-    <span class="n">x_tensor</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">x_combined</span><span class="p">)</span>
-    <span class="n">output</span> <span class="o">=</span> <span class="n">vae</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">x_tensor</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="n">lam</span><span class="p">)</span>  <span class="c1"># (50, input_size)</span>
+    <span class="n">output</span> <span class="o">=</span> <span class="n">vae</span><span class="o">.</span><span class="n">generate</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">x_combined</span><span class="p">),</span> <span class="n">lam</span><span class="o">=</span><span class="n">lam</span><span class="p">)</span>
 
-    <span class="c1"># Split into task 1 and task 2</span>
-    <span class="n">n_gen</span> <span class="o">=</span> <span class="n">output</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">n_half</span> <span class="o">=</span> <span class="n">n_gen</span> <span class="o">//</span> <span class="mi">2</span>
-    <span class="n">new_x1</span> <span class="o">=</span> <span class="n">output</span><span class="p">[:</span><span class="n">n_half</span><span class="p">]</span>   <span class="c1"># (25, input_size)</span>
-    <span class="n">new_x2</span> <span class="o">=</span> <span class="n">output</span><span class="p">[</span><span class="n">n_half</span><span class="p">:]</span>   <span class="c1"># (25, input_size)</span>
+    <span class="c1"># The reference splits the output into two task halves and re-attaches the</span>
+    <span class="c1"># label row; only the leading maxD entries are ever read back as Dec.</span>
+    <span class="n">vae_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">output</span><span class="p">[:,</span> <span class="p">:</span><span class="n">maxD</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
 
-    <span class="c1"># Extract Dec values (first maxD columns)</span>
-    <span class="n">vae_decs</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">new_x1</span><span class="p">:</span>
-        <span class="n">vae_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">[:</span><span class="n">maxD</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
-    <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">new_x2</span><span class="p">:</span>
-        <span class="n">vae_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">[:</span><span class="n">maxD</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+    <span class="c1"># An untrained network fed 1e4-scaled inputs can saturate to non-finite</span>
+    <span class="c1"># values; the reference would propagate them into unusable offspring.</span>
+    <span class="n">bad</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">vae_decs</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">bad</span><span class="p">):</span>
+        <span class="n">vae_decs</span> <span class="o">=</span> <span class="n">vae_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">vae_decs</span><span class="p">[</span><span class="n">bad</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">count_nonzero</span><span class="p">(</span><span class="n">bad</span><span class="p">)))</span>
 
     <span class="k">return</span> <span class="n">vae_decs</span>
 </pre></div>

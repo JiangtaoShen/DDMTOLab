@@ -109,6 +109,23 @@
 <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_platemo_tournament_selection</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="o">*</span><span class="n">fitness</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exact port of PlatEMO&#39;s ``TournamentSelection``.</span>
+
+<span class="sd">    Candidates are compared lexicographically on the given fitness keys (lower is</span>
+<span class="sd">    better, matching SPEA2 fitness). Solutions with identical fitness share the</span>
+<span class="sd">    same rank, so a tournament among tied candidates is decided by the (random)</span>
+<span class="sd">    draw order rather than deterministically by index.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fitness</span><span class="p">])</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">fits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fits</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
+    <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">loc</span><span class="p">[</span><span class="n">parents</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parents</span><span class="p">[</span><span class="n">best</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_spea2_select</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="n">pop_obj</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">use_real_obj</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    SPEA2 selection: prefer fitness &lt; 1, fill/truncate to N.</span>
@@ -247,8 +264,10 @@
 
     <span class="c1"># SPEA2 selection to N</span>
     <span class="k">if</span> <span class="n">pop_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">N</span><span class="p">:</span>
-        <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">status</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
-            <span class="c1"># Unconstrained or all constraints satisfied</span>
+        <span class="k">if</span> <span class="n">status</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Stage 1 (MATLAB nargin == 3): CalFitness(Population.objs), no cons</span>
+            <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
             <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">)</span>
         <span class="k">elif</span> <span class="n">status</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
             <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">)</span>
@@ -310,7 +329,9 @@
     <span class="n">delta</span> <span class="o">=</span> <span class="mf">1e-6</span>
     <span class="n">current</span> <span class="o">=</span> <span class="n">ideal_points</span><span class="p">[</span><span class="n">current_iter</span><span class="p">]</span>
     <span class="n">previous</span> <span class="o">=</span> <span class="n">ideal_points</span><span class="p">[</span><span class="n">current_iter</span> <span class="o">-</span> <span class="n">gap</span><span class="p">]</span>
-    <span class="n">rz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="n">current</span> <span class="o">-</span> <span class="n">previous</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">previous</span><span class="p">),</span> <span class="n">delta</span><span class="p">))</span>
+    <span class="c1"># MATLAB: max(ideal_points(Iter-gap,:),delta) -- the reference does NOT take</span>
+    <span class="c1"># the absolute value of the denominator.</span>
+    <span class="n">rz</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">((</span><span class="n">current</span> <span class="o">-</span> <span class="n">previous</span><span class="p">)</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">previous</span><span class="p">,</span> <span class="n">delta</span><span class="p">))</span>
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">rz</span><span class="p">)</span>
 
 
@@ -477,8 +498,9 @@
                 <span class="c1"># Track ideal points</span>
                 <span class="n">ideal_points</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
 
-                <span class="c1"># Check stage transition</span>
-                <span class="k">if</span> <span class="n">iteration</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">gap</span> <span class="ow">and</span> <span class="n">flag</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="c1"># Check stage transition. MATLAB&#39;s Iter is 1-based and fires the</span>
+                <span class="c1"># first check on its 21st iteration, i.e. iteration == gap here.</span>
+                <span class="k">if</span> <span class="n">iteration</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">gap</span> <span class="ow">and</span> <span class="n">flag</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">max_change</span> <span class="o">=</span> <span class="n">_calc_max_change</span><span class="p">(</span><span class="n">ideal_points</span><span class="p">,</span> <span class="n">iteration</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">gap</span><span class="p">)</span>
                     <span class="k">if</span> <span class="n">max_change</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lam</span><span class="p">:</span>
                         <span class="n">flag</span> <span class="o">=</span> <span class="mi">1</span>
@@ -500,7 +522,8 @@
                     <span class="n">inner_fitness</span> <span class="o">=</span> <span class="n">fitness</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
                     <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wmax</span><span class="p">):</span>
-                        <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="o">-</span><span class="n">inner_fitness</span><span class="p">)</span>
+                        <span class="c1"># SPEA2 fitness: LOWER is better, so it must not be negated</span>
+                        <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">_platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="n">inner_fitness</span><span class="p">)</span>
                         <span class="n">off_decs</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">inner_decs</span><span class="p">[</span><span class="n">mating_pool</span><span class="p">],</span> <span class="n">muc</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
                         <span class="n">inner_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">inner_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">])</span>
 
@@ -577,7 +600,8 @@
                     <span class="n">inner_fitness</span> <span class="o">=</span> <span class="n">fitness</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
                     <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wmax</span><span class="p">):</span>
-                        <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="o">-</span><span class="n">inner_fitness</span><span class="p">)</span>
+                        <span class="c1"># SPEA2 fitness: LOWER is better, so it must not be negated</span>
+                        <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">_platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="n">inner_fitness</span><span class="p">)</span>
                         <span class="n">off_decs</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">inner_decs</span><span class="p">[</span><span class="n">mating_pool</span><span class="p">],</span> <span class="n">muc</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
                         <span class="n">inner_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">inner_decs</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">])</span>
 
@@ -604,8 +628,12 @@
                     <span class="n">sel_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
                     <span class="n">sel_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">sel_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">task_i</span><span class="p">])</span>
                     <span class="k">if</span> <span class="n">sel_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">iteration</span> <span class="o">+=</span> <span class="mi">1</span>
-                        <span class="k">continue</span>
+                        <span class="k">break</span>
+
+                <span class="c1"># Never exceed the remaining budget of this task</span>
+                <span class="n">remaining</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">task_i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">task_i</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">sel_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">remaining</span><span class="p">:</span>
+                    <span class="n">sel_decs</span> <span class="o">=</span> <span class="n">sel_decs</span><span class="p">[:</span><span class="n">remaining</span><span class="p">]</span>
 
                 <span class="c1"># Expensive evaluation</span>
                 <span class="n">new_objs</span><span class="p">,</span> <span class="n">new_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">sel_decs</span><span class="p">,</span> <span class="n">task_i</span><span class="p">)</span>
@@ -659,7 +687,7 @@
             <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">)</span>
             <span class="n">all_cons</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
-            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="p">,</span> <span class="n">max_nfes_per_task</span><span class="p">,</span>
+            <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="p">,</span>
             <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span> <span class="k">if</span> <span class="n">has_cons</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
             <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
             <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>

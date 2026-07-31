@@ -96,6 +96,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">pdist</span><span class="p">,</span> <span class="n">squareform</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mo_gp_build</span><span class="p">,</span> <span class="n">mo_gp_predict</span>
@@ -237,19 +238,29 @@
                     <span class="n">m</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">train_y_nds</span><span class="p">,</span> <span class="n">actual_batch</span><span class="p">,</span> <span class="n">data_type</span>
                 <span class="p">)</span>
 
-                <span class="c1"># Remove duplicates</span>
+                <span class="c1"># Remove duplicates, then top up so that exactly `actual_batch`</span>
+                <span class="c1"># points are evaluated per cycle (the greedy subset selection</span>
+                <span class="c1"># may return the same candidate index more than once)</span>
                 <span class="n">new_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">actual_batch</span><span class="p">:</span>
+                    <span class="n">new_decs</span> <span class="o">=</span> <span class="n">new_decs</span><span class="p">[:</span><span class="n">actual_batch</span><span class="p">]</span>
+                <span class="k">while</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">actual_batch</span><span class="p">:</span>
+                    <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">actual_batch</span> <span class="o">-</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dim</span><span class="p">)</span>
+                    <span class="n">pad</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">pad</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+                                            <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                    <span class="k">if</span> <span class="n">pad</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">new_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">pad</span><span class="p">])</span> <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">pad</span>
 
-                <span class="k">if</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="c1"># Expensive evaluation</span>
-                    <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="c1"># Expensive evaluation</span>
+                <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">new_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                    <span class="c1"># Update dataset</span>
-                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
-                    <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
+                <span class="c1"># Update dataset</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_decs</span><span class="p">])</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
 
-                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">new_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -266,6 +277,11 @@
 
 
 <span class="c1"># ==================== Core DirHV-EI Functions ====================</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lhs</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Latin hypercube sample in [0, 1]^d (MATLAB ``lhsdesign`` equivalent).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_opt_dirhvei</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">train_y_nds</span><span class="p">,</span> <span class="n">batch_size</span><span class="p">,</span> <span class="n">data_type</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -414,8 +430,8 @@
     <span class="n">dist_mat</span> <span class="o">=</span> <span class="n">squareform</span><span class="p">(</span><span class="n">pdist</span><span class="p">(</span><span class="n">dir_vecs</span><span class="p">))</span>
     <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dist_mat</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">T</span><span class="p">]</span>
 
-    <span class="c1"># Initial population via LHS in [0, 1]^D</span>
-    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>  <span class="c1"># LHS approx</span>
+    <span class="c1"># Initial population via LHS in [0, 1]^D (lhsdesign in MATLAB)</span>
+    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">_lhs</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
 
     <span class="c1"># GP prediction for initial population</span>
     <span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span> <span class="o">=</span> <span class="n">_gp_evaluate</span><span class="p">(</span><span class="n">pop_x</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">data_type</span><span class="p">)</span>

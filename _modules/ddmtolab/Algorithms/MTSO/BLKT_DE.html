@@ -293,16 +293,17 @@
                 <span class="n">off_decs_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">combined_off</span><span class="p">[</span><span class="n">perm</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
                 <span class="c1"># Evaluate offspring</span>
-                <span class="n">off_objs_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full_like</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-                <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-                    <span class="n">off_objs_t</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">],</span> <span class="n">off_cons_t</span><span class="p">[</span><span class="n">i</span><span class="p">:</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> \
-                        <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                 <span class="n">nfes</span> <span class="o">+=</span> <span class="n">n</span>
                 <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
 
-                <span class="c1"># Track best before selection</span>
-                <span class="n">best_before</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                <span class="c1"># Track best before selection. MToP&#39;s succ_flag is the Flag</span>
+                <span class="c1"># returned by Algo.Evaluation, i.e. whether the newly evaluated</span>
+                <span class="c1"># offspring beat the incumbent best under min_FP (feasibility</span>
+                <span class="c1"># first, then objective). Because Selection_Elit is elitist and</span>
+                <span class="c1"># uses the same order, that is exactly &quot;the population best</span>
+                <span class="c1"># improved&quot; measured lexicographically on (CV, Obj).</span>
+                <span class="n">best_before</span> <span class="o">=</span> <span class="n">_best_key</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
 
                 <span class="c1"># Elitist selection (parents + offspring)</span>
                 <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs_t</span><span class="p">])</span>
@@ -314,7 +315,7 @@
                 <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_cons</span><span class="p">[</span><span class="n">sel</span><span class="p">]</span>
 
                 <span class="c1"># Check improvement</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">best_before</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">_best_key</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span> <span class="o">&lt;</span> <span class="n">best_before</span><span class="p">:</span>
                     <span class="n">succ_flags</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
 
             <span class="c1"># Record history</span>
@@ -326,11 +327,11 @@
                 <span class="n">divD</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">maxD</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
                 <span class="n">divK</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">minK</span><span class="p">,</span> <span class="n">maxK</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
             <span class="k">elif</span> <span class="nb">any</span><span class="p">(</span><span class="ow">not</span> <span class="n">f</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">succ_flags</span><span class="p">):</span>
-                <span class="c1"># Some tasks stagnated: slight perturbation (±1)</span>
-                <span class="n">divD</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxD</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span>
-                    <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">divD</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxD</span><span class="p">,</span> <span class="n">divD</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
-                <span class="n">divK</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxK</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">minK</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span>
-                    <span class="nb">max</span><span class="p">(</span><span class="n">minK</span><span class="p">,</span> <span class="n">divK</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxK</span><span class="p">,</span> <span class="n">divK</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
+                <span class="c1"># Some tasks stagnated: slight perturbation (+-1).</span>
+                <span class="c1"># MATLAB draws uniformly from {x-1, x, x+1} and *then* clamps,</span>
+                <span class="c1"># so the clamped endpoint keeps the extra probability mass.</span>
+                <span class="n">divD</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxD</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">divD</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">divD</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)))</span>
+                <span class="n">divK</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">maxK</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">minK</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">divK</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="n">divK</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)))</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -344,6 +345,18 @@
         <span class="k">return</span> <span class="n">results</span></div>
 </div>
 
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_best_key</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Lexicographic (CV, Obj) key of the best individual, matching MToP&#39;s</span>
+<span class="sd">    ``min_FP`` / ``sortrows([CVs, Objs], [1, 2])`` ordering.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> \
+        <span class="ow">and</span> <span class="n">cons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">b</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">objs</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">cv</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">cv</span><span class="p">[</span><span class="n">b</span><span class="p">]),</span> <span class="nb">float</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">b</span><span class="p">,</span> <span class="mi">0</span><span class="p">])</span>
 </pre></div>
 
            </div>

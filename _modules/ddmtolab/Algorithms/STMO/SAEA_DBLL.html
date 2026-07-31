@@ -75,12 +75,12 @@
              
   <h1>Source code for ddmtolab.Algorithms.STMO.SAEA_DBLL</h1><div class="highlight"><pre>
 <span></span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">Surrogate-Assisted Evolutionary Algorithm with Direction-Based Local Learning (SAEA-DBLL)</span>
+<span class="sd">Surrogate-Assisted Evolutionary Algorithm with Decomposition-Based Local Learning (SAEA-DBLL)</span>
 
 <span class="sd">This module implements SAEA-DBLL for computationally expensive multi/many-objective optimization.</span>
-<span class="sd">It uses RBF surrogate models with a direction-based local learning strategy, where sub-reference</span>
-<span class="sd">vectors define neighborhoods for competitive swarm optimization, combined with adaptive vector</span>
-<span class="sd">selection and APD-based environmental selection.</span>
+<span class="sd">It uses RBF surrogate models with a decomposition-based local learning strategy, where a subset of</span>
+<span class="sd">reference vectors defines neighborhoods for competitive swarm optimization, combined with adaptive</span>
+<span class="sd">vector selection and APD-based environmental selection.</span>
 
 <span class="sd">References</span>
 <span class="sd">----------</span>
@@ -107,7 +107,7 @@
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.SAEA_DBLL.SAEA_DBLL">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">SAEA_DBLL</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Surrogate-Assisted Evolutionary Algorithm with Direction-Based Local Learning</span>
+<span class="sd">    Surrogate-Assisted Evolutionary Algorithm with Decomposition-Based Local Learning</span>
 <span class="sd">    for expensive multi/many-objective optimization.</span>
 
 <span class="sd">    Uses RBF surrogates with neighborhood-aware competitive swarm optimization and</span>
@@ -138,7 +138,7 @@
 
 <div class="viewcode-block" id="SAEA_DBLL.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.SAEA_DBLL.SAEA_DBLL.__init__">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span>
                  <span class="n">wmax</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">T</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">K</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
                  <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;SAEA-DBLL&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -153,7 +153,8 @@
 <span class="sd">        max_nfes : int or List[int], optional</span>
 <span class="sd">            Maximum number of function evaluations per task (default: 200)</span>
 <span class="sd">        n : int or List[int], optional</span>
-<span class="sd">            Number of reference vectors per task (default: 50)</span>
+<span class="sd">            Requested number of reference vectors per task</span>
+<span class="sd">            (default: 55 when the task has 10 objectives, otherwise 50)</span>
 <span class="sd">        alpha : float, optional</span>
 <span class="sd">            Exponent for theta progression (default: 2.0)</span>
 <span class="sd">        wmax : int, optional</span>
@@ -211,12 +212,20 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
-        <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Requested number of reference vectors (MATLAB: NV = 55 if M == 10 else 50).</span>
+        <span class="c1"># NV stays at the *requested* value in MATLAB because UniformPoint is called</span>
+        <span class="c1"># with a single output argument, so the actual vector count never overwrites it.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">nv_request</span> <span class="o">=</span> <span class="p">[</span><span class="mi">55</span> <span class="k">if</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="mi">10</span> <span class="k">else</span> <span class="mi">50</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">nv_request</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
         <span class="c1"># Generate uniform reference vectors</span>
         <span class="n">V0_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">n_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">v_i</span><span class="p">,</span> <span class="n">actual_n</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">v_i</span><span class="p">,</span> <span class="n">actual_n</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">nv_request</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
             <span class="n">V0_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">v_i</span><span class="p">)</span>
             <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">actual_n</span>
 
@@ -233,9 +242,11 @@
         <span class="n">V_list</span> <span class="o">=</span> <span class="p">[</span><span class="n">v</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">V0_list</span><span class="p">]</span>
         <span class="n">Ve_list</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">NV</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-            <span class="n">n_sub</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">NV</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">K</span><span class="p">)))</span>
-            <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">NV</span><span class="p">)[:</span><span class="n">n_sub</span><span class="p">]</span>
+            <span class="c1"># MATLAB: Ve = V(randperm(size(V,1),ceil(NV/K)),:) with NV = requested count</span>
+            <span class="n">n_avail</span> <span class="o">=</span> <span class="n">V_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">n_sub</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">nv_request</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">K</span><span class="p">)))</span>
+            <span class="n">n_sub</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_sub</span><span class="p">,</span> <span class="n">n_avail</span><span class="p">)</span>
+            <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n_avail</span><span class="p">)[:</span><span class="n">n_sub</span><span class="p">]</span>
             <span class="n">Ve_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">V_list</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">perm</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
 
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
@@ -245,6 +256,7 @@
             <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
+            <span class="n">nfes_before_pass</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span>
 
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="n">M</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
@@ -284,7 +296,7 @@
                 <span class="n">Ns</span> <span class="o">=</span> <span class="p">[]</span>
 
                 <span class="k">for</span> <span class="n">w</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">wmax</span><span class="p">):</span>
-                    <span class="c1"># Reproduction: direction-based local learning</span>
+                    <span class="c1"># Reproduction: decomposition-based local learning</span>
                     <span class="n">OffDec</span><span class="p">,</span> <span class="n">OffVel</span> <span class="o">=</span> <span class="n">_reproduction_operator</span><span class="p">(</span>
                         <span class="n">PopObj</span><span class="p">,</span> <span class="n">PopDec</span><span class="p">,</span> <span class="n">PopVel</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">Ve</span><span class="p">,</span> <span class="n">theta</span><span class="p">,</span> <span class="n">M</span>
                     <span class="p">)</span>
@@ -316,11 +328,15 @@
                 <span class="c1"># Sample selection (infill)</span>
                 <span class="n">PopNew</span> <span class="o">=</span> <span class="n">_sample_selection</span><span class="p">(</span><span class="n">PopDec</span><span class="p">,</span> <span class="n">PopObj</span><span class="p">,</span> <span class="n">V</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mu</span><span class="p">,</span> <span class="n">theta</span><span class="p">)</span>
 
-                <span class="c1"># Remove duplicates</span>
                 <span class="k">if</span> <span class="n">PopNew</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">PopNew</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="c1"># Remove duplicates against all previously evaluated solutions.</span>
+                    <span class="c1"># SAEADBLL.m evaluates PopNew verbatim and only folds duplicates</span>
+                    <span class="c1"># out afterwards in UpdataArchive, spending evaluations on points</span>
+                    <span class="c1"># whose objective values are already known; every expensive</span>
+                    <span class="c1"># algorithm in DDMTOLab filters first instead, so a duplicate</span>
+                    <span class="c1"># never consumes part of the budget.</span>
                     <span class="n">PopNew</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">PopNew</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
-                <span class="k">if</span> <span class="n">PopNew</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">PopNew</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="c1"># Limit to remaining budget</span>
                     <span class="n">remaining</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                     <span class="k">if</span> <span class="n">PopNew</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">remaining</span><span class="p">:</span>
@@ -329,7 +345,7 @@
                     <span class="c1"># Re-evaluate with expensive function</span>
                     <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">PopNew</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                    <span class="c1"># Update archive</span>
+                    <span class="c1"># Update archive A1 (MATLAB UpdataArchive: unique decision rows)</span>
                     <span class="n">arc_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">arc_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">merge_archive</span><span class="p">(</span>
                         <span class="n">arc_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">arc_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">PopNew</span><span class="p">,</span> <span class="n">new_objs</span>
                     <span class="p">)</span>
@@ -340,6 +356,10 @@
 
                     <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">PopNew</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
                     <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">PopNew</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">==</span> <span class="n">nfes_before_pass</span><span class="p">:</span>
+                <span class="c1"># No task could produce a new sample in a full pass; stop</span>
+                <span class="k">break</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -406,12 +426,12 @@
 
 
 <span class="c1"># =============================================================================</span>
-<span class="c1"># Reproduction Operator (Direction-Based Local Learning)</span>
+<span class="c1"># Reproduction Operator (Decomposition-Based Local Learning)</span>
 <span class="c1"># =============================================================================</span>
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_reproduction_operator</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_dec</span><span class="p">,</span> <span class="n">pop_vel</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">Ve</span><span class="p">,</span> <span class="n">theta</span><span class="p">,</span> <span class="n">M</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Direction-based local learning reproduction operator.</span>
+<span class="sd">    Decomposition-based local learning reproduction operator.</span>
 
 <span class="sd">    Winners are selected via APD environmental selection using sub-vectors Ve.</span>
 <span class="sd">    Losers learn from neighborhood winners via CSO-style velocity update,</span>
@@ -446,20 +466,13 @@
     <span class="c1"># Environmental selection on sub-vectors to determine winners</span>
     <span class="n">winner_idx</span><span class="p">,</span> <span class="n">winner_v_idx</span> <span class="o">=</span> <span class="n">_env_selection_with_vectors</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">Ve</span><span class="p">,</span> <span class="n">theta</span><span class="p">)</span>
 
-    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">winner_idx</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="c1"># Fallback: return GA offspring</span>
-        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">pop_dec</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">20.0</span><span class="p">)</span>
-        <span class="n">off_vel</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">off_dec</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">off_dec</span><span class="p">,</span> <span class="n">off_vel</span>
-
     <span class="n">loser_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">setdiff1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">),</span> <span class="n">winner_idx</span><span class="p">)</span>
     <span class="n">NL</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">loser_idx</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">NL</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="c1"># All are winners; return winners with mutation</span>
-        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">pop_dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">off_vel</span> <span class="o">=</span> <span class="n">pop_vel</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">_polynomial_mutation</span><span class="p">(</span><span class="n">off_dec</span><span class="p">)</span>
+        <span class="c1"># All solutions are winners: OffDec = WinnerDec, OffVel = WinnerVel (MATLAB)</span>
+        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">_polynomial_mutation</span><span class="p">(</span><span class="n">pop_dec</span><span class="p">[</span><span class="n">winner_idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+        <span class="n">off_vel</span> <span class="o">=</span> <span class="n">pop_vel</span><span class="p">[</span><span class="n">winner_idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">off_dec</span><span class="p">,</span> <span class="n">off_vel</span>
 
     <span class="n">loser_dec</span> <span class="o">=</span> <span class="n">pop_dec</span><span class="p">[</span><span class="n">loser_idx</span><span class="p">]</span>
@@ -644,7 +657,7 @@
 
     <span class="c1"># For each cluster, select the vector closest to the cluster center</span>
     <span class="n">Vindex</span> <span class="o">=</span> <span class="p">[]</span>
-    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">k</span><span class="p">):</span>
+    <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">labels</span><span class="p">):</span>
         <span class="n">current</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">labels</span> <span class="o">==</span> <span class="n">c</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">current</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
             <span class="n">Vindex</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
@@ -738,7 +751,8 @@
         <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">cosine</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
         <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">gamma</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">1.0</span><span class="p">])</span>
+        <span class="c1"># MATLAB: cosine matrix is [0] after zeroing the diagonal -&gt; acos(0) = pi/2</span>
+        <span class="n">gamma</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mi">2</span><span class="p">])</span>
 
     <span class="c1"># Associate each solution to nearest active vector</span>
     <span class="n">angle</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_obj_t</span><span class="p">,</span> <span class="n">Va</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>

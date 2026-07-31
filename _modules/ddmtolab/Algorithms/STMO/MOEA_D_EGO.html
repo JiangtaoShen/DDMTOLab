@@ -95,6 +95,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">norm</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.stats</span><span class="w"> </span><span class="kn">import</span> <span class="n">qmc</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.cluster</span><span class="w"> </span><span class="kn">import</span> <span class="n">KMeans</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
@@ -221,12 +222,19 @@
                 <span class="c1"># Optimize ETI and select batch of candidate points</span>
                 <span class="n">new_x</span> <span class="o">=</span> <span class="n">_opt_eti_fcm</span><span class="p">(</span><span class="n">M</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">actual_batch</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">models</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
 
-                <span class="c1"># Remove duplicates</span>
+                <span class="c1"># Remove duplicates, then top up so that exactly `actual_batch`</span>
+                <span class="c1"># points are evaluated per cycle (MATLAB always returns</span>
+                <span class="c1"># Batch_size query points)</span>
                 <span class="n">new_x</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">new_x</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                <span class="k">if</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">new_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">D</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">actual_batch</span><span class="p">:</span>
                     <span class="n">new_x</span> <span class="o">=</span> <span class="n">new_x</span><span class="p">[:</span><span class="n">actual_batch</span><span class="p">]</span>
+                <span class="k">while</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">actual_batch</span><span class="p">:</span>
+                    <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">actual_batch</span> <span class="o">-</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">D</span><span class="p">)</span>
+                    <span class="n">pad</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">pad</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_x</span><span class="p">])</span>
+                                            <span class="k">if</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                    <span class="k">if</span> <span class="n">pad</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="k">continue</span>
+                    <span class="n">new_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">new_x</span><span class="p">,</span> <span class="n">pad</span><span class="p">])</span> <span class="k">if</span> <span class="n">new_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">pad</span>
 
                 <span class="c1"># Expensive evaluation</span>
                 <span class="n">new_obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">new_x</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
@@ -252,15 +260,79 @@
 <span class="c1"># GP Model Building with Clustering</span>
 <span class="c1"># =============================================================================</span>
 
-<span class="n">_L1</span> <span class="o">=</span> <span class="mi">80</span>  <span class="c1"># Max cluster size for GP</span>
-<span class="n">_L2</span> <span class="o">=</span> <span class="mi">20</span>  <span class="c1"># Step size for clustering</span>
+<span class="n">_L1</span> <span class="o">=</span> <span class="mi">80</span>  <span class="c1"># Max number of training points per GP model</span>
+<span class="n">_L2</span> <span class="o">=</span> <span class="mi">20</span>  <span class="c1"># Increment of archive size that adds one more cluster</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_lhs</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Latin hypercube sample in [0, 1]^d (MATLAB ``lhsdesign`` equivalent).&quot;&quot;&quot;</span>
+    <span class="k">return</span> <span class="n">qmc</span><span class="o">.</span><span class="n">LatinHypercube</span><span class="p">(</span><span class="n">d</span><span class="o">=</span><span class="n">d</span><span class="p">)</span><span class="o">.</span><span class="n">random</span><span class="p">(</span><span class="n">n</span><span class="o">=</span><span class="n">n</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_fcm</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">cluster_n</span><span class="p">,</span> <span class="n">expo</span><span class="o">=</span><span class="mf">2.0</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">min_impro</span><span class="o">=</span><span class="mf">0.05</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Fuzzy c-means clustering.</span>
+
+<span class="sd">    Faithful port of the ``FCM`` helper embedded in PlatEMO&#39;s ``GPmodelFCM.m``,</span>
+<span class="sd">    invoked there as ``FCM(train_x, csize, [2 NaN 0.05 false])`` i.e. fuzzifier</span>
+<span class="sd">    ``expo = 2``, default ``max_iter = 100``, minimum improvement ``0.05``.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    data : np.ndarray</span>
+<span class="sd">        Data to cluster, shape (n, d)</span>
+<span class="sd">    cluster_n : int</span>
+<span class="sd">        Number of clusters</span>
+<span class="sd">    expo : float, optional</span>
+<span class="sd">        Exponent for the fuzzy partition matrix (default: 2.0)</span>
+<span class="sd">    max_iter : int, optional</span>
+<span class="sd">        Maximum number of iterations (default: 100)</span>
+<span class="sd">    min_impro : float, optional</span>
+<span class="sd">        Minimum improvement of the objective before stopping (default: 0.05)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    center : np.ndarray</span>
+<span class="sd">        Cluster centers, shape (cluster_n, d)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">data_n</span> <span class="o">=</span> <span class="n">data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># initfcm: random partition matrix whose columns sum to one</span>
+    <span class="n">U</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">cluster_n</span><span class="p">,</span> <span class="n">data_n</span><span class="p">)</span>
+    <span class="n">U</span> <span class="o">=</span> <span class="n">U</span> <span class="o">/</span> <span class="n">U</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">center</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">data</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="n">cluster_n</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">obj_prev</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_iter</span><span class="p">):</span>
+        <span class="c1"># stepfcm</span>
+        <span class="n">mf</span> <span class="o">=</span> <span class="n">U</span> <span class="o">**</span> <span class="n">expo</span>
+        <span class="n">center</span> <span class="o">=</span> <span class="p">(</span><span class="n">mf</span> <span class="o">@</span> <span class="n">data</span><span class="p">)</span> <span class="o">/</span> <span class="n">mf</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">center</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>  <span class="c1"># distfcm</span>
+        <span class="n">obj_fcn</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">dist</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="n">mf</span><span class="p">)</span>
+
+        <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">):</span>
+            <span class="n">tmp</span> <span class="o">=</span> <span class="n">dist</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mf">2.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">expo</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">))</span>
+        <span class="c1"># Singularity guard (a data point coinciding with a center)</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">tmp</span><span class="p">)):</span>
+            <span class="n">bad</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">tmp</span><span class="p">)</span>
+            <span class="n">tmp</span><span class="p">[</span><span class="n">bad</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">tmp</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">bad</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)]</span> <span class="o">=</span> <span class="mf">0.0</span>
+            <span class="n">tmp</span><span class="p">[</span><span class="n">bad</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="n">U</span> <span class="o">=</span> <span class="n">tmp</span> <span class="o">/</span> <span class="n">tmp</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">obj_prev</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">obj_fcn</span> <span class="o">-</span> <span class="n">obj_prev</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">min_impro</span><span class="p">:</span>
+            <span class="k">break</span>
+        <span class="n">obj_prev</span> <span class="o">=</span> <span class="n">obj_fcn</span>
+
+    <span class="k">return</span> <span class="n">center</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_build_gp_models_fcm</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="n">train_y</span><span class="p">,</span> <span class="n">L1</span><span class="o">=</span><span class="n">_L1</span><span class="p">,</span> <span class="n">L2</span><span class="o">=</span><span class="n">_L2</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build GP models with K-Means clustering (approximation of Fuzzy C-Means).</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Build GP models with fuzzy c-means clustering (GPmodelFCM.m).</span>
 
-<span class="sd">    When N &lt;= L1, build a single set of M GP models on all data.</span>
-<span class="sd">    When N &gt; L1, cluster data and build separate GP models per cluster.</span>
+<span class="sd">    When K &lt;= L1 all evaluated points are used directly for a single set of M</span>
+<span class="sd">    GP models. Otherwise ``csize = 1 + ceil((K-L1)/L2)`` clusters are formed and</span>
+<span class="sd">    for every cluster the L1 nearest training points are used to build M models.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -270,22 +342,21 @@
 <span class="sd">        Cluster centers, shape (csize, D)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">K</span><span class="p">,</span> <span class="n">M</span> <span class="o">=</span> <span class="n">train_y</span><span class="o">.</span><span class="n">shape</span>
-    <span class="n">D</span> <span class="o">=</span> <span class="n">train_x</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
     <span class="k">if</span> <span class="n">K</span> <span class="o">&lt;=</span> <span class="n">L1</span><span class="p">:</span>
+        <span class="c1"># All the K evaluated points are directly used for building GP models</span>
+        <span class="n">centers</span> <span class="o">=</span> <span class="n">_fcm</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">cluster_models</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
             <span class="n">model</span> <span class="o">=</span> <span class="n">gp_build</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="n">train_y</span><span class="p">[:,</span> <span class="n">j</span><span class="p">:</span><span class="n">j</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span>
             <span class="n">cluster_models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
-        <span class="n">centers</span> <span class="o">=</span> <span class="n">train_x</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">keepdims</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="k">return</span> <span class="p">[</span><span class="n">cluster_models</span><span class="p">],</span> <span class="n">centers</span>
     <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># FuzzyCM</span>
         <span class="n">csize</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">((</span><span class="n">K</span> <span class="o">-</span> <span class="n">L1</span><span class="p">)</span> <span class="o">/</span> <span class="n">L2</span><span class="p">))</span>
-        <span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="n">csize</span><span class="p">,</span> <span class="n">n_init</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-        <span class="n">kmeans</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">train_x</span><span class="p">)</span>
-        <span class="n">centers</span> <span class="o">=</span> <span class="n">kmeans</span><span class="o">.</span><span class="n">cluster_centers_</span>
+        <span class="n">centers</span> <span class="o">=</span> <span class="n">_fcm</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="n">csize</span><span class="p">)</span>
 
-        <span class="c1"># For each cluster, use L1 nearest points</span>
+        <span class="c1"># For each cluster, use the L1 nearest training points</span>
         <span class="n">dis</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
         <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dis</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>  <span class="c1"># (K, csize)</span>
 
@@ -309,13 +380,20 @@
 <span class="sd">    u : np.ndarray, shape (N, M) - predicted means</span>
 <span class="sd">    s : np.ndarray, shape (N, M) - predicted stds</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">dis</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
-    <span class="n">nearest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">dis</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-
     <span class="n">N</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">M</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
     <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
     <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">M</span><span class="p">))</span>
+
+    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">)</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">M</span><span class="p">):</span>
+            <span class="n">pred</span><span class="p">,</span> <span class="n">std</span> <span class="o">=</span> <span class="n">gp_predict</span><span class="p">(</span><span class="n">models</span><span class="p">[</span><span class="mi">0</span><span class="p">][</span><span class="n">j</span><span class="p">],</span> <span class="n">X</span><span class="p">)</span>
+            <span class="n">u</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">pred</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+            <span class="n">s</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">std</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">u</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">s</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+
+    <span class="n">dis</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
+    <span class="n">nearest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">dis</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 
     <span class="k">for</span> <span class="n">ci</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">models</span><span class="p">)):</span>
         <span class="n">mask</span> <span class="o">=</span> <span class="n">nearest</span> <span class="o">==</span> <span class="n">ci</span>
@@ -403,8 +481,8 @@
     <span class="n">B_dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">ref_vecs</span><span class="p">,</span> <span class="n">ref_vecs</span><span class="p">)</span>
     <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">B_dist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">T</span><span class="p">]</span>
 
-    <span class="c1"># Initial population</span>
-    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+    <span class="c1"># Initial population (lhsdesign in MATLAB)</span>
+    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">_lhs</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
     <span class="n">pop_mean</span> <span class="o">=</span> <span class="n">_gp_evaluate_mean_fcm</span><span class="p">(</span><span class="n">pop_x</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
     <span class="n">z</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">pop_mean</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">z_init</span><span class="p">)</span>
 
@@ -461,8 +539,8 @@
     <span class="n">B_dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">ref_vecs</span><span class="p">,</span> <span class="n">ref_vecs</span><span class="p">)</span>
     <span class="n">B</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">B_dist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)[:,</span> <span class="p">:</span><span class="n">T</span><span class="p">]</span>
 
-    <span class="c1"># Initial population</span>
-    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
+    <span class="c1"># Initial population (lhsdesign in MATLAB)</span>
+    <span class="n">pop_x</span> <span class="o">=</span> <span class="n">_lhs</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
     <span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span> <span class="o">=</span> <span class="n">_gp_evaluate_fcm</span><span class="p">(</span><span class="n">pop_x</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">centers</span><span class="p">)</span>
     <span class="n">pop_eti</span> <span class="o">=</span> <span class="n">_get_eti</span><span class="p">(</span><span class="n">pop_mean</span><span class="p">,</span> <span class="n">pop_std</span><span class="p">,</span> <span class="n">ref_vecs</span><span class="p">,</span> <span class="n">gmin</span><span class="p">,</span> <span class="n">z</span><span class="p">)</span>
 
@@ -614,7 +692,7 @@
     <span class="n">actual_batch</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">batch_size</span><span class="p">,</span> <span class="n">Q</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
     <span class="k">try</span><span class="p">:</span>
-        <span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="n">actual_batch</span><span class="p">,</span> <span class="n">n_init</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="n">actual_batch</span><span class="p">,</span> <span class="n">n_init</span><span class="o">=</span><span class="mi">10</span><span class="p">)</span>
         <span class="n">labels</span> <span class="o">=</span> <span class="n">kmeans</span><span class="o">.</span><span class="n">fit_predict</span><span class="p">(</span><span class="n">Q</span><span class="p">)</span>
     <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
         <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">Q</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="n">actual_batch</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>

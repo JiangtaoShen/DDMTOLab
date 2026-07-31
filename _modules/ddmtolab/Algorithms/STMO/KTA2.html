@@ -147,7 +147,8 @@
 <span class="sd">        problem : MTOP</span>
 <span class="sd">            Multi-task optimization problem instance</span>
 <span class="sd">        n_initial : int or List[int], optional</span>
-<span class="sd">            Number of initial samples per task (default: 11*dim-1)</span>
+<span class="sd">            Number of initial samples per task. PlatEMO&#39;s KTA2 draws</span>
+<span class="sd">            ``Problem.N`` Latin-hypercube samples, so the default is ``n``.</span>
 <span class="sd">        max_nfes : int or List[int], optional</span>
 <span class="sd">            Maximum number of function evaluations per task (default: 200)</span>
 <span class="sd">        n : int or List[int], optional</span>
@@ -201,13 +202,14 @@
         <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
         <span class="n">n_objs</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span>
 
-        <span class="c1"># Set default initial samples: 11*dim - 1</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="mi">11</span> <span class="o">*</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="mi">1</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># MATLAB: N = Problem.N; P = UniformPoint(N,Problem.D,&#39;Latin&#39;)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
         <span class="c1"># Initialize with LHS</span>
         <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
@@ -232,6 +234,7 @@
             <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
+            <span class="n">nfes_before_pass</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span>
 
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="n">M</span> <span class="o">=</span> <span class="n">n_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
@@ -307,7 +310,13 @@
                 <span class="p">)</span>
 
                 <span class="c1"># Remove duplicates against existing evaluated data</span>
+                <span class="c1"># (MATLAB: unique(...,&#39;rows&#39;) then the min-distance &gt; 1e-5 filter)</span>
                 <span class="n">offspring_decs</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">offspring_decs</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="c1"># Never exceed the remaining budget of this task</span>
+                <span class="n">remaining</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="k">if</span> <span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">remaining</span><span class="p">:</span>
+                    <span class="n">offspring_decs</span> <span class="o">=</span> <span class="n">offspring_decs</span><span class="p">[:</span><span class="n">remaining</span><span class="p">]</span>
 
                 <span class="k">if</span> <span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="c1"># Evaluate with real function</span>
@@ -329,6 +338,10 @@
 
                     <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
                     <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">offspring_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+
+            <span class="k">if</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">==</span> <span class="n">nfes_before_pass</span><span class="p">:</span>
+                <span class="c1"># No task could produce a new sample in a full pass; stop</span>
+                <span class="k">break</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -943,7 +956,12 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate offspring using SBX crossover only (no mutation).</span>
 
-<span class="sd">    Matches MATLAB OperatorGA with {proC=1, disC=20, proM=0, disM=0}.</span>
+<span class="sd">    Exact port of MATLAB ``OperatorGA(Problem,Parent,{1,20,0,0})``: the parent</span>
+<span class="sd">    matrix is split into two halves ``P1 = Parent(1:floor(N/2))`` and</span>
+<span class="sd">    ``P2 = Parent(floor(N/2)+1:2*floor(N/2))`` **without shuffling**, and each</span>
+<span class="sd">    pair (P1_j, P2_j) produces two children. The pairing is load bearing in</span>
+<span class="sd">    KTA2 because ParentCdec is ``[CA-selected ; DA-random]``, so the structured</span>
+<span class="sd">    split crosses a CA parent with a DA parent.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -955,30 +973,32 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    offdecs : np.ndarray</span>
-<span class="sd">        Offspring decision variables, shape (n, d)</span>
+<span class="sd">        Offspring decision variables, shape (2*floor(n/2), d)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
-    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
-    <span class="n">parents</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">parents</span><span class="p">)</span>
     <span class="n">num_pairs</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="k">if</span> <span class="n">num_pairs</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
 
+    <span class="n">off1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="n">off2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">num_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
     <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_pairs</span><span class="p">):</span>
-        <span class="n">offdec1</span><span class="p">,</span> <span class="n">offdec2</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">num_pairs</span> <span class="o">+</span> <span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
-        <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">offdecs</span><span class="p">,</span> <span class="n">offdec1</span><span class="p">,</span> <span class="n">offdec2</span><span class="p">))</span>
+        <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">num_pairs</span> <span class="o">+</span> <span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
+        <span class="n">off1</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">c1</span>
+        <span class="n">off2</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">c2</span>
 
-    <span class="k">if</span> <span class="n">n</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="n">offdec1</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">),</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">muc</span><span class="p">)</span>
-        <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">offdecs</span><span class="p">,</span> <span class="n">offdec1</span><span class="p">))</span>
-
-    <span class="k">return</span> <span class="n">offdecs</span>
+    <span class="c1"># MATLAB stacks all first children then all second children</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">off1</span><span class="p">,</span> <span class="n">off2</span><span class="p">])</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_mutation_only</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">20</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate offspring using polynomial mutation only (no crossover).</span>
 
-<span class="sd">    Matches MATLAB OperatorGA with {proC=0, disC=0, proM=1, disM=20}.</span>
+<span class="sd">    Exact port of MATLAB ``OperatorGA(Problem,Parent,{0,0,1,20})``. With</span>
+<span class="sd">    ``proC = 0`` every SBX beta is forced to 1, so the crossover step returns the</span>
+<span class="sd">    parents unchanged; PlatEMO then keeps only the first ``2*floor(N/2)`` parents</span>
+<span class="sd">    and mutates them.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -990,12 +1010,13 @@
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    offdecs : np.ndarray</span>
-<span class="sd">        Offspring decision variables, shape (n, d)</span>
+<span class="sd">        Offspring decision variables, shape (2*floor(n/2), d)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
-    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
-    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-        <span class="n">offdecs</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="n">mu</span><span class="o">=</span><span class="n">mum</span><span class="p">)</span>
+    <span class="n">n_off</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">n</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span>
+    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_off</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_off</span><span class="p">):</span>
+        <span class="n">offdecs</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="p">:],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">),</span> <span class="n">mu</span><span class="o">=</span><span class="n">mum</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">offdecs</span>
 </pre></div>
 

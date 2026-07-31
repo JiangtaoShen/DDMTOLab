@@ -247,7 +247,11 @@
             <span class="n">mDec</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
         <span class="n">reduce_flag</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c1"># MToP increments Algo.Gen inside notTerminated *before* the loop body</span>
+        <span class="c1"># runs, so the first executed generation is Gen = 2. Matching the</span>
+        <span class="c1"># counter keeps the mod(Gen, TGap) / mod(Gen, Gap) schedules and the</span>
+        <span class="c1"># r_suc window slices identical to the reference.</span>
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">2</span>
 
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
@@ -463,8 +467,10 @@
                             <span class="p">[</span><span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">replaced_decs</span><span class="p">])</span>
                     <span class="k">else</span><span class="p">:</span>
                         <span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">replaced_decs</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
-                        <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">]))[:</span><span class="n">n</span><span class="p">]</span>
+                    <span class="c1"># MATLAB caps the archive at the *current* population size</span>
+                    <span class="c1"># (length(population{t})), which halves after reduction.</span>
+                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">n_t</span><span class="p">:</span>
+                        <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">]))[:</span><span class="n">n_t</span><span class="p">]</span>
                         <span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">archives</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">perm</span><span class="p">]</span>
 
                 <span class="c1"># === Selection: replace winners ===</span>
@@ -473,6 +479,8 @@
                 <span class="n">pop_cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">replace_all</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_cons</span><span class="p">[</span><span class="n">replace_all</span><span class="p">]</span>
 
             <span class="c1"># === RMP adaptation ===</span>
+            <span class="c1"># r_suc*[t] holds the MATLAB array with a leading 1 at index 0, so</span>
+            <span class="c1"># MATLAB&#39;s r_suc{t}((Gen-Gap+1):Gen) is r_suc[t][gen-Gap:gen] here.</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">gen</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">Gap</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">and</span> <span class="n">gen</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Gap</span><span class="p">:</span>
                     <span class="n">r1_avg</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">r_suc1</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">gen</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">Gap</span><span class="p">:</span><span class="n">gen</span><span class="p">])</span>
@@ -563,19 +571,26 @@
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_tournament</span><span class="p">(</span><span class="n">parent_objs</span><span class="p">,</span> <span class="n">parent_cons</span><span class="p">,</span> <span class="n">off_objs</span><span class="p">,</span> <span class="n">off_cons</span><span class="p">,</span> <span class="n">maxC</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;1-to-1 tournament selection: offspring replaces parent if better.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    One-to-one selection matching MTO-Platform ``Selection_Tournament``</span>
+<span class="sd">    (epsilon = 0): the parent is replaced only if</span>
+
+<span class="sd">    - both are infeasible and the offspring has a strictly lower CV, or</span>
+<span class="sd">    - both are feasible and the offspring has a strictly lower objective.</span>
+
+<span class="sd">    A feasible offspring therefore never displaces an infeasible parent, and</span>
+<span class="sd">    two infeasible individuals with equal CV keep the parent.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">n_ind</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">parent_objs</span><span class="p">)</span>
-    <span class="n">replace</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_ind</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
     <span class="n">p_cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">parent_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> \
         <span class="k">if</span> <span class="n">maxC</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_ind</span><span class="p">)</span>
     <span class="n">o_cv</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">off_cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> \
         <span class="k">if</span> <span class="n">maxC</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_ind</span><span class="p">)</span>
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_ind</span><span class="p">):</span>
-        <span class="k">if</span> <span class="n">o_cv</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">p_cv</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
-            <span class="n">replace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="k">elif</span> <span class="n">o_cv</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="n">p_cv</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">and</span> <span class="n">off_objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">parent_objs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="mi">0</span><span class="p">]:</span>
-            <span class="n">replace</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-    <span class="k">return</span> <span class="n">replace</span>
+
+    <span class="n">replace_cv</span> <span class="o">=</span> <span class="p">(</span><span class="n">p_cv</span> <span class="o">&gt;</span> <span class="n">o_cv</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">p_cv</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">o_cv</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">equal_cv</span> <span class="o">=</span> <span class="p">(</span><span class="n">p_cv</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">o_cv</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">replace_f</span> <span class="o">=</span> <span class="n">parent_objs</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">off_objs</span><span class="p">[:,</span> <span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="p">(</span><span class="n">equal_cv</span> <span class="o">&amp;</span> <span class="n">replace_f</span><span class="p">)</span> <span class="o">|</span> <span class="n">replace_cv</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_generation_transfer</span><span class="p">(</span><span class="n">parent_decs</span><span class="p">,</span> <span class="n">transpop_decs</span><span class="p">,</span> <span class="n">F</span><span class="p">,</span> <span class="n">CR</span><span class="p">,</span>

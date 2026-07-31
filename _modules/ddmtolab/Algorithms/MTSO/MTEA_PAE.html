@@ -99,6 +99,17 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_lhsdesign</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Latin hypercube sample of shape (n, d) in [0, 1] (MATLAB lhsdesign).&quot;&quot;&quot;</span>
+    <span class="n">edges</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+    <span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="n">samples</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="n">edges</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">edges</span><span class="p">[</span><span class="mi">1</span><span class="p">:])</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">shuffle</span><span class="p">(</span><span class="n">samples</span><span class="p">)</span>
+        <span class="n">matrix</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">samples</span>
+    <span class="k">return</span> <span class="n">matrix</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_kernelmatrix_poly</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">X2</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Polynomial kernel matrix K = (X^T @ X2 + 0.1)^5.</span>
 
@@ -313,20 +324,14 @@
         <span class="c1"># Generation gap between distribution snapshots</span>
         <span class="n">SegGap</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">//</span> <span class="p">(</span><span class="n">n</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">Seg</span><span class="p">))</span>
 
-        <span class="c1"># Initialize populations in [0,1]^D_t per task</span>
-        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+        <span class="c1"># Initialize populations by Latin hypercube sampling in the unified</span>
+        <span class="c1"># [0, 1]^maxD space (MATLAB: Decs = lhsdesign(Prob.N, max(Prob.D)))</span>
+        <span class="n">pop_decs</span> <span class="o">=</span> <span class="p">[</span><span class="n">_lhsdesign</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">maxD</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="p">[</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
         <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
         <span class="n">nfes</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
-        <span class="c1"># Pad to maxD space (extra dims filled with random)</span>
-        <span class="n">pop_decs</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">maxD</span><span class="p">:</span>
-                <span class="n">pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">maxD</span> <span class="o">-</span> <span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-                <span class="n">pop_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">pad</span><span class="p">]))</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">pop_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
         <span class="n">pop_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">objs</span><span class="p">]</span>
         <span class="n">pop_cons</span> <span class="o">=</span> <span class="p">[</span><span class="n">c</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">cons</span><span class="p">]</span>
 
@@ -351,7 +356,9 @@
         <span class="n">SuccG</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">((</span><span class="n">nt</span><span class="p">,</span> <span class="mi">2</span><span class="p">))</span>
         <span class="n">SumG</span> <span class="o">=</span> <span class="n">SuccG</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-        <span class="n">gen</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># MATLAB&#39;s Algo.Gen is already 2 inside the first loop body, because</span>
+        <span class="c1"># notTerminated() counted the (evaluated) initialization generation.</span>
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
@@ -591,13 +598,14 @@
                 <span class="n">op</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="c1"># GA: SBX crossover + polynomial mutation</span>
+                <span class="c1"># NOTE: crossover()/mutation() take 1-D decision vectors; a</span>
+                <span class="c1"># (1, D) array would make SBX draw a single scalar beta and</span>
+                <span class="c1"># polynomial mutation use prob_m = 1/1.</span>
                 <span class="n">p1</span> <span class="o">=</span> <span class="n">indorder</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">p2</span> <span class="o">=</span> <span class="n">indorder</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">2</span><span class="p">]</span>
-                <span class="n">par1</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-                <span class="n">par2</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-                <span class="n">child</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">par1</span><span class="p">,</span> <span class="n">par2</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">MuC</span><span class="p">)</span>
-                <span class="n">child</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">MuM</span><span class="p">)</span>
-                <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">child</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">child</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">crossover</span><span class="p">(</span><span class="n">pop_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">],</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">MuC</span><span class="p">)</span>
+                <span class="n">child</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">MuM</span><span class="p">)</span>
+                <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">child</span>
                 <span class="n">op</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span>
 
             <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>

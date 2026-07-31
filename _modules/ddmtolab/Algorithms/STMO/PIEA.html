@@ -230,11 +230,21 @@
                 <span class="k">break</span>
 
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="n">NI</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">indicators</span> <span class="o">=</span> <span class="n">indicators_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                <span class="n">n_arc_now</span> <span class="o">=</span> <span class="n">arc_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="c1"># PlatEMO&#39;s PIEA uses NI = Problem.N and generates exactly NI</span>
+                <span class="c1"># initial samples, so the mating-pool size, the DE donor sets and</span>
+                <span class="c1"># the random archive samples all share the same size.  `Arc` and</span>
+                <span class="c1"># the donor sets are drawn from the archive *without* replacement</span>
+                <span class="c1"># (randperm(end,NI)), so NI can never exceed the archive size.</span>
+                <span class="c1"># When the caller supplies n_initial &lt; n the archive is smaller</span>
+                <span class="c1"># than n for the first iterations; deriving NI from the archive</span>
+                <span class="c1"># keeps every operand of the DE operator consistent and</span>
+                <span class="c1"># reproduces the reference exactly whenever n_initial &gt;= n.</span>
+                <span class="n">NI</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">n_arc_now</span><span class="p">)</span>
 
-                <span class="c1"># Estimate Pareto front shape</span>
-                <span class="n">Lp</span> <span class="o">=</span> <span class="n">_shape_estimate</span><span class="p">(</span><span class="n">arc_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">NI</span><span class="p">)</span>
+                <span class="c1"># Estimate Pareto front shape (Shape_Estimate(A,Problem.N))</span>
+                <span class="n">Lp</span> <span class="o">=</span> <span class="n">_shape_estimate</span><span class="p">(</span><span class="n">arc_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
                 <span class="c1"># Choose the working indicator based on adaptive probabilities</span>
                 <span class="n">rand_val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
@@ -260,8 +270,11 @@
                 <span class="n">Arc</span> <span class="o">=</span> <span class="n">Dec</span><span class="p">[</span><span class="n">perm</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
                 <span class="k">for</span> <span class="n">r</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">r_max</span> <span class="o">+</span> <span class="mi">1</span><span class="p">):</span>
-                    <span class="c1"># Tournament selection (higher fitness is better)</span>
-                    <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="n">fitness</span><span class="p">)</span>
+                    <span class="c1"># Tournament selection.  PlatEMO calls</span>
+                    <span class="c1"># TournamentSelection(2,N,-Fitness); the shared helper (like</span>
+                    <span class="c1"># PlatEMO) treats *smaller* values as better, so the fitness</span>
+                    <span class="c1"># must be negated because larger PIEA fitness is better.</span>
+                    <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">NI</span><span class="p">,</span> <span class="o">-</span><span class="n">fitness</span><span class="p">)</span>
                     <span class="c1"># DE generation: parents selected from Dec, mutants from Arc and Dec</span>
                     <span class="n">offspring_dec</span> <span class="o">=</span> <span class="n">_de_operator</span><span class="p">(</span><span class="n">Dec</span><span class="p">[</span><span class="n">mating_pool</span><span class="p">],</span> <span class="n">Arc</span><span class="p">,</span> <span class="n">Dec</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n_arc</span><span class="p">)[:</span><span class="n">NI</span><span class="p">]])</span>
                     <span class="c1"># Predict fitness with surrogate</span>
@@ -628,7 +641,19 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">scaler</span> <span class="o">=</span> <span class="n">StandardScaler</span><span class="p">()</span>
     <span class="n">X_scaled</span> <span class="o">=</span> <span class="n">scaler</span><span class="o">.</span><span class="n">fit_transform</span><span class="p">(</span><span class="n">decs</span><span class="p">)</span>
-    <span class="n">model</span> <span class="o">=</span> <span class="n">SVR</span><span class="p">(</span><span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;rbf&#39;</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="s1">&#39;auto&#39;</span><span class="p">)</span>
+    <span class="c1"># MATLAB&#39;s fitrsvm(...,&#39;KernelFunction&#39;,&#39;rbf&#39;,&#39;KernelScale&#39;,&#39;auto&#39;,</span>
+    <span class="c1"># &#39;Standardize&#39;,true) scales the box constraint and the epsilon-insensitive</span>
+    <span class="c1"># band with the spread of the responses (BoxConstraint = iqr(Y)/1.349,</span>
+    <span class="c1"># Epsilon = iqr(Y)/13.49).  sklearn&#39;s fixed defaults (C=1, epsilon=0.1) are</span>
+    <span class="c1"># meaningless here because the three PIEA indicators live on very different</span>
+    <span class="c1"># scales (tanh in [-1,1], -distance, and an I_epsilon+ sum of order N).</span>
+    <span class="n">q1</span><span class="p">,</span> <span class="n">q3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">75</span><span class="p">])</span>
+    <span class="n">iqr</span> <span class="o">=</span> <span class="n">q3</span> <span class="o">-</span> <span class="n">q1</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">iqr</span><span class="p">)</span> <span class="ow">or</span> <span class="n">iqr</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">iqr</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">iqr</span><span class="p">)</span> <span class="ow">or</span> <span class="n">iqr</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">iqr</span> <span class="o">=</span> <span class="mf">1.0</span>
+    <span class="n">model</span> <span class="o">=</span> <span class="n">SVR</span><span class="p">(</span><span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;rbf&#39;</span><span class="p">,</span> <span class="n">gamma</span><span class="o">=</span><span class="s1">&#39;scale&#39;</span><span class="p">,</span> <span class="n">C</span><span class="o">=</span><span class="n">iqr</span> <span class="o">/</span> <span class="mf">1.349</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="n">iqr</span> <span class="o">/</span> <span class="mf">13.49</span><span class="p">)</span>
     <span class="n">model</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">X_scaled</span><span class="p">,</span> <span class="n">fitness</span><span class="p">)</span>
     <span class="k">return</span> <span class="n">model</span><span class="p">,</span> <span class="n">scaler</span>
 
@@ -659,11 +684,16 @@
 <span class="c1"># DE Operator (matching MATLAB OperatorDE)</span>
 <span class="c1"># =============================================================================</span>
 
-<span class="k">def</span><span class="w"> </span><span class="nf">_de_operator</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">donors1</span><span class="p">,</span> <span class="n">donors2</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.9</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_de_operator</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">donors1</span><span class="p">,</span> <span class="n">donors2</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">pro_m</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">dis_m</span><span class="o">=</span><span class="mf">20.0</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Generate offspring using DE/current-to-rand/1 operator.</span>
+<span class="sd">    Generate offspring with PlatEMO&#39;s ``OperatorDE``.</span>
 
-<span class="sd">    Matches the behavior of MATLAB&#39;s OperatorDE(Problem, parents, donors1, donors2).</span>
+<span class="sd">    Exact port of ``OperatorDE(Problem,P1,P2,P3)`` with its default parameter</span>
+<span class="sd">    set ``{CR,F,proM,disM} = {1,0.5,1,20}``: a differential mutation</span>
+<span class="sd">    ``P1 + F*(P2-P3)`` applied on the sites selected with probability ``CR``,</span>
+<span class="sd">    followed by polynomial mutation (expected ``proM`` mutated variables,</span>
+<span class="sd">    distribution index ``disM``).  Decision variables live in the normalized</span>
+<span class="sd">    ``[0,1]`` box, so ``lower = 0`` and ``upper = 1``.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -674,9 +704,13 @@
 <span class="sd">    donors2 : np.ndarray</span>
 <span class="sd">        Second donor population, shape (N, D)</span>
 <span class="sd">    CR : float</span>
-<span class="sd">        Crossover rate</span>
+<span class="sd">        Crossover rate of differential evolution</span>
 <span class="sd">    F : float</span>
 <span class="sd">        Differential weight</span>
+<span class="sd">    pro_m : float</span>
+<span class="sd">        Expectation of the number of mutated variables</span>
+<span class="sd">    dis_m : float</span>
+<span class="sd">        Distribution index of the polynomial mutation</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -685,20 +719,27 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">N</span><span class="p">,</span> <span class="n">D</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
 
-    <span class="c1"># DE/rand/1 mutation</span>
-    <span class="n">mutant</span> <span class="o">=</span> <span class="n">parents</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">donors1</span> <span class="o">-</span> <span class="n">donors2</span><span class="p">)</span>
+    <span class="c1"># --- Differential evolution ---</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">CR</span>
+    <span class="n">offspring</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">offspring</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">donors1</span><span class="p">[</span><span class="n">site</span><span class="p">]</span> <span class="o">-</span> <span class="n">donors2</span><span class="p">[</span><span class="n">site</span><span class="p">])</span>
 
-    <span class="c1"># Binomial crossover</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">CR</span>
-    <span class="c1"># Ensure at least one dimension is taken from mutant</span>
-    <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">N</span><span class="p">)</span>
-    <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
-        <span class="n">mask</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="n">j_rand</span><span class="p">[</span><span class="n">idx</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
-
-    <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">mutant</span><span class="p">,</span> <span class="n">parents</span><span class="p">)</span>
-
-    <span class="c1"># Clip to [0, 1]</span>
+    <span class="c1"># --- Polynomial mutation (lower = 0, upper = 1) ---</span>
+    <span class="n">site</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">pro_m</span> <span class="o">/</span> <span class="n">D</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
     <span class="n">offspring</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">temp</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">m</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">m</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">x</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="n">dis_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">dis_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">temp</span> <span class="o">=</span> <span class="n">site</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">mu</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">temp</span><span class="p">):</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+        <span class="n">m</span> <span class="o">=</span> <span class="n">mu</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span>
+        <span class="n">offspring</span><span class="p">[</span><span class="n">temp</span><span class="p">]</span> <span class="o">=</span> <span class="n">x</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">m</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">x</span> <span class="o">**</span> <span class="p">(</span><span class="n">dis_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">dis_m</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)))</span>
 
     <span class="k">return</span> <span class="n">offspring</span>
 

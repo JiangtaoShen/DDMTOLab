@@ -204,9 +204,10 @@
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
                     <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="c1"># Per-task state: nets and ratio_old</span>
+        <span class="c1"># Per-task state: nets, ratio_old and the size of the last infill batch</span>
         <span class="n">nets</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
         <span class="n">ratio_olds</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
+        <span class="n">n_new_last</span> <span class="o">=</span> <span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
 
         <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
             <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
@@ -221,10 +222,10 @@
                 <span class="c1"># Generate reference vectors</span>
                 <span class="n">W</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">uniform_point</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="n">M</span><span class="p">)</span>
 
-                <span class="c1"># Prepare training data: select from archive</span>
-                <span class="k">if</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">11</span> <span class="o">*</span> <span class="n">D</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="c1"># Prepare training data: SelectTrainData(A, 11*D-1, length(New))</span>
+                <span class="k">if</span> <span class="n">n_new_last</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">tr_x</span><span class="p">,</span> <span class="n">tr_y</span> <span class="o">=</span> <span class="n">_select_train_data</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">11</span> <span class="o">*</span> <span class="n">D</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span>
-                                                    <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ke</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
+                                                    <span class="n">n_new_last</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
                 <span class="k">else</span><span class="p">:</span>
                     <span class="n">tr_x</span><span class="p">,</span> <span class="n">tr_y</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
@@ -232,11 +233,11 @@
                 <span class="n">tr_xx</span><span class="p">,</span> <span class="n">ps</span> <span class="o">=</span> <span class="n">_mapminmax</span><span class="p">(</span><span class="n">tr_x</span><span class="p">)</span>
                 <span class="n">tr_yy</span><span class="p">,</span> <span class="n">qs</span> <span class="o">=</span> <span class="n">_mapminmax</span><span class="p">(</span><span class="n">tr_y</span><span class="p">)</span>
 
-                <span class="c1"># Train or update the dropout neural network</span>
+                <span class="c1"># MATLAB trains the net once before the loop (80000 steps) and then</span>
+                <span class="c1"># calls updatemodel (8000 steps) at the top of every iteration</span>
                 <span class="k">if</span> <span class="n">nets</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                     <span class="n">nets</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">_train_model</span><span class="p">(</span><span class="n">tr_xx</span><span class="p">,</span> <span class="n">tr_yy</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">M</span><span class="p">,</span> <span class="n">n_iter</span><span class="o">=</span><span class="mi">80000</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">_update_model</span><span class="p">(</span><span class="n">nets</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">tr_xx</span><span class="p">,</span> <span class="n">tr_yy</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">n_iter</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
+                <span class="n">_update_model</span><span class="p">(</span><span class="n">nets</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">tr_xx</span><span class="p">,</span> <span class="n">tr_yy</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">n_iter</span><span class="o">=</span><span class="mi">8000</span><span class="p">)</span>
 
                 <span class="c1"># Generate random population and estimate</span>
                 <span class="n">pop_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="n">D</span><span class="p">)</span>
@@ -272,8 +273,11 @@
                 <span class="n">pop_new</span> <span class="o">=</span> <span class="n">_individual_select</span><span class="p">(</span><span class="n">pop_dec</span><span class="p">,</span> <span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_mse</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">ke</span><span class="p">,</span> <span class="n">flag</span><span class="p">)</span>
                 <span class="n">ratio_olds</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">ratio</span>
 
-                <span class="c1"># Remove duplicates</span>
-                <span class="n">pop_new</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">pop_new</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="c1"># Drop points already evaluated; PlatEMO does not deduplicate, so keep</span>
+                <span class="c1"># the raw candidates when the filter would empty the batch</span>
+                <span class="n">filtered</span> <span class="o">=</span> <span class="n">remove_duplicates</span><span class="p">(</span><span class="n">pop_new</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="k">if</span> <span class="n">filtered</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                    <span class="n">pop_new</span> <span class="o">=</span> <span class="n">filtered</span>
 
                 <span class="k">if</span> <span class="n">pop_new</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
                     <span class="n">remaining</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
@@ -284,6 +288,7 @@
                     <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pop_new</span><span class="p">])</span>
                     <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">])</span>
                     <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">pop_new</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="n">n_new_last</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">pop_new</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
                     <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">pop_new</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
@@ -503,13 +508,12 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Adaptive reference point management.&quot;&quot;&quot;</span>
     <span class="c1"># Delete dominated solutions and duplicates</span>
     <span class="k">if</span> <span class="n">archive_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-        <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">archive_obj</span><span class="p">,</span> <span class="n">archive_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+        <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">archive_obj</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
         <span class="n">nd_mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">==</span> <span class="mi">1</span>
         <span class="n">archive_obj</span> <span class="o">=</span> <span class="n">archive_obj</span><span class="p">[</span><span class="n">nd_mask</span><span class="p">]</span>
-        <span class="c1"># Remove duplicate rows</span>
+        <span class="c1"># MATLAB unique(...,&#39;rows&#39;) both deduplicates and sorts rows lexicographically</span>
         <span class="k">if</span> <span class="n">archive_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">_</span><span class="p">,</span> <span class="n">unique_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">archive_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-            <span class="n">archive_obj</span> <span class="o">=</span> <span class="n">archive_obj</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">unique_idx</span><span class="p">)]</span>
+            <span class="n">archive_obj</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">archive_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
     <span class="n">NA</span> <span class="o">=</span> <span class="n">archive_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">NW</span> <span class="o">=</span> <span class="n">W</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
@@ -608,6 +612,57 @@
     <span class="k">return</span> <span class="n">indices</span><span class="p">,</span> <span class="n">range_val</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_igd_ns_fitness</span><span class="p">(</span><span class="n">rank</span><span class="p">,</span> <span class="n">dis</span><span class="p">,</span> <span class="n">convergence</span><span class="p">,</span> <span class="n">noncontributing</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    IGD-NS metric contribution of every solution (shared by mating/environmental</span>
+<span class="sd">    selection). Vectorized transcription of the per-solution MATLAB loop.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    rank : np.ndarray</span>
+<span class="sd">        Solution indices sorted per reference point, shape (n_rows, NR)</span>
+<span class="sd">    dis : np.ndarray</span>
+<span class="sd">        Corresponding sorted distances, shape (n_rows, NR)</span>
+<span class="sd">    convergence : np.ndarray</span>
+<span class="sd">        Minimum distance of each solution to any reference point, shape (N,)</span>
+<span class="sd">    noncontributing : np.ndarray</span>
+<span class="sd">        Boolean mask of solutions that are nearest to no reference point</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Total number of solutions the indices refer to</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    metric : np.ndarray</span>
+<span class="sd">        Metric value of each solution (inf for solutions that are not evaluated)</span>
+<span class="sd">    METRIC : float</span>
+<span class="sd">        Metric value of the whole set</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">METRIC</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">convergence</span><span class="p">[</span><span class="n">noncontributing</span><span class="p">])</span>
+    <span class="n">metric</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+
+    <span class="c1"># Noncontributing solutions</span>
+    <span class="n">metric</span><span class="p">[</span><span class="n">noncontributing</span><span class="p">]</span> <span class="o">=</span> <span class="n">METRIC</span> <span class="o">-</span> <span class="n">convergence</span><span class="p">[</span><span class="n">noncontributing</span><span class="p">]</span>
+
+    <span class="c1"># Contributing solutions: aggregate the reference points each of them owns</span>
+    <span class="n">owners</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">seconds</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">rank</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">s0</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">owners</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:],</span> <span class="n">minlength</span><span class="o">=</span><span class="n">N</span><span class="p">)</span>
+    <span class="n">s1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">bincount</span><span class="p">(</span><span class="n">owners</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">dis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="k">if</span> <span class="n">dis</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:],</span>
+                     <span class="n">minlength</span><span class="o">=</span><span class="n">N</span><span class="p">)</span>
+
+    <span class="c1"># Set (not multiset) of runners-up per owner, restricted to noncontributing</span>
+    <span class="n">second_mat</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">second_mat</span><span class="p">[</span><span class="n">owners</span><span class="p">,</span> <span class="n">seconds</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">second_mat</span> <span class="o">&amp;=</span> <span class="n">noncontributing</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">conv_sum</span> <span class="o">=</span> <span class="n">second_mat</span> <span class="o">@</span> <span class="n">convergence</span>
+
+    <span class="n">contributing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+    <span class="n">contributing</span><span class="p">[</span><span class="n">owners</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">metric</span><span class="p">[</span><span class="n">contributing</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">METRIC</span> <span class="o">-</span> <span class="n">s0</span><span class="p">[</span><span class="n">contributing</span><span class="p">]</span> <span class="o">+</span> <span class="n">s1</span><span class="p">[</span><span class="n">contributing</span><span class="p">]</span>
+                            <span class="o">-</span> <span class="n">conv_sum</span><span class="p">[</span><span class="n">contributing</span><span class="p">])</span>
+    <span class="k">return</span> <span class="n">metric</span><span class="p">,</span> <span class="n">METRIC</span>
+
+
 <span class="k">def</span><span class="w"> </span><span class="nf">_last_selection</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">ref_point</span><span class="p">,</span> <span class="n">range_val</span><span class="p">,</span> <span class="n">K</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Select K solutions from the last front based on IGD-NS metric contribution.&quot;&quot;&quot;</span>
     <span class="n">N</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
@@ -625,48 +680,23 @@
     <span class="n">remain</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
 
     <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">remain</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">K</span><span class="p">:</span>
-        <span class="n">remain_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">remain</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">n_remain</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">remain_idx</span><span class="p">)</span>
-
         <span class="c1"># Identify noncontributing solutions</span>
-        <span class="n">noncontributing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+        <span class="n">noncontributing</span> <span class="o">=</span> <span class="n">remain</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">noncontributing</span><span class="p">[</span><span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]]</span> <span class="o">=</span> <span class="kc">False</span>
-        <span class="n">noncontributing</span> <span class="o">&amp;=</span> <span class="n">remain</span>
 
-        <span class="n">METRIC</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">convergence</span><span class="p">[</span><span class="n">noncontributing</span><span class="p">])</span>
-        <span class="n">metric</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-
-        <span class="c1"># Fitness of noncontributing</span>
-        <span class="n">nc_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">noncontributing</span> <span class="o">&amp;</span> <span class="n">remain</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">nc_idx</span><span class="p">:</span>
-            <span class="n">metric</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">METRIC</span> <span class="o">-</span> <span class="n">convergence</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>
-
-        <span class="c1"># Fitness of contributing</span>
-        <span class="n">contributing</span> <span class="o">=</span> <span class="n">remain</span> <span class="o">&amp;</span> <span class="o">~</span><span class="n">noncontributing</span>
-        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">contributing</span><span class="p">)[</span><span class="mi">0</span><span class="p">]:</span>
-            <span class="n">temp</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">==</span> <span class="n">p</span>
-            <span class="n">nc_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-            <span class="n">nc_new</span><span class="p">[</span><span class="n">rank</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">temp</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="n">nc_new</span> <span class="o">&amp;=</span> <span class="n">noncontributing</span>
-            <span class="n">metric</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">METRIC</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">temp</span><span class="p">])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">temp</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
-                <span class="n">convergence</span><span class="p">[</span><span class="n">nc_new</span><span class="p">])</span>
+        <span class="n">metric</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_igd_ns_fitness</span><span class="p">(</span><span class="n">rank</span><span class="p">,</span> <span class="n">dis</span><span class="p">,</span> <span class="n">convergence</span><span class="p">,</span> <span class="n">noncontributing</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
 
         <span class="c1"># Delete worst</span>
         <span class="n">metric</span><span class="p">[</span><span class="o">~</span><span class="n">remain</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-        <span class="n">delete</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">metric</span><span class="p">)</span>
+        <span class="n">delete</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">metric</span><span class="p">))</span>
         <span class="n">remain</span><span class="p">[</span><span class="n">delete</span><span class="p">]</span> <span class="o">=</span> <span class="kc">False</span>
 
-        <span class="c1"># Update dis and rank: remove deleted solution</span>
-        <span class="n">keep_mask</span> <span class="o">=</span> <span class="n">rank</span> <span class="o">!=</span> <span class="n">delete</span>
-        <span class="n">n_now</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">remain</span><span class="p">)</span>
-        <span class="n">new_dis</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_now</span><span class="p">,</span> <span class="n">NR</span><span class="p">))</span>
-        <span class="n">new_rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_now</span><span class="p">,</span> <span class="n">NR</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">NR</span><span class="p">):</span>
-            <span class="n">col_keep</span> <span class="o">=</span> <span class="n">keep_mask</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span>
-            <span class="n">new_dis</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">dis</span><span class="p">[</span><span class="n">col_keep</span><span class="p">,</span> <span class="n">j</span><span class="p">][:</span><span class="n">n_now</span><span class="p">]</span>
-            <span class="n">new_rank</span><span class="p">[:,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="n">col_keep</span><span class="p">,</span> <span class="n">j</span><span class="p">][:</span><span class="n">n_now</span><span class="p">]</span>
-        <span class="n">dis</span> <span class="o">=</span> <span class="n">new_dis</span>
-        <span class="n">rank</span> <span class="o">=</span> <span class="n">new_rank</span>
+        <span class="c1"># Update dis and rank: remove the deleted solution from every column</span>
+        <span class="c1"># (MATLAB reshapes in column-major order, hence the transposes)</span>
+        <span class="n">n_now</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">remain</span><span class="p">))</span>
+        <span class="n">keep</span> <span class="o">=</span> <span class="p">(</span><span class="n">rank</span> <span class="o">!=</span> <span class="n">delete</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">dis</span> <span class="o">=</span> <span class="n">dis</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">NR</span><span class="p">,</span> <span class="n">n_now</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
+        <span class="n">rank</span> <span class="o">=</span> <span class="n">rank</span><span class="o">.</span><span class="n">T</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">NR</span><span class="p">,</span> <span class="n">n_now</span><span class="p">)</span><span class="o">.</span><span class="n">T</span>
 
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">remain</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
 
@@ -674,7 +704,6 @@
 <span class="k">def</span><span class="w"> </span><span class="nf">_mating_selection</span><span class="p">(</span><span class="n">obj</span><span class="p">,</span> <span class="n">ref_point</span><span class="p">,</span> <span class="n">range_val</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;AR-MOEA mating selection based on IGD-NS fitness.&quot;&quot;&quot;</span>
     <span class="n">N</span> <span class="o">=</span> <span class="n">obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">NR</span> <span class="o">=</span> <span class="n">ref_point</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
     <span class="n">translated</span> <span class="o">=</span> <span class="n">obj</span> <span class="o">-</span> <span class="n">range_val</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
     <span class="n">distance</span> <span class="o">=</span> <span class="n">_cal_distance</span><span class="p">(</span><span class="n">translated</span><span class="p">,</span> <span class="n">ref_point</span><span class="p">)</span>
@@ -686,23 +715,10 @@
     <span class="n">noncontributing</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
     <span class="n">noncontributing</span><span class="p">[</span><span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]]</span> <span class="o">=</span> <span class="kc">False</span>
 
-    <span class="n">METRIC</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">convergence</span><span class="p">[</span><span class="n">noncontributing</span><span class="p">])</span>
+    <span class="n">fitness</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">_igd_ns_fitness</span><span class="p">(</span><span class="n">rank</span><span class="p">,</span> <span class="n">dis</span><span class="p">,</span> <span class="n">convergence</span><span class="p">,</span> <span class="n">noncontributing</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
 
-    <span class="n">fitness</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-    <span class="n">nc_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">noncontributing</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">nc_idx</span><span class="p">:</span>
-        <span class="n">fitness</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">METRIC</span> <span class="o">-</span> <span class="n">convergence</span><span class="p">[</span><span class="n">p</span><span class="p">]</span>
-
-    <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">noncontributing</span><span class="p">)[</span><span class="mi">0</span><span class="p">]:</span>
-        <span class="n">temp</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">==</span> <span class="n">p</span>
-        <span class="n">nc_new</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-        <span class="n">nc_new</span><span class="p">[</span><span class="n">rank</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">temp</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="n">nc_new</span> <span class="o">&amp;=</span> <span class="n">noncontributing</span>
-        <span class="n">fitness</span><span class="p">[</span><span class="n">p</span><span class="p">]</span> <span class="o">=</span> <span class="n">METRIC</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">temp</span><span class="p">])</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dis</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="n">temp</span><span class="p">])</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span>
-            <span class="n">convergence</span><span class="p">[</span><span class="n">nc_new</span><span class="p">])</span>
-
-    <span class="c1"># Binary tournament selection (higher fitness = worse, so select by -fitness)</span>
-    <span class="n">n_select</span> <span class="o">=</span> <span class="p">(</span><span class="n">N</span> <span class="o">//</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="mi">2</span>
+    <span class="c1"># Binary tournament selection on -Fitness, i.e. keep the larger IGD-NS metric</span>
+    <span class="n">n_select</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">N</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span> <span class="o">*</span> <span class="mi">2</span>
     <span class="k">if</span> <span class="n">n_select</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
         <span class="n">n_select</span> <span class="o">=</span> <span class="mi">2</span>
     <span class="n">pool</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_select</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>

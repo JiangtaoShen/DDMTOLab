@@ -82,73 +82,116 @@
 
 <span class="sd">References</span>
 <span class="sd">----------</span>
-<span class="sd">    [1] Z. Liang, Y. Zhu, X. Wang, Z. Li, and Z. Zhu, &quot;Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies,&quot; IEEE Transactions on Evolutionary Computation, 2022.</span>
+<span class="sd">    [1] Liang, Zhengping, Yingmiao Zhu, Xiyu Wang, Zhi Li, and Zexuan Zhu. &quot;Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies.&quot; IEEE Transactions on Evolutionary Computation (2022): 1-1.</span>
 
 <span class="sd">Notes</span>
 <span class="sd">-----</span>
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
 <span class="sd">Date: 2026.02.22</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Version: 1.1</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nn</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">torch.nn.functional</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">F_nn</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Algorithms.STMO.NSGA_II</span><span class="w"> </span><span class="kn">import</span> <span class="n">nsga2_sort</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 
+<span class="c1"># MATLAB&#39;s ``eps`` used inside the GAN log-losses</span>
+<span class="n">_MATLAB_EPS</span> <span class="o">=</span> <span class="mf">2.220446049250313e-16</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_gaussian_linear</span><span class="p">(</span><span class="n">in_features</span><span class="p">,</span> <span class="n">out_features</span><span class="p">,</span> <span class="n">sigma</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fully connected layer initialized as MTO-Platform ``initializeGaussian``.</span>
+
+<span class="sd">    The weights are drawn from the NumPy global stream so that the whole</span>
+<span class="sd">    algorithm stays reproducible through ``np.random.seed``, mirroring MATLAB</span>
+<span class="sd">    where a single random stream drives both the evolution and the network.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    in_features : int</span>
+<span class="sd">        Number of input features</span>
+<span class="sd">    out_features : int</span>
+<span class="sd">        Number of output features</span>
+<span class="sd">    sigma : float</span>
+<span class="sd">        Standard deviation of the Gaussian weight initialization</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    layer : nn.Linear</span>
+<span class="sd">        Initialized linear layer with zero bias</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">layer</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">in_features</span><span class="p">,</span> <span class="n">out_features</span><span class="p">)</span>
+    <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
+        <span class="n">layer</span><span class="o">.</span><span class="n">weight</span><span class="o">.</span><span class="n">copy_</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span>
+            <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">out_features</span><span class="p">,</span> <span class="n">in_features</span><span class="p">)</span> <span class="o">*</span> <span class="n">sigma</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)))</span>
+        <span class="n">layer</span><span class="o">.</span><span class="n">bias</span><span class="o">.</span><span class="n">zero_</span><span class="p">()</span>
+    <span class="k">return</span> <span class="n">layer</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_matlab_dropout</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">p</span><span class="o">=</span><span class="mf">0.5</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Dropout of MTO-Platform ``InitialGAN/dropout``: a plain 0/1 mask, no rescaling.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    x : torch.Tensor</span>
+<span class="sd">        Input activations</span>
+<span class="sd">    p : float, optional</span>
+<span class="sd">        Drop probability (default: 0.5)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    y : torch.Tensor</span>
+<span class="sd">        Masked activations</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">tuple</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">shape</span><span class="p">))</span> <span class="o">&gt;</span> <span class="n">p</span> <span class="o">*</span> <span class="mi">10</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">x</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">mask</span><span class="p">)</span>
+
 
 <span class="k">class</span><span class="w"> </span><span class="nc">_Generator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Generator network: maps source task solutions to target task space.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Generator of MTO-Platform ``InitialGAN``: FC -&gt; LeakyReLU(0.5) -&gt; BN, twice, then FC -&gt; sigmoid.</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+<span class="sd">    ``width`` is the size of the vectors the network maps. Following the MATLAB</span>
+<span class="sd">    reference the network is applied along the *population* axis: a sample is one</span>
+<span class="sd">    decision-variable column of the population matrix, hence ``width`` equals the</span>
+<span class="sd">    population size and the mini-batches iterate over decision variables.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">width</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">fc1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">fc2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
-
-        <span class="c1"># Small initialization like MATLAB (sigma=0.03 for fc1, 0.06 for others)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">zeros_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc2</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">zeros_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc2</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">zeros_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc1</span> <span class="o">=</span> <span class="n">_gaussian_linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">width</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc2</span> <span class="o">=</span> <span class="n">_gaussian_linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">width</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span> <span class="o">=</span> <span class="n">_gaussian_linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">)</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc2</span><span class="p">(</span><span class="n">h</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">)</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">out</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="n">F_nn</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">))</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn2</span><span class="p">(</span><span class="n">F_nn</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc2</span><span class="p">(</span><span class="n">h</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">))</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">_Discriminator</span><span class="p">(</span><span class="n">nn</span><span class="o">.</span><span class="n">Module</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Discriminator network: distinguishes real target solutions from generated ones.&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Discriminator of MTO-Platform ``InitialGAN``: FC -&gt; LeakyReLU(0.5) -&gt; dropout -&gt; BN -&gt; FC -&gt; sigmoid.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">width</span><span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">()</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">fc1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Linear</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">Dropout</span><span class="p">(</span><span class="mf">0.5</span><span class="p">)</span>
-
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">zeros_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">normal_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="o">.</span><span class="n">weight</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
-        <span class="n">nn</span><span class="o">.</span><span class="n">init</span><span class="o">.</span><span class="n">zeros_</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="o">.</span><span class="n">bias</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc1</span> <span class="o">=</span> <span class="n">_gaussian_linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="n">width</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span> <span class="o">=</span> <span class="n">nn</span><span class="o">.</span><span class="n">BatchNorm1d</span><span class="p">(</span><span class="n">width</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span> <span class="o">=</span> <span class="n">_gaussian_linear</span><span class="p">(</span><span class="n">width</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mf">0.06</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">forward</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">):</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">nn</span><span class="o">.</span><span class="n">functional</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">)</span>
-        <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">dropout</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
+        <span class="n">h</span> <span class="o">=</span> <span class="n">_matlab_dropout</span><span class="p">(</span><span class="n">F_nn</span><span class="o">.</span><span class="n">leaky_relu</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc1</span><span class="p">(</span><span class="n">x</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">))</span>
         <span class="n">h</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">bn1</span><span class="p">(</span><span class="n">h</span><span class="p">)</span>
-        <span class="n">out</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">out</span>
+        <span class="k">return</span> <span class="n">torch</span><span class="o">.</span><span class="n">sigmoid</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">fc_out</span><span class="p">(</span><span class="n">h</span><span class="p">))</span>
 
 
 <div class="viewcode-block" id="EMT_GS">
@@ -158,9 +201,8 @@
 <span class="sd">    Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies.</span>
 
 <span class="sd">    This algorithm features:</span>
-<span class="sd">    - GAN-based cross-task knowledge transfer</span>
-<span class="sd">    - Generator maps source task solutions to target task space</span>
-<span class="sd">    - DE mutation with rand-or-best strategy</span>
+<span class="sd">    - GAN-based cross-task knowledge transfer, one GAN per ordered task pair</span>
+<span class="sd">    - DE mutation with a rand-or-best base vector and the previous population</span>
 <span class="sd">    - NSGA-II based environmental selection per task</span>
 
 <span class="sd">    Attributes</span>
@@ -188,11 +230,8 @@
 
 <div class="viewcode-block" id="EMT_GS.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTMO.EMT_GS.EMT_GS.__init__">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
-                 <span class="n">G</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">lrD</span><span class="o">=</span><span class="mf">0.0002</span><span class="p">,</span> <span class="n">lrG</span><span class="o">=</span><span class="mf">0.0003</span><span class="p">,</span> <span class="n">BS</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
-                 <span class="n">pp</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.6</span><span class="p">,</span>
-                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
-                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;EMT-GS&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">G</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">lrD</span><span class="o">=</span><span class="mf">0.0002</span><span class="p">,</span> <span class="n">lrG</span><span class="o">=</span><span class="mf">0.0003</span><span class="p">,</span> <span class="n">BS</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+                 <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;EMT-GS&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize EMT-GS algorithm.</span>
 
@@ -207,15 +246,11 @@
 <span class="sd">        G : int, optional</span>
 <span class="sd">            GAN training gap in generations (default: 10)</span>
 <span class="sd">        lrD : float, optional</span>
-<span class="sd">            Learning rate for discriminator (default: 0.0002)</span>
+<span class="sd">            Learning rate for the discriminator (default: 0.0002)</span>
 <span class="sd">        lrG : float, optional</span>
-<span class="sd">            Learning rate for generator (default: 0.0003)</span>
+<span class="sd">            Learning rate for the generator (default: 0.0003)</span>
 <span class="sd">        BS : int, optional</span>
 <span class="sd">            Batch size for GAN training (default: 10)</span>
-<span class="sd">        pp : float, optional</span>
-<span class="sd">            Probability of using random (vs best) base vector (default: 0.5)</span>
-<span class="sd">        CR : float, optional</span>
-<span class="sd">            Crossover rate for DE (default: 0.6)</span>
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
@@ -232,8 +267,9 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">lrD</span> <span class="o">=</span> <span class="n">lrD</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">lrG</span> <span class="o">=</span> <span class="n">lrG</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">BS</span> <span class="o">=</span> <span class="n">BS</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">pp</span> <span class="o">=</span> <span class="n">pp</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">CR</span> <span class="o">=</span> <span class="n">CR</span>
+        <span class="c1"># DE constants hard coded in the MATLAB reference</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pp</span> <span class="o">=</span> <span class="mf">0.5</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">CR</span> <span class="o">=</span> <span class="mf">0.6</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
@@ -253,172 +289,114 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
         <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
-        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
         <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
         <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
-        <span class="n">d_uni</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">dims</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">*</span> <span class="n">nt</span>
 
-        <span class="c1"># Initialize population in native space, then transfer to unified</span>
-        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
-        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="c1"># Population lives in the unified [0, 1] space of dimension max(dims); the</span>
+        <span class="c1"># genes beyond a task&#39;s own dimension are initialized at random and keep</span>
+        <span class="c1"># evolving, exactly as in the MATLAB reference (Dec = rand(1, max(D))).</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;uni&#39;</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="s1">&#39;random&#39;</span><span class="p">)</span>
+
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">obj_t</span><span class="p">,</span> <span class="n">con_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_t</span><span class="p">)</span>
+            <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">con_t</span><span class="p">)</span>
         <span class="n">nfes</span> <span class="o">=</span> <span class="n">n</span> <span class="o">*</span> <span class="n">nt</span>
 
-        <span class="c1"># Transfer to unified space for operations</span>
-        <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;uni&#39;</span><span class="p">)</span>
-
-        <span class="c1"># NSGA-II sorting per task</span>
+        <span class="c1"># Sort each task&#39;s population by non-dominated rank then crowding distance</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
             <span class="n">rank_t</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-            <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
-            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_idx</span><span class="p">]</span>
-            <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_idx</span><span class="p">]</span>
-            <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_idx</span><span class="p">]</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
+            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
 
-        <span class="c1"># Transfer back to native for history</span>
-        <span class="n">decs_native</span><span class="p">,</span> <span class="n">objs_native</span><span class="p">,</span> <span class="n">cons_native</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span>
-            <span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;real&#39;</span><span class="p">)</span>
-        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs_native</span><span class="p">,</span> <span class="n">objs_native</span><span class="p">,</span> <span class="n">cons_native</span><span class="p">)</span>
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)],</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
-        <span class="c1"># Save previous population for DE mutation</span>
+        <span class="c1"># Previous generation population, used as the DE difference base</span>
         <span class="n">prepop</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">decs</span><span class="p">]</span>
 
-        <span class="c1"># Initialize GANs: GAN[t][k] maps task k solutions -&gt; task t space</span>
-        <span class="n">generators</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">discriminators</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">opt_G</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">opt_D</span> <span class="o">=</span> <span class="p">{}</span>
-        <span class="n">gan_outputs</span> <span class="o">=</span> <span class="p">{}</span>
-
-        <span class="n">device</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">device</span><span class="p">(</span><span class="s1">&#39;cpu&#39;</span><span class="p">)</span>
-
+        <span class="c1"># One GAN per ordered task pair: GAN[(t, k)] maps task k solutions to task t</span>
+        <span class="n">generators</span><span class="p">,</span> <span class="n">discriminators</span><span class="p">,</span> <span class="n">gan_off</span> <span class="o">=</span> <span class="p">{},</span> <span class="p">{},</span> <span class="p">{}</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
             <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
                 <span class="k">if</span> <span class="n">t</span> <span class="o">==</span> <span class="n">k</span><span class="p">:</span>
                     <span class="k">continue</span>
-                <span class="n">gen</span><span class="p">,</span> <span class="n">disc</span><span class="p">,</span> <span class="n">o_g</span><span class="p">,</span> <span class="n">o_d</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_init_gan</span><span class="p">(</span><span class="n">d_uni</span><span class="p">,</span> <span class="n">device</span><span class="p">)</span>
-                <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">gen</span>
-                <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">disc</span>
-                <span class="n">opt_G</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">o_g</span>
-                <span class="n">opt_D</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">o_d</span>
-                <span class="c1"># Initial training (20 epochs)</span>
-                <span class="n">gan_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_train_gan</span><span class="p">(</span>
-                    <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span>
-                    <span class="n">opt_G</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">opt_D</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span>
-                    <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">20</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span>
-                <span class="p">)</span>
-                <span class="n">gan_outputs</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">gan_out</span>
+                <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">_Generator</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+                <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">_Discriminator</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+                <span class="n">gan_off</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_train_gan</span><span class="p">(</span>
+                    <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">20</span><span class="p">)</span>
 
-        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                    <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="n">gen_count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="c1"># MTO-Platform increments Algo.Gen inside notTerminated before the loop</span>
+        <span class="c1"># body runs, so the first executed generation already sees Gen == 2</span>
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
         <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">max_nfes</span><span class="p">:</span>
-            <span class="n">gen_count</span> <span class="o">+=</span> <span class="mi">1</span>
+            <span class="n">gen</span> <span class="o">+=</span> <span class="mi">1</span>
 
-            <span class="c1"># Update GANs</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
                 <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
                     <span class="k">if</span> <span class="n">t</span> <span class="o">==</span> <span class="n">k</span><span class="p">:</span>
                         <span class="k">continue</span>
-                    <span class="k">if</span> <span class="n">gen_count</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="c1"># Retrain GAN (2 epochs)</span>
-                        <span class="n">gan_out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_train_gan</span><span class="p">(</span>
-                            <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span>
-                            <span class="n">opt_G</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">opt_D</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span>
-                            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span>
-                        <span class="p">)</span>
-                        <span class="n">gan_outputs</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="n">gan_out</span>
+                    <span class="k">if</span> <span class="n">gen</span> <span class="o">%</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="c1"># Train GAN</span>
+                        <span class="n">gan_off</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_train_gan</span><span class="p">(</span>
+                            <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">discriminators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">epochs</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="c1"># Generate using existing GAN</span>
-                        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">:</span>
-                            <span class="n">gan_outputs</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_gan</span><span class="p">(</span>
-                                <span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">device</span><span class="p">)</span>
-                        <span class="k">else</span><span class="p">:</span>
-                            <span class="c1"># Use GAN{k,t} instead (swapped generator)</span>
-                            <span class="n">gan_outputs</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_gan</span><span class="p">(</span>
-                                <span class="n">generators</span><span class="p">[(</span><span class="n">k</span><span class="p">,</span> <span class="n">t</span><span class="p">)],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">],</span> <span class="n">device</span><span class="p">)</span>
+                        <span class="c1"># Both MATLAB branches run the same generator parameters and</span>
+                        <span class="c1"># normalize with the current batch statistics, so they only</span>
+                        <span class="c1"># differ in the discarded running-statistics bookkeeping</span>
+                        <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+                        <span class="n">gan_off</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_gan</span><span class="p">(</span><span class="n">generators</span><span class="p">[(</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">)],</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">])</span>
 
-            <span class="c1"># Generation: create offspring via DE with GAN transfer</span>
-            <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_sfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">(</span>
-                <span class="n">decs</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">gan_outputs</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">d_uni</span><span class="p">)</span>
-
-            <span class="c1"># Save current as prepop for next generation</span>
+            <span class="c1"># Generation</span>
+            <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_sfs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">gan_off</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
             <span class="n">prepop</span> <span class="o">=</span> <span class="p">[</span><span class="n">d</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="n">decs</span><span class="p">]</span>
 
-            <span class="c1"># Evaluate and select per task</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="c1"># Get offspring for this task</span>
+                <span class="c1"># Evaluation</span>
                 <span class="n">mask</span> <span class="o">=</span> <span class="n">off_sfs</span> <span class="o">==</span> <span class="n">t</span>
-                <span class="n">off_decs_t</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
-                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">mask</span><span class="p">):</span>
                     <span class="k">continue</span>
+                <span class="n">off_decs_t</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">mask</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes</span> <span class="o">+=</span> <span class="n">off_decs_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">off_decs_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
-                <span class="c1"># Trim to task dimension for evaluation, then evaluate</span>
-                <span class="n">off_decs_t_native</span> <span class="o">=</span> <span class="n">off_decs_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
-                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
-                    <span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t_native</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-                <span class="n">nfes</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">)</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">))</span>
-
-                <span class="c1"># Pad objs/cons back to unified shape</span>
-                <span class="n">off_objs_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">),</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
-                <span class="n">off_objs_uni</span><span class="p">[:,</span> <span class="p">:</span><span class="n">off_objs_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">off_objs_t</span>
-                <span class="n">off_cons_uni</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">),</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
-                <span class="k">if</span> <span class="n">off_cons_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                    <span class="n">off_cons_uni</span><span class="p">[:,</span> <span class="p">:</span><span class="n">off_cons_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="n">off_cons_t</span>
-
-                <span class="c1"># Merge parent + offspring</span>
-                <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs_t</span><span class="p">])</span>
-                <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_objs_uni</span><span class="p">])</span>
-                <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons_uni</span><span class="p">])</span>
-
-                <span class="c1"># NSGA-II selection</span>
+                <span class="c1"># Selection: NSGA-II sorting on the merged parent + offspring pool</span>
+                <span class="n">merged_decs</span><span class="p">,</span> <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">(</span>
+                    <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs_t</span><span class="p">),</span> <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_objs_t</span><span class="p">),</span> <span class="p">(</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons_t</span><span class="p">))</span>
                 <span class="n">rank_t</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nsga2_sort</span><span class="p">(</span><span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">)</span>
-                <span class="n">sorted_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)[:</span><span class="n">n</span><span class="p">]</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)[:</span><span class="n">n</span><span class="p">]</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">select_by_index</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">merged_decs</span><span class="p">,</span> <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">)</span>
 
-                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_decs</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">]</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_objs</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">]</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">merged_cons</span><span class="p">[</span><span class="n">sorted_idx</span><span class="p">]</span>
-
-                <span class="c1"># Save native-space history</span>
-                <span class="n">decs_t_native</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
-                <span class="n">objs_t_native</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">problem</span><span class="o">.</span><span class="n">n_objs</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
-                <span class="n">cons_t_native</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">problem</span><span class="o">.</span><span class="n">n_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">if</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="k">else</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs_t_native</span><span class="p">,</span>
-                               <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs_t_native</span><span class="p">,</span>
-                               <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons_t_native</span><span class="p">)</span>
-
-            <span class="k">if</span> <span class="n">nfes</span> <span class="o">&gt;=</span> <span class="n">max_nfes</span><span class="p">:</span>
-                <span class="k">break</span>
+            <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">,</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)],</span>
+                           <span class="n">all_objs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">all_cons</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
 
-        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
-            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
-            <span class="n">max_nfes</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span>
-            <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
-            <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+                                     <span class="n">max_nfes</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">all_cons</span><span class="o">=</span><span class="n">all_cons</span><span class="p">,</span>
+                                     <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
+                                     <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">results</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_init_gan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize Generator and Discriminator networks with Adam optimizers.&quot;&quot;&quot;</span>
-        <span class="n">gen</span> <span class="o">=</span> <span class="n">_Generator</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">disc</span> <span class="o">=</span> <span class="n">_Discriminator</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span><span class="o">.</span><span class="n">to</span><span class="p">(</span><span class="n">device</span><span class="p">)</span>
-        <span class="n">opt_g</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">gen</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lrG</span><span class="p">,</span>
-                                 <span class="n">betas</span><span class="o">=</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">))</span>
-        <span class="n">opt_d</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">disc</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lrD</span><span class="p">,</span>
-                                 <span class="n">betas</span><span class="o">=</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">))</span>
-        <span class="k">return</span> <span class="n">gen</span><span class="p">,</span> <span class="n">disc</span><span class="p">,</span> <span class="n">opt_g</span><span class="p">,</span> <span class="n">opt_d</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_train_gan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gen</span><span class="p">,</span> <span class="n">disc</span><span class="p">,</span> <span class="n">opt_g</span><span class="p">,</span> <span class="n">opt_d</span><span class="p">,</span>
-                   <span class="n">target_data</span><span class="p">,</span> <span class="n">source_data</span><span class="p">,</span> <span class="n">epochs</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_train_gan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gen</span><span class="p">,</span> <span class="n">disc</span><span class="p">,</span> <span class="n">target_decs</span><span class="p">,</span> <span class="n">source_decs</span><span class="p">,</span> <span class="n">epochs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Train GAN to map source task solutions to target task distribution.</span>
+<span class="sd">        Train one GAN (MTO-Platform ``InitialGAN`` / ``TrainGAN``).</span>
+
+<span class="sd">        Following the MATLAB reference the population matrices are consumed</span>
+<span class="sd">        column-wise: one training sample is one decision variable across the whole</span>
+<span class="sd">        population, so a mini-batch holds ``BS`` decision variables. The Adam</span>
+<span class="sd">        moment estimates are recreated at every call, as the reference resets</span>
+<span class="sd">        ``avgG``/``avgGS`` on entry.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -426,248 +404,228 @@
 <span class="sd">            Generator network</span>
 <span class="sd">        disc : _Discriminator</span>
 <span class="sd">            Discriminator network</span>
-<span class="sd">        opt_g : torch.optim.Adam</span>
-<span class="sd">            Generator optimizer</span>
-<span class="sd">        opt_d : torch.optim.Adam</span>
-<span class="sd">            Discriminator optimizer</span>
-<span class="sd">        target_data : np.ndarray</span>
-<span class="sd">            Target task population (real data) of shape (N, dim)</span>
-<span class="sd">        source_data : np.ndarray</span>
-<span class="sd">            Source task population (noise input) of shape (N, dim)</span>
+<span class="sd">        target_decs : np.ndarray</span>
+<span class="sd">            Population of the target task, shape (n, d_uni)</span>
+<span class="sd">        source_decs : np.ndarray</span>
+<span class="sd">            Population of the source task used as latent input, shape (n, d_uni)</span>
 <span class="sd">        epochs : int</span>
-<span class="sd">            Number of training epochs</span>
-<span class="sd">        device : torch.device</span>
-<span class="sd">            Device for computation</span>
+<span class="sd">            Number of training epochs (20 on the first call, 2 afterwards)</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        generated : np.ndarray</span>
-<span class="sd">            Generated solutions of shape (N, dim)</span>
+<span class="sd">            Solutions generated from the source population, shape (n, d_uni)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">gen</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
         <span class="n">disc</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="n">target_data</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-        <span class="n">bs</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">BS</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
-        <span class="n">n_iter</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n</span> <span class="o">//</span> <span class="n">bs</span><span class="p">)</span>
+        <span class="n">opt_g</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">gen</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lrG</span><span class="p">,</span> <span class="n">betas</span><span class="o">=</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">))</span>
+        <span class="n">opt_d</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">optim</span><span class="o">.</span><span class="n">Adam</span><span class="p">(</span><span class="n">disc</span><span class="o">.</span><span class="n">parameters</span><span class="p">(),</span> <span class="n">lr</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">lrD</span><span class="p">,</span> <span class="n">betas</span><span class="o">=</span><span class="p">(</span><span class="mf">0.7</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">))</span>
 
-        <span class="c1"># Shuffle source data</span>
-        <span class="n">noise_data</span> <span class="o">=</span> <span class="n">source_data</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n</span><span class="p">)]</span>
+        <span class="n">d_uni</span> <span class="o">=</span> <span class="n">target_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">noise_data</span> <span class="o">=</span> <span class="n">source_decs</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">d_uni</span><span class="p">)]</span>
+        <span class="n">n_iter</span> <span class="o">=</span> <span class="n">d_uni</span> <span class="o">//</span> <span class="bp">self</span><span class="o">.</span><span class="n">BS</span>
 
-        <span class="k">for</span> <span class="n">epoch</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">epochs</span><span class="p">):</span>
-            <span class="n">perm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
-            <span class="n">target_shuffled</span> <span class="o">=</span> <span class="n">target_data</span><span class="p">[</span><span class="n">perm</span><span class="p">]</span>
+        <span class="n">gen_params</span><span class="p">,</span> <span class="n">disc_params</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">gen</span><span class="o">.</span><span class="n">parameters</span><span class="p">()),</span> <span class="nb">list</span><span class="p">(</span><span class="n">disc</span><span class="o">.</span><span class="n">parameters</span><span class="p">())</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">epochs</span><span class="p">):</span>
+            <span class="n">train_shuffled</span> <span class="o">=</span> <span class="n">target_decs</span><span class="p">[:,</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">d_uni</span><span class="p">)]</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_iter</span><span class="p">):</span>
-                <span class="n">idx_start</span> <span class="o">=</span> <span class="n">i</span> <span class="o">*</span> <span class="n">bs</span>
-                <span class="n">idx_end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">idx_start</span> <span class="o">+</span> <span class="n">bs</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">idx_end</span> <span class="o">-</span> <span class="n">idx_start</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+                <span class="n">sl</span> <span class="o">=</span> <span class="nb">slice</span><span class="p">(</span><span class="n">i</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">BS</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">BS</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">sl</span><span class="o">.</span><span class="n">stop</span> <span class="o">-</span> <span class="n">sl</span><span class="o">.</span><span class="n">start</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
                     <span class="k">continue</span>
+                <span class="n">x_batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">train_shuffled</span><span class="p">[:,</span> <span class="n">sl</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
+                <span class="n">z_batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">noise_data</span><span class="p">[:,</span> <span class="n">sl</span><span class="p">]</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">))</span>
 
-                <span class="n">real_batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span>
-                    <span class="n">target_shuffled</span><span class="p">[</span><span class="n">idx_start</span><span class="p">:</span><span class="n">idx_end</span><span class="p">],</span>
-                    <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-                <span class="n">noise_batch</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span>
-                    <span class="n">noise_data</span><span class="p">[</span><span class="n">idx_start</span><span class="p">:</span><span class="n">idx_end</span><span class="p">],</span>
-                    <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
+                <span class="n">fake</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">z_batch</span><span class="p">)</span>
+                <span class="n">d_real</span> <span class="o">=</span> <span class="n">disc</span><span class="p">(</span><span class="n">x_batch</span><span class="p">)</span>
+                <span class="n">d_fake</span> <span class="o">=</span> <span class="n">disc</span><span class="p">(</span><span class="n">fake</span><span class="p">)</span>
 
-                <span class="c1"># Generate fake samples</span>
-                <span class="n">fake_batch</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">noise_batch</span><span class="p">)</span>
+                <span class="n">d_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="mf">0.9</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">d_real</span> <span class="o">+</span> <span class="n">_MATLAB_EPS</span><span class="p">)</span> <span class="o">+</span>
+                                     <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">d_fake</span> <span class="o">+</span> <span class="n">_MATLAB_EPS</span><span class="p">))</span>
+                <span class="n">g_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">d_fake</span> <span class="o">+</span> <span class="n">_MATLAB_EPS</span><span class="p">))</span>
 
-                <span class="c1"># Discriminator loss: -mean(0.9*log(D(real)) + log(1-D(fake)))</span>
-                <span class="n">d_real</span> <span class="o">=</span> <span class="n">disc</span><span class="p">(</span><span class="n">real_batch</span><span class="p">)</span>
-                <span class="n">d_fake</span> <span class="o">=</span> <span class="n">disc</span><span class="p">(</span><span class="n">fake_batch</span><span class="o">.</span><span class="n">detach</span><span class="p">())</span>
-                <span class="n">d_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span>
-                    <span class="mf">0.9</span> <span class="o">*</span> <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">d_real</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">)</span> <span class="o">+</span>
-                    <span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">d_fake</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">))</span>
+                <span class="c1"># Both gradients come from the same forward pass, as in dlfeval</span>
+                <span class="n">grad_g</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">g_loss</span><span class="p">,</span> <span class="n">gen_params</span><span class="p">,</span> <span class="n">retain_graph</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+                <span class="n">grad_d</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">autograd</span><span class="o">.</span><span class="n">grad</span><span class="p">(</span><span class="n">d_loss</span><span class="p">,</span> <span class="n">disc_params</span><span class="p">)</span>
 
                 <span class="n">opt_d</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-                <span class="n">d_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">prm</span><span class="p">,</span> <span class="n">grd</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">disc_params</span><span class="p">,</span> <span class="n">grad_d</span><span class="p">):</span>
+                    <span class="n">prm</span><span class="o">.</span><span class="n">grad</span> <span class="o">=</span> <span class="n">grd</span>
                 <span class="n">opt_d</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 
-                <span class="c1"># Generator loss: -mean(log(D(fake)))</span>
-                <span class="n">d_fake_for_g</span> <span class="o">=</span> <span class="n">disc</span><span class="p">(</span><span class="n">fake_batch</span><span class="p">)</span>
-                <span class="n">g_loss</span> <span class="o">=</span> <span class="o">-</span><span class="n">torch</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">d_fake_for_g</span> <span class="o">+</span> <span class="mf">1e-8</span><span class="p">))</span>
-
                 <span class="n">opt_g</span><span class="o">.</span><span class="n">zero_grad</span><span class="p">()</span>
-                <span class="n">g_loss</span><span class="o">.</span><span class="n">backward</span><span class="p">()</span>
+                <span class="k">for</span> <span class="n">prm</span><span class="p">,</span> <span class="n">grd</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">gen_params</span><span class="p">,</span> <span class="n">grad_g</span><span class="p">):</span>
+                    <span class="n">prm</span><span class="o">.</span><span class="n">grad</span> <span class="o">=</span> <span class="n">grd</span>
                 <span class="n">opt_g</span><span class="o">.</span><span class="n">step</span><span class="p">()</span>
 
-        <span class="c1"># Generate output</span>
-        <span class="n">gen</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">noise_all</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span>
-                <span class="n">noise_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">generated</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">noise_all</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+            <span class="n">generated</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">noise_data</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)))</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">generated</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">generated</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_generate_gan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gen</span><span class="p">,</span> <span class="n">source_data</span><span class="p">,</span> <span class="n">device</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generate_gan</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gen</span><span class="p">,</span> <span class="n">source_decs</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Generate solutions using a trained generator.</span>
+<span class="sd">        Run a trained generator on a population (MTO-Platform ``GenerateGAN``).</span>
+
+<span class="sd">        The reference always normalizes with the statistics of the batch it is</span>
+<span class="sd">        given, so the network stays in training mode here (no running estimates).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        gen : _Generator</span>
 <span class="sd">            Trained generator network</span>
-<span class="sd">        source_data : np.ndarray</span>
-<span class="sd">            Source task population of shape (N, dim)</span>
-<span class="sd">        device : torch.device</span>
-<span class="sd">            Device for computation</span>
+<span class="sd">        source_decs : np.ndarray</span>
+<span class="sd">            Population used as latent input, shape (n, d_uni)</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        generated : np.ndarray</span>
-<span class="sd">            Generated solutions of shape (N, dim)</span>
+<span class="sd">            Generated solutions, shape (n, d_uni)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">gen</span><span class="o">.</span><span class="n">eval</span><span class="p">()</span>
+        <span class="n">gen</span><span class="o">.</span><span class="n">train</span><span class="p">()</span>
         <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">noise</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span>
-                <span class="n">source_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">float32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="n">device</span><span class="p">)</span>
-            <span class="n">generated</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">noise</span><span class="p">)</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
-        <span class="k">return</span> <span class="n">generated</span>
+            <span class="n">generated</span> <span class="o">=</span> <span class="n">gen</span><span class="p">(</span><span class="n">torch</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">source_decs</span><span class="o">.</span><span class="n">T</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float32</span><span class="p">)))</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span><span class="o">.</span><span class="n">T</span>
+        <span class="k">return</span> <span class="n">generated</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_generation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">population</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">gan_outputs</span><span class="p">,</span> <span class="n">Np</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">d_uni</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">population</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">gan_off</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Generate offspring using DE mutation with GAN-based cross-task transfer.</span>
+<span class="sd">        Offspring generation (MTO-Platform ``EMT_GS.Generation``).</span>
 
-<span class="sd">        Same-task pairs: standard DE/rand-or-best/1</span>
-<span class="sd">        Cross-task pairs: GAN-transferred solutions + DE</span>
+<span class="sd">        The concatenated population is randomly permuted and paired as</span>
+<span class="sd">        (i, i + floor(L/2)). Same-task pairs use DE/rand-or-best/1 with the</span>
+<span class="sd">        difference taken against the previous generation; cross-task pairs</span>
+<span class="sd">        replace the DE donor by the GAN image of the partner task.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        population : list of np.ndarray</span>
-<span class="sd">            Current populations per task, each of shape (Np, d_uni)</span>
+<span class="sd">            Current population of each task in unified space, shape (n, d_uni)</span>
 <span class="sd">        prepop : list of np.ndarray</span>
-<span class="sd">            Previous generation populations per task</span>
-<span class="sd">        gan_outputs : dict</span>
-<span class="sd">            GAN outputs: gan_outputs[(t,k)] = generated from task k to task t</span>
-<span class="sd">        Np : int</span>
+<span class="sd">            Population of each task at the previous generation</span>
+<span class="sd">        gan_off : dict</span>
+<span class="sd">            ``gan_off[(t, k)]`` holds the task-k population mapped into task t</span>
+<span class="sd">        n : int</span>
 <span class="sd">            Population size per task</span>
 <span class="sd">        nt : int</span>
 <span class="sd">            Number of tasks</span>
-<span class="sd">        d_uni : int</span>
-<span class="sd">            Unified dimension</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        off_decs : np.ndarray</span>
-<span class="sd">            Offspring decision variables of shape (total, d_uni)</span>
+<span class="sd">            Offspring decision variables, shape (2 * ceil(L / 2), d_uni)</span>
 <span class="sd">        off_sfs : np.ndarray</span>
-<span class="sd">            Skill factors of offspring</span>
+<span class="sd">            Offspring skill factors, shape (2 * ceil(L / 2),)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c1"># Merge all populations and assign skill factors</span>
-        <span class="n">parent_list</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">sf_list</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">parent_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">population</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-            <span class="n">sf_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">Np</span><span class="p">,</span> <span class="n">t</span><span class="p">))</span>
+        <span class="n">parent</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">population</span><span class="p">)</span>
+        <span class="n">sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">repeat</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">nt</span><span class="p">),</span> <span class="n">n</span><span class="p">)</span>
+        <span class="n">length</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parent</span><span class="o">.</span><span class="n">shape</span>
 
-        <span class="n">all_parent</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">parent_list</span><span class="p">)</span>
-        <span class="n">all_sf</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">(</span><span class="n">sf_list</span><span class="p">)</span>
-        <span class="n">total</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">all_parent</span><span class="p">)</span>
+        <span class="n">rndper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">length</span><span class="p">)</span>
+        <span class="n">parent</span> <span class="o">=</span> <span class="n">parent</span><span class="p">[</span><span class="n">rndper</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">length</span><span class="p">)[</span><span class="n">rndper</span><span class="p">]</span>
+        <span class="n">mff_pool</span> <span class="o">=</span> <span class="n">sfs</span><span class="p">[</span><span class="n">rndper</span><span class="p">]</span>
 
-        <span class="c1"># Random permutation for pairing</span>
-        <span class="n">rndper</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">total</span><span class="p">)</span>
-        <span class="n">all_parent</span> <span class="o">=</span> <span class="n">all_parent</span><span class="p">[</span><span class="n">rndper</span><span class="p">]</span>
-        <span class="c1"># Track original position within task for GAN indexing</span>
-        <span class="n">orig_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">total</span><span class="p">)[</span><span class="n">rndper</span><span class="p">]</span>
-        <span class="n">all_sf</span> <span class="o">=</span> <span class="n">all_sf</span><span class="p">[</span><span class="n">rndper</span><span class="p">]</span>
+        <span class="n">half</span> <span class="o">=</span> <span class="n">length</span> <span class="o">//</span> <span class="mi">2</span>
+        <span class="n">n_pairs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">length</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
 
-        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">total</span><span class="p">,</span> <span class="n">d_uni</span><span class="p">))</span>
-        <span class="n">off_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">total</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">):</span>
+            <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">i</span><span class="p">,</span> <span class="n">i</span> <span class="o">+</span> <span class="n">half</span>
+            <span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">mff_pool</span><span class="p">[</span><span class="n">p1</span><span class="p">]),</span> <span class="nb">int</span><span class="p">(</span><span class="n">mff_pool</span><span class="p">[</span><span class="n">p2</span><span class="p">])</span>
 
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">total</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">):</span>
-            <span class="n">p1</span><span class="p">,</span> <span class="n">p2</span> <span class="o">=</span> <span class="n">i</span><span class="p">,</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
-            <span class="n">sf1</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">all_sf</span><span class="p">[</span><span class="n">p1</span><span class="p">])</span>
-            <span class="n">sf2</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">all_sf</span><span class="p">[</span><span class="n">p2</span><span class="p">])</span>
-
-            <span class="c1"># Sample F ~ N(0.5, 0.2) clipped to (0, 1)</span>
-            <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
-            <span class="k">while</span> <span class="n">F</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">F</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
-                <span class="n">F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+            <span class="n">f_scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
+            <span class="k">while</span> <span class="n">f_scale</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="ow">or</span> <span class="n">f_scale</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
+                <span class="n">f_scale</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="mf">0.5</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">)</span>
 
             <span class="k">if</span> <span class="n">sf1</span> <span class="o">==</span> <span class="n">sf2</span><span class="p">:</span>
-                <span class="c1"># Same-task pair: standard DE/rand-or-best/1</span>
-                <span class="c1"># Offspring 1</span>
-                <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="n">r1</span><span class="p">]</span>  <span class="c1"># rand</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>  <span class="c1"># best (index 0 = best after sorting)</span>
-                <span class="n">mutant1</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">all_parent</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">-</span> <span class="n">prepop</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="n">r2</span><span class="p">])</span>
-                <span class="n">off1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">mutant1</span><span class="p">,</span> <span class="n">all_parent</span><span class="p">[</span><span class="n">p1</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span><span class="p">)</span>
-
-                <span class="c1"># Offspring 2</span>
-                <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="n">r1</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">mutant2</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">all_parent</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">-</span> <span class="n">prepop</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="n">r2</span><span class="p">])</span>
-                <span class="n">off2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">mutant2</span><span class="p">,</span> <span class="n">all_parent</span><span class="p">[</span><span class="n">p2</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span><span class="p">)</span>
+                <span class="n">donor1</span><span class="p">,</span> <span class="n">donor2</span> <span class="o">=</span> <span class="n">parent</span><span class="p">[</span><span class="n">p1</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parent</span><span class="p">[</span><span class="n">p2</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">partner_is_base</span> <span class="o">=</span> <span class="kc">False</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="c1"># Cross-task pair: GAN-transferred + DE</span>
-                <span class="c1"># p1r, p2r: index within task population (mod Np)</span>
-                <span class="n">p1r</span> <span class="o">=</span> <span class="n">orig_idx</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">%</span> <span class="n">Np</span>
-                <span class="n">p2r</span> <span class="o">=</span> <span class="n">orig_idx</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">%</span> <span class="n">Np</span>
+                <span class="c1"># GAN generation: the donor of parent p1 is the image of p1</span>
+                <span class="c1"># inside the partner task&#39;s generator, and vice versa</span>
+                <span class="n">p1r</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">%</span> <span class="n">n</span>
+                <span class="n">p2r</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">%</span> <span class="n">n</span>
+                <span class="n">donor1</span> <span class="o">=</span> <span class="n">gan_off</span><span class="p">[(</span><span class="n">sf2</span><span class="p">,</span> <span class="n">sf1</span><span class="p">)][</span><span class="n">p1r</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">donor2</span> <span class="o">=</span> <span class="n">gan_off</span><span class="p">[(</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">)][</span><span class="n">p2r</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">partner_is_base</span> <span class="o">=</span> <span class="kc">True</span>
 
-                <span class="c1"># c1: GAN{sf1, sf2} output at p1r (map sf2 -&gt; sf1 for parent p1)</span>
-                <span class="n">c1</span> <span class="o">=</span> <span class="n">gan_outputs</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">c1</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">p1r</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">c1</span><span class="p">):</span>
-                    <span class="n">c1_dec</span> <span class="o">=</span> <span class="n">c1</span><span class="p">[</span><span class="n">p1r</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">c1_dec</span> <span class="o">=</span> <span class="n">all_parent</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span>
+            <span class="n">off_dec1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_offspring</span><span class="p">(</span><span class="n">population</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">sf1</span><span class="p">,</span> <span class="n">parent</span><span class="p">[</span><span class="n">p1</span><span class="p">,</span> <span class="p">:],</span>
+                                          <span class="n">donor1</span><span class="p">,</span> <span class="n">f_scale</span><span class="p">,</span> <span class="n">partner_is_base</span><span class="p">)</span>
+            <span class="n">off_dec2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_offspring</span><span class="p">(</span><span class="n">population</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">sf2</span><span class="p">,</span> <span class="n">parent</span><span class="p">[</span><span class="n">p2</span><span class="p">,</span> <span class="p">:],</span>
+                                          <span class="n">donor2</span><span class="p">,</span> <span class="n">f_scale</span><span class="p">,</span> <span class="n">partner_is_base</span><span class="p">)</span>
 
-                <span class="c1"># c2: GAN{sf2, sf1} output at p2r (map sf1 -&gt; sf2 for parent p2)</span>
-                <span class="n">c2</span> <span class="o">=</span> <span class="n">gan_outputs</span><span class="o">.</span><span class="n">get</span><span class="p">((</span><span class="n">sf2</span><span class="p">,</span> <span class="n">sf1</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">c2</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">p2r</span> <span class="o">&lt;</span> <span class="nb">len</span><span class="p">(</span><span class="n">c2</span><span class="p">):</span>
-                    <span class="n">c2_dec</span> <span class="o">=</span> <span class="n">c2</span><span class="p">[</span><span class="n">p2r</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">c2_dec</span> <span class="o">=</span> <span class="n">all_parent</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span>
-
-                <span class="c1"># Offspring 1: x1 + F*(c1 - prepop[sf1][r2])</span>
-                <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="n">r1</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">mutant1</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">c1_dec</span> <span class="o">-</span> <span class="n">prepop</span><span class="p">[</span><span class="n">sf1</span><span class="p">][</span><span class="n">r2</span><span class="p">])</span>
-                <span class="n">off1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">mutant1</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span><span class="p">)</span>
-
-                <span class="c1"># Offspring 2: x1 + F*(c2 - prepop[sf2][r2])</span>
-                <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="n">r1</span><span class="p">]</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="n">x1</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
-                <span class="n">mutant2</span> <span class="o">=</span> <span class="n">x1</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">c2_dec</span> <span class="o">-</span> <span class="n">prepop</span><span class="p">[</span><span class="n">sf2</span><span class="p">][</span><span class="n">r2</span><span class="p">])</span>
-                <span class="n">off2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">mutant2</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span><span class="p">)</span>
-
-            <span class="c1"># Assign skill factors (imitation: offspring inherits parent&#39;s task)</span>
-            <span class="n">off_sfs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
-            <span class="n">off_sfs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
-
-            <span class="c1"># Clip to [0, 1]</span>
-            <span class="n">off_decs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="n">off_decs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-
-        <span class="c1"># Handle odd last individual</span>
-        <span class="k">if</span> <span class="n">total</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">off_decs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">all_parent</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-            <span class="n">off_sfs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">all_sf</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+            <span class="c1"># Imitation</span>
+            <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
+            <span class="n">off_sfs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="n">count</span> <span class="o">+=</span> <span class="mi">2</span>
 
         <span class="k">return</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_sfs</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_de_crossover</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">mutant</span><span class="p">,</span> <span class="n">target</span><span class="p">,</span> <span class="n">CR</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;DE binomial crossover.&quot;&quot;&quot;</span>
-        <span class="n">dim</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mutant</span><span class="p">)</span>
-        <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">CR</span>
-        <span class="n">mask</span><span class="p">[</span><span class="n">j_rand</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">mutant</span><span class="p">,</span> <span class="n">target</span><span class="p">)</span></div>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_de_offspring</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">population</span><span class="p">,</span> <span class="n">prepop</span><span class="p">,</span> <span class="n">sf</span><span class="p">,</span> <span class="n">par_dec</span><span class="p">,</span> <span class="n">donor</span><span class="p">,</span> <span class="n">f_scale</span><span class="p">,</span> <span class="n">partner_is_base</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        One DE/rand-or-best/1 offspring with the difference against the previous population.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        population : list of np.ndarray</span>
+<span class="sd">            Current population of each task</span>
+<span class="sd">        prepop : list of np.ndarray</span>
+<span class="sd">            Population of each task at the previous generation</span>
+<span class="sd">        sf : int</span>
+<span class="sd">            Skill factor (task index) of the parent</span>
+<span class="sd">        par_dec : np.ndarray</span>
+<span class="sd">            Parent decision vector</span>
+<span class="sd">        donor : np.ndarray</span>
+<span class="sd">            Vector added to the base: the parent itself for a same-task pair,</span>
+<span class="sd">            its GAN image for a cross-task pair</span>
+<span class="sd">        f_scale : float</span>
+<span class="sd">            DE scaling factor, shared by the two children of a pair</span>
+<span class="sd">        partner_is_base : bool</span>
+<span class="sd">            If True the binomial crossover partner is the base vector (cross-task</span>
+<span class="sd">            pair), otherwise it is the parent itself (same-task pair)</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        off_dec : np.ndarray</span>
+<span class="sd">            Offspring decision vector, not yet clipped</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">r1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pp</span><span class="p">:</span>
+            <span class="n">base</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf</span><span class="p">][</span><span class="n">r1</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">base</span> <span class="o">=</span> <span class="n">population</span><span class="p">[</span><span class="n">sf</span><span class="p">][</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">base</span> <span class="o">+</span> <span class="n">f_scale</span> <span class="o">*</span> <span class="p">(</span><span class="n">donor</span> <span class="o">-</span> <span class="n">prepop</span><span class="p">[</span><span class="n">sf</span><span class="p">][</span><span class="n">r2</span><span class="p">,</span> <span class="p">:])</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_crossover</span><span class="p">(</span><span class="n">off_dec</span><span class="p">,</span> <span class="n">base</span> <span class="k">if</span> <span class="n">partner_is_base</span> <span class="k">else</span> <span class="n">par_dec</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">CR</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_de_crossover</span><span class="p">(</span><span class="n">off_dec</span><span class="p">,</span> <span class="n">par_dec</span><span class="p">,</span> <span class="n">cr</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Binomial crossover of MTO-Platform ``DE_Crossover``.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        off_dec : np.ndarray</span>
+<span class="sd">            Mutant vector, shape (d,)</span>
+<span class="sd">        par_dec : np.ndarray</span>
+<span class="sd">            Vector supplying the non-inherited genes, shape (d,)</span>
+<span class="sd">        cr : float</span>
+<span class="sd">            Crossover rate</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        off_dec : np.ndarray</span>
+<span class="sd">            Trial vector, shape (d,)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">d</span> <span class="o">=</span> <span class="n">off_dec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">replace</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">cr</span>
+        <span class="n">replace</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">d</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
+        <span class="n">off_dec</span> <span class="o">=</span> <span class="n">off_dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="n">off_dec</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span> <span class="o">=</span> <span class="n">par_dec</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">off_dec</span></div>
 
 </pre></div>
 

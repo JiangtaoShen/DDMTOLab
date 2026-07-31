@@ -1135,15 +1135,17 @@
                         <span class="c1"># Task has no constraints: create matrix with c_max columns filled with zeros</span>
                         <span class="n">new_cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">c_max</span><span class="p">))</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="c1"># Task has constraints: pad if necessary</span>
+                        <span class="c1"># Task has constraints: pad if necessary.</span>
+                        <span class="c1"># Padded columns stand for constraints this task does not</span>
+                        <span class="c1"># have, so they must contribute zero violation. `padding`</span>
+                        <span class="c1"># is a decision-variable strategy and is deliberately not</span>
+                        <span class="c1"># applied here: &#39;mid&#39;/&#39;random&#39; would give every padded</span>
+                        <span class="c1"># column a positive value, and since CV = sum(max(0, con))</span>
+                        <span class="c1"># that fabricates infeasibility for the task with fewer</span>
+                        <span class="c1"># constraints.</span>
                         <span class="n">dif</span> <span class="o">=</span> <span class="n">c_max</span> <span class="o">-</span> <span class="n">current_ncons</span>
                         <span class="k">if</span> <span class="n">dif</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                            <span class="k">if</span> <span class="n">padding</span> <span class="o">==</span> <span class="s1">&#39;random&#39;</span><span class="p">:</span>
-                                <span class="n">pad_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">dif</span><span class="p">)</span>
-                            <span class="k">elif</span> <span class="n">padding</span> <span class="o">==</span> <span class="s1">&#39;mid&#39;</span><span class="p">:</span>
-                                <span class="n">pad_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">dif</span><span class="p">),</span> <span class="mf">0.5</span><span class="p">)</span>
-                            <span class="k">else</span><span class="p">:</span>  <span class="c1"># padding == &#39;zero&#39;</span>
-                                <span class="n">pad_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">dif</span><span class="p">))</span>
+                            <span class="n">pad_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_samples</span><span class="p">,</span> <span class="n">dif</span><span class="p">))</span>
                             <span class="n">new_cons</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">new_cons</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pad_values</span><span class="p">])</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="c1"># No task has constraints: ensure all constraint matrices are empty with same shape</span>
@@ -1360,7 +1362,11 @@
 <span class="sd">        One or more arrays of fitness values, compared lexicographically</span>
 <span class="sd">        (first array is the primary key). Lower values are considered better.</span>
 <span class="sd">    rng : np.random.Generator, optional</span>
-<span class="sd">        NumPy random number generator. If None, a new default RNG is created.</span>
+<span class="sd">        NumPy random number generator. If None, the legacy global stream</span>
+<span class="sd">        (``np.random.*``) is used, so that ``np.random.seed`` reproduces the</span>
+<span class="sd">        selection. Do NOT fall back to ``np.random.default_rng()``: an</span>
+<span class="sd">        unseeded Generator draws from OS entropy and silently makes every</span>
+<span class="sd">        run that relies on this helper irreproducible.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
@@ -1374,12 +1380,16 @@
         <span class="n">fitnesss</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">a</span><span class="p">)</span>
     <span class="n">pop_size</span> <span class="o">=</span> <span class="n">fitnesss</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-    <span class="k">if</span> <span class="n">rng</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">()</span>
+    <span class="c1"># Draw from the caller&#39;s generator when given, otherwise from the legacy</span>
+    <span class="c1"># global stream that the rest of the platform (and np.random.seed) uses.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_integers</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">high</span><span class="p">,</span> <span class="n">size</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">rng</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">high</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">size</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="n">low</span><span class="p">,</span> <span class="n">high</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">size</span><span class="p">)</span>
 
     <span class="k">if</span> <span class="n">K</span> <span class="o">&lt;=</span> <span class="mi">1</span><span class="p">:</span>
         <span class="c1"># Purely random selection with replacement</span>
-        <span class="n">selected</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">N</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">_integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">keys</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">fitnesss</span><span class="p">[::</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
         <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">(</span><span class="n">keys</span><span class="p">)</span>
@@ -1387,7 +1397,7 @@
         <span class="n">ranks</span><span class="p">[</span><span class="n">order</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
 
         <span class="c1"># Sample K contestants for each of N tournaments (with replacement)</span>
-        <span class="n">parents</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
+        <span class="n">parents</span> <span class="o">=</span> <span class="n">_integers</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">,</span> <span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
         <span class="n">parent_ranks</span> <span class="o">=</span> <span class="n">ranks</span><span class="p">[</span><span class="n">parents</span><span class="p">]</span>
         <span class="n">winners_pos</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">parent_ranks</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">selected</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="n">winners_pos</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
@@ -2547,7 +2557,7 @@
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">if</span> <span class="n">lam</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">lam</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="mi">4</span> <span class="o">+</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">dim</span><span class="p">))</span>
-    <span class="n">mu</span> <span class="o">=</span> <span class="n">lam</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">mu</span> <span class="o">=</span> <span class="p">(</span><span class="n">lam</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">//</span> <span class="mi">2</span>  <span class="c1"># MATLAB: mu = round(lambda / 2), round-half-away-from-zero</span>
 
     <span class="n">weights</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
     <span class="n">weights</span> <span class="o">=</span> <span class="n">weights</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">weights</span><span class="p">)</span>

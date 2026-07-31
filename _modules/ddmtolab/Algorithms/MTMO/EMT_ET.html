@@ -96,6 +96,115 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 
 
+<span class="k">def</span><span class="w"> </span><span class="nf">_platemo_tournament_selection</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="o">*</span><span class="n">fitness</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exact port of PlatEMO&#39;s ``TournamentSelection`` (MToP ``TournamentSelection.m``).</span>
+
+<span class="sd">    Candidates are compared lexicographically on the given fitness keys (lower is</span>
+<span class="sd">    better). Solutions sharing identical fitness values also share a rank, so a</span>
+<span class="sd">    tournament among tied candidates is won by the (random) first draw, i.e.</span>
+<span class="sd">    uniformly at random. The shared ``tournament_selection`` helper instead ranks</span>
+<span class="sd">    with a total order, which would always let the lowest-index candidate win --</span>
+<span class="sd">    a systematic bias here, because the G transferred individuals are all given</span>
+<span class="sd">    the same top fitness as the incumbent best.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fitness</span><span class="p">])</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">fits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fits</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
+    <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">loc</span><span class="p">[</span><span class="n">parents</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parents</span><span class="p">[</span><span class="n">best</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_sbx_crossover_unclipped</span><span class="p">(</span><span class="n">par_dec1</span><span class="p">,</span> <span class="n">par_dec2</span><span class="p">,</span> <span class="n">mu</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Simulated binary crossover (MToP ``GA_Crossover``).</span>
+
+<span class="sd">    Unlike the shared ``crossover`` helper the offspring are NOT clipped to</span>
+<span class="sd">    [0, 1] here: the MATLAB reference clips only once at the end of Generation,</span>
+<span class="sd">    after polynomial mutation has acted on the raw crossover output.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">par_dec1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]))</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span> <span class="o">*=</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="n">off_dec1</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span><span class="p">)</span>
+    <span class="n">off_dec2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">dec</span><span class="p">,</span> <span class="n">mu</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Polynomial mutation (MToP ``GA_Mutation``) with per-gene probability 1/D.</span>
+
+<span class="sd">    Operates on the possibly out-of-bounds crossover output and does NOT clip;</span>
+<span class="sd">    the caller clips once afterwards, matching the MATLAB reference.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">dec</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">prob_m</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">d</span>
+    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">prob_m</span><span class="p">:</span>
+            <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">:</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="n">delta</span>
+    <span class="k">return</span> <span class="n">dec</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_emt_et_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="p">,</span> <span class="n">mum</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Offspring generation matching ``EMT_ET.Generation`` exactly.</span>
+
+<span class="sd">    Parent ``i`` is paired with parent ``i + floor(L/2)`` for ``i = 0..ceil(L/2)-1``</span>
+<span class="sd">    -- the mating pool is *not* permuted first (it already comes from a random</span>
+<span class="sd">    tournament), and the single clip to [0, 1] happens only after mutation.</span>
+<span class="sd">    For odd ``L`` this yields ``L + 1`` offspring, exactly as in MATLAB.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    parents : np.ndarray</span>
+<span class="sd">        Mating pool, shape (L, d)</span>
+<span class="sd">    muc, mum : float</span>
+<span class="sd">        Distribution indices of SBX and polynomial mutation</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    off_decs : np.ndarray</span>
+<span class="sd">        Offspring, shape (2 * ceil(L / 2), d)</span>
+<span class="sd">    parent_idx : np.ndarray</span>
+<span class="sd">        For each offspring, the row of ``parents`` it was copied from. EMT-ET</span>
+<span class="sd">        offspring inherit the transfer bookkeeping (``isTrans``/``OriginTask``)</span>
+<span class="sd">        of that parent.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">length</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">half</span> <span class="o">=</span> <span class="n">length</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">n_pairs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">length</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">parent_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">parent_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">)</span>
+    <span class="n">parent_idx</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">)</span> <span class="o">+</span> <span class="n">half</span>
+
+    <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">):</span>
+        <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span> <span class="o">=</span> <span class="n">_sbx_crossover_unclipped</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">half</span><span class="p">,</span> <span class="p">:],</span> <span class="n">muc</span><span class="p">)</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="n">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="n">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">2</span>
+
+    <span class="k">return</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">parent_idx</span>
+
+
 <div class="viewcode-block" id="EMT_ET">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTMO.EMT_ET.EMT_ET">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">EMT_ET</span><span class="p">:</span>
@@ -103,10 +212,17 @@
 <span class="sd">    Evolutionary Multi-task with Effective Transfer.</span>
 
 <span class="sd">    This algorithm features:</span>
-<span class="sd">    - Adaptive knowledge transfer based on successful transferred solutions</span>
-<span class="sd">    - Transfer solutions selected from Pareto front of source tasks</span>
-<span class="sd">    - Distribution-based perturbation for transferred solutions</span>
+<span class="sd">    - Adaptive knowledge transfer seeded by previously successful transfers</span>
+<span class="sd">    - Transfer solutions taken from the neighbourhood of a successful immigrant</span>
+<span class="sd">    - Multiplicative perturbation of transferred solutions</span>
 <span class="sd">    - NSGA-II based environmental selection</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Following the MTO-Platform reference implementation, the whole population is</span>
+<span class="sd">    evolved in a *unified* :math:`[0, 1]^{\\max_t D_t}` space; when an individual</span>
+<span class="sd">    is evaluated on task ``t`` only its first :math:`D_t` genes are used. Solutions</span>
+<span class="sd">    are therefore exchanged verbatim between tasks of different dimensionality.</span>
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
@@ -149,7 +265,7 @@
 <span class="sd">        G : int, optional</span>
 <span class="sd">            Number of transfer solutions per generation (default: 8)</span>
 <span class="sd">        P : float, optional</span>
-<span class="sd">            Probability of distribution-based perturbation (default: 0.5)</span>
+<span class="sd">            Probability of perturbing a transferred solution (default: 0.5)</span>
 <span class="sd">        muc : float, optional</span>
 <span class="sd">            Distribution index for simulated binary crossover (SBX) (default: 20.0)</span>
 <span class="sd">        mum : float, optional</span>
@@ -190,41 +306,41 @@
         <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
         <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
         <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
         <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
-        <span class="c1"># Initialize population and evaluate for each task</span>
-        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">)</span>
-        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
-        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
+        <span class="c1"># Initialize in the unified [0, 1]^max(D) space (MToP Initialization uses</span>
+        <span class="c1"># rand(1, max(D)), i.e. the spare genes of the shorter tasks are random).</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">),</span>
+                              <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;uni&#39;</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="s1">&#39;random&#39;</span><span class="p">)</span>
 
-        <span class="c1"># Initialize additional attributes for transfer tracking</span>
-        <span class="c1"># is_trans[t]: boolean array indicating if solution came from transfer</span>
-        <span class="c1"># origin_task[t]: source task index for transferred solutions</span>
-        <span class="c1"># front_no[t]: front number from NSGA-II sorting</span>
-        <span class="n">is_trans</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">origin_task</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">front_no</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">rank</span> <span class="o">=</span> <span class="p">[]</span>
-
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">is_trans</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">))</span>
-            <span class="n">origin_task</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">))</span>
+            <span class="n">objs_t</span><span class="p">,</span> <span class="n">cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">objs_t</span><span class="p">)</span>
+            <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cons_t</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-            <span class="c1"># Initial NSGA-II sorting</span>
+        <span class="c1"># Transfer bookkeeping carried by each individual</span>
+        <span class="n">is_trans</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">origin_task</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">front_no</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># Initial NSGA-II sorting: the population is kept ordered by quality, so</span>
+        <span class="c1"># its index doubles as its mating fitness later on.</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
             <span class="n">rank_t</span><span class="p">,</span> <span class="n">front_no_t</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-            <span class="n">front_no</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">front_no_t</span><span class="p">)</span>
-            <span class="n">rank</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
+            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+            <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+            <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+            <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+            <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+            <span class="n">front_no</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">front_no_t</span><span class="p">[</span><span class="n">order</span><span class="p">])</span>
 
-            <span class="c1"># Sort population by rank</span>
-            <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
-            <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-            <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-            <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-            <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-            <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-            <span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)],</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
         <span class="c1"># Progress bar</span>
         <span class="n">total_nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
@@ -238,87 +354,61 @@
                 <span class="k">break</span>
 
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">n_t</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+
                 <span class="c1"># === Step 1: Transfer ===</span>
-                <span class="n">transfer_decs</span><span class="p">,</span> <span class="n">transfer_is_trans</span><span class="p">,</span> <span class="n">transfer_origin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transfer</span><span class="p">(</span>
-                    <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">is_trans</span><span class="p">,</span> <span class="n">origin_task</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">n_per_task</span>
-                <span class="p">)</span>
+                <span class="n">transfer_decs</span><span class="p">,</span> <span class="n">transfer_origin</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_transfer</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">is_trans</span><span class="p">,</span> <span class="n">origin_task</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
 
-                <span class="c1"># Align dimensions for transferred solutions</span>
-                <span class="n">target_dim</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
-                <span class="n">transfer_decs_aligned</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">),</span> <span class="n">target_dim</span><span class="p">))</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">)):</span>
-                    <span class="n">transfer_decs_aligned</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">align_dimensions</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">target_dim</span><span class="p">)</span>
+                <span class="n">transfer_objs</span><span class="p">,</span> <span class="n">transfer_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">transfer_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">transfer_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">transfer_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
-                <span class="c1"># Evaluate transferred solutions</span>
-                <span class="n">transfer_objs</span><span class="p">,</span> <span class="n">transfer_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">transfer_decs_aligned</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_aligned</span><span class="p">)</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_aligned</span><span class="p">))</span>
+                <span class="c1"># The incumbents are no longer &quot;newly transferred&quot;; the immigrants are</span>
+                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
 
-                <span class="c1"># Reset is_trans for current population (they are no longer &quot;newly transferred&quot;)</span>
-                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-
-                <span class="c1"># Merge current population with transferred solutions</span>
-                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_decs_aligned</span><span class="p">])</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_decs</span><span class="p">])</span>
                 <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_objs</span><span class="p">])</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_cons</span><span class="p">])</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">transfer_cons</span>
-                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_is_trans</span><span class="p">])</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_cons</span><span class="p">])</span>
+                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">transfer_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)])</span>
                 <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">transfer_origin</span><span class="p">])</span>
 
-                <span class="c1"># Update front numbers for merged population</span>
-                <span class="n">rank_t</span><span class="p">,</span> <span class="n">front_no_t</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-                <span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">front_no_t</span>
-
                 <span class="c1"># === Step 2: Generation ===</span>
-                <span class="c1"># Create mating pool: first N individuals + G transferred (with rank 1 for transferred)</span>
-                <span class="n">current_pop_size</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
-                <span class="n">n_offspring</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span>
+                <span class="c1"># Mating fitness: the incumbents keep their quality index 1..N, the</span>
+                <span class="c1"># G immigrants are all given the best possible fitness of 1.</span>
+                <span class="n">mating_fitness</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
+                                                 <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">transfer_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])])</span>
+                <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">_platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_t</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">mating_fitness</span><span class="p">)</span>
 
-                <span class="c1"># Tournament selection for mating</span>
-                <span class="c1"># Use indices [0, N-1] for original population, with transferred solutions having advantage</span>
-                <span class="n">mating_pool_size</span> <span class="o">=</span> <span class="n">n_offspring</span>
+                <span class="n">off_decs</span><span class="p">,</span> <span class="n">parent_idx</span> <span class="o">=</span> <span class="n">_emt_et_generation</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">mating_pool</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
+                <span class="c1"># Offspring are copies of their parent, so they inherit its</span>
+                <span class="c1"># transfer bookkeeping (MToP: offspring(count) = population(p1)).</span>
+                <span class="n">off_is_trans</span> <span class="o">=</span> <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">mating_pool</span><span class="p">][</span><span class="n">parent_idx</span><span class="p">]</span>
+                <span class="n">off_origin</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">mating_pool</span><span class="p">][</span><span class="n">parent_idx</span><span class="p">]</span>
 
-                <span class="n">mating_ranks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">current_pop_size</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
-                    <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">)</span>
-                <span class="p">])</span>
-
-                <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">mating_pool_size</span><span class="p">,</span> <span class="n">mating_ranks</span><span class="p">)</span>
-
-                <span class="c1"># Generate offspring</span>
-                <span class="n">parent_decs</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">mating_pool</span><span class="p">]</span>
-                <span class="n">off_decs</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">parent_decs</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
-
-                <span class="c1"># Evaluate offspring</span>
-                <span class="n">off_objs</span><span class="p">,</span> <span class="n">off_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">)</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">))</span>
+                <span class="n">off_objs</span><span class="p">,</span> <span class="n">off_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">off_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">off_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
                 <span class="c1"># === Step 3: Selection ===</span>
-                <span class="c1"># Merge all: current (with transferred) + offspring</span>
                 <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">])</span>
                 <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">])</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons</span><span class="p">])</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">off_cons</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons</span><span class="p">])</span>
+                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_is_trans</span><span class="p">])</span>
+                <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_origin</span><span class="p">])</span>
 
-                <span class="c1"># Extend is_trans and origin_task for offspring (not transferred)</span>
-                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)])</span>
-                <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs</span><span class="p">),</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)])</span>
-
-                <span class="c1"># NSGA-II sorting and selection</span>
                 <span class="n">rank_t</span><span class="p">,</span> <span class="n">front_no_t</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">n_t</span><span class="p">]</span>
 
-                <span class="c1"># Select top N individuals</span>
-                <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)[:</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+                <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">order</span><span class="p">]</span>
+                <span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">front_no_t</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>
 
-                <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-                <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-                <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-                <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">sorted_indices</span><span class="p">]</span>
-                <span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">front_no_t</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span>
-                <span class="n">rank</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">rank_t</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span>
-
-                <span class="c1"># Append to history</span>
-                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span>
+                               <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                               <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -331,113 +421,74 @@
         <span class="k">return</span> <span class="n">results</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_transfer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">is_trans</span><span class="p">,</span> <span class="n">origin_task</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_transfer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">is_trans</span><span class="p">,</span> <span class="n">origin_task</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Perform knowledge transfer to task t.</span>
+<span class="sd">        Build the G solutions transferred into task t.</span>
 
-<span class="sd">        The transfer strategy:</span>
-<span class="sd">        1. If there are successful transferred solutions (is_trans=True and FrontNo&lt;2),</span>
-<span class="sd">           find nearest neighbors from their origin tasks</span>
-<span class="sd">        2. Otherwise, randomly select solutions from other tasks</span>
+<span class="sd">        If the previous generation kept transferred individuals in the first</span>
+<span class="sd">        non-dominated front, their decision-space neighbourhoods in the source</span>
+<span class="sd">        task are exploited; otherwise G solutions are drawn at random from the</span>
+<span class="sd">        other tasks. Every transferred solution is then perturbed with</span>
+<span class="sd">        probability P.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        decs : list of np.ndarray</span>
-<span class="sd">            Decision variables for all tasks</span>
-<span class="sd">        objs : list of np.ndarray</span>
-<span class="sd">            Objective values for all tasks</span>
+<span class="sd">            Unified-space decision variables for all tasks</span>
 <span class="sd">        is_trans : list of np.ndarray</span>
 <span class="sd">            Transfer flags for all tasks</span>
 <span class="sd">        origin_task : list of np.ndarray</span>
-<span class="sd">            Origin task indices for all tasks</span>
+<span class="sd">            Source task index of every transferred individual</span>
 <span class="sd">        front_no : list of np.ndarray</span>
 <span class="sd">            Front numbers for all tasks</span>
 <span class="sd">        t : int</span>
 <span class="sd">            Target task index</span>
-<span class="sd">        n_per_task : list of int</span>
-<span class="sd">            Population sizes for all tasks</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        transfer_decs : np.ndarray</span>
-<span class="sd">            Decision variables of transfer solutions</span>
-<span class="sd">        transfer_is_trans : np.ndarray</span>
-<span class="sd">            Transfer flags (all True)</span>
+<span class="sd">            Decision variables of the G transferred solutions, shape (G, d_uni)</span>
 <span class="sd">        transfer_origin : np.ndarray</span>
-<span class="sd">            Origin task indices</span>
+<span class="sd">            Source task index of each transferred solution, shape (G,)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">nt</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">decs</span><span class="p">)</span>
+        <span class="n">transfer_decs</span><span class="p">,</span> <span class="n">transfer_origin</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
 
-        <span class="c1"># Find successful transferred solutions (is_trans=True and in first front)</span>
-        <span class="n">successful_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">((</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">==</span> <span class="kc">True</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="c1"># Immigrants (or their descendants) that reached the first front</span>
+        <span class="n">successful</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">is_trans</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">front_no</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">))[</span><span class="mi">0</span><span class="p">]</span>
 
-        <span class="n">transfer_decs_list</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="n">transfer_origin_list</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">if</span> <span class="n">successful</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">g_temp</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span> <span class="o">/</span> <span class="n">successful</span><span class="o">.</span><span class="n">size</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">s_idx</span> <span class="ow">in</span> <span class="n">successful</span><span class="p">:</span>
+                <span class="n">ot</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s_idx</span><span class="p">])</span>
+                <span class="n">distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">]</span> <span class="o">-</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s_idx</span><span class="p">])</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+                <span class="n">nearest</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">g_temp</span><span class="p">,</span> <span class="n">nearest</span><span class="o">.</span><span class="n">size</span><span class="p">)):</span>
+                    <span class="n">transfer_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">][</span><span class="n">nearest</span><span class="p">[</span><span class="n">j</span><span class="p">]]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+                    <span class="n">transfer_origin</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ot</span><span class="p">)</span>
+            <span class="n">transfer_decs</span> <span class="o">=</span> <span class="n">transfer_decs</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">]</span>
+            <span class="n">transfer_origin</span> <span class="o">=</span> <span class="n">transfer_origin</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">]</span>
 
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">successful_indices</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="c1"># Strategy 1: Find nearest neighbors from origin tasks</span>
-            <span class="n">G_temp</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">successful_indices</span><span class="p">)))</span>
-
-            <span class="k">for</span> <span class="n">s_idx</span> <span class="ow">in</span> <span class="n">successful_indices</span><span class="p">:</span>
-                <span class="n">ot</span> <span class="o">=</span> <span class="n">origin_task</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s_idx</span><span class="p">]</span>  <span class="c1"># Origin task</span>
-                <span class="k">if</span> <span class="n">ot</span> <span class="o">&lt;</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">ot</span> <span class="o">&gt;=</span> <span class="n">nt</span><span class="p">:</span>
-                    <span class="k">continue</span>
-
-                <span class="c1"># Calculate distances to all solutions in origin task</span>
-                <span class="c1"># Need to align dimensions first</span>
-                <span class="n">s_dec</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">s_idx</span><span class="p">]</span>
-                <span class="n">ot_decs</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">]</span>
-
-                <span class="c1"># Align dimensions for distance calculation</span>
-                <span class="n">min_dim</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">s_dec</span><span class="p">),</span> <span class="n">ot_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span>
-                <span class="n">s_dec_aligned</span> <span class="o">=</span> <span class="n">s_dec</span><span class="p">[:</span><span class="n">min_dim</span><span class="p">]</span>
-                <span class="n">ot_decs_aligned</span> <span class="o">=</span> <span class="n">ot_decs</span><span class="p">[:,</span> <span class="p">:</span><span class="n">min_dim</span><span class="p">]</span>
-
-                <span class="n">distances</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">((</span><span class="n">ot_decs_aligned</span> <span class="o">-</span> <span class="n">s_dec_aligned</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
-                <span class="n">nearest_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">distances</span><span class="p">)</span>
-
-                <span class="c1"># Select G_temp nearest neighbors</span>
-                <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">min</span><span class="p">(</span><span class="n">G_temp</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">nearest_indices</span><span class="p">))):</span>
-                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
-                        <span class="k">break</span>
-                    <span class="n">idx</span> <span class="o">=</span> <span class="n">nearest_indices</span><span class="p">[</span><span class="n">j</span><span class="p">]</span>
-                    <span class="n">transfer_decs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
-                    <span class="n">transfer_origin_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ot</span><span class="p">)</span>
-
-                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">)</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
-                    <span class="k">break</span>
-
-        <span class="c1"># If not enough, use random selection (Strategy 2)</span>
-        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
             <span class="n">task_pool</span> <span class="o">=</span> <span class="p">[</span><span class="n">k</span> <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">k</span> <span class="o">!=</span> <span class="n">t</span><span class="p">]</span>
-
-            <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
+            <span class="k">while</span> <span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">)</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">:</span>
                 <span class="n">ot</span> <span class="o">=</span> <span class="n">task_pool</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">task_pool</span><span class="p">))]</span>
-                <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">ot</span><span class="p">])</span>
-                <span class="n">transfer_decs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">][</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
-                <span class="n">transfer_origin_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ot</span><span class="p">)</span>
+                <span class="n">transfer_decs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">ot</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])]</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+                <span class="n">transfer_origin</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ot</span><span class="p">)</span>
 
-        <span class="c1"># Trim to exactly G solutions</span>
-        <span class="n">transfer_decs_list</span> <span class="o">=</span> <span class="n">transfer_decs_list</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">]</span>
-        <span class="n">transfer_origin_list</span> <span class="o">=</span> <span class="n">transfer_origin_list</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">]</span>
+        <span class="n">transfer_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">transfer_decs</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
 
-        <span class="c1"># Apply distribution-based perturbation</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">)):</span>
+        <span class="c1"># Disturb</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">P</span><span class="p">:</span>
-                <span class="c1"># Perturb: dec = 2 * rand() * dec, then clip to [0, 1]</span>
-                <span class="n">transfer_decs_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">transfer_decs_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
-                <span class="n">transfer_decs_list</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">transfer_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">*</span> <span class="n">transfer_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
 
-        <span class="c1"># Convert to arrays</span>
-        <span class="c1"># Note: transfer_decs may have different dimensions, handle in caller</span>
-        <span class="n">transfer_is_trans</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">transfer_decs_list</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-        <span class="n">transfer_origin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">transfer_origin_list</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">transfer_decs</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">transfer_origin</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">transfer_decs_list</span><span class="p">,</span> <span class="n">transfer_is_trans</span><span class="p">,</span> <span class="n">transfer_origin</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_nsga2_sort</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Sort solutions based on NSGA-II criteria.</span>
+<span class="sd">        Sort solutions based on NSGA-II criteria (MToP ``NSGA2Sort``).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
@@ -449,29 +500,26 @@
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        rank : np.ndarray</span>
-<span class="sd">            Ranking of each solution</span>
+<span class="sd">            Position of each solution in the sorted order, shape (pop_size,)</span>
 <span class="sd">        front_no : np.ndarray</span>
-<span class="sd">            Front number of each solution</span>
+<span class="sd">            Front number of each solution, shape (pop_size,)</span>
 <span class="sd">        crowd_dis : np.ndarray</span>
-<span class="sd">            Crowding distance of each solution</span>
+<span class="sd">            Crowding distance of each solution, shape (pop_size,)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">pop_size</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-        <span class="c1"># Non-dominated sorting</span>
         <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cons</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
             <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
 
-        <span class="c1"># Crowding distance</span>
         <span class="n">crowd_dis</span> <span class="o">=</span> <span class="n">crowding_distance</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">front_no</span><span class="p">)</span>
 
-        <span class="c1"># Sort by front number (ascending), then by crowding distance (descending)</span>
-        <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="o">-</span><span class="n">crowd_dis</span><span class="p">,</span> <span class="n">front_no</span><span class="p">))</span>
+        <span class="c1"># Ascending front number, then descending crowding distance</span>
+        <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="o">-</span><span class="n">crowd_dis</span><span class="p">,</span> <span class="n">front_no</span><span class="p">))</span>
 
-        <span class="c1"># Create rank array</span>
         <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
-        <span class="n">rank</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+        <span class="n">rank</span><span class="p">[</span><span class="n">order</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">rank</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">crowd_dis</span></div>
 

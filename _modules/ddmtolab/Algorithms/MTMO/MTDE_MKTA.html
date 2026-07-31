@@ -107,6 +107,14 @@
 <span class="sd">    - Rank-based DE parent selection</span>
 <span class="sd">    - Two knowledge transfer types: direct transfer and distribution-based transfer</span>
 
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Following the MTO-Platform reference implementation, the whole population is</span>
+<span class="sd">    evolved in a *unified* :math:`[0, 1]^{\\max_t D_t}` space; when an individual</span>
+<span class="sd">    is evaluated on task ``t`` only its first :math:`D_t` genes are used. This is</span>
+<span class="sd">    what makes a decision vector directly exchangeable between tasks of different</span>
+<span class="sd">    dimensionality.</span>
+
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
 <span class="sd">    algorithm_information : dict</span>
@@ -183,43 +191,47 @@
         <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
         <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
         <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
         <span class="n">n_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
-        <span class="c1"># Initialize population and evaluate for each task</span>
-        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">)</span>
-        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
-        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
+        <span class="c1"># Initialize in the unified [0, 1]^max(D) space (MToP Initialization uses</span>
+        <span class="c1"># rand(1, max(D)), i.e. the spare genes of the shorter tasks are random).</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">space_transfer</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">),</span>
+                              <span class="nb">type</span><span class="o">=</span><span class="s1">&#39;uni&#39;</span><span class="p">,</span> <span class="n">padding</span><span class="o">=</span><span class="s1">&#39;random&#39;</span><span class="p">)</span>
 
-        <span class="c1"># Initialize adaptive parameters for each individual</span>
-        <span class="c1"># params[t] is a dict with keys: &#39;F&#39;, &#39;CR&#39;, &#39;TR&#39;, &#39;KP&#39;</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">objs_t</span><span class="p">,</span> <span class="n">cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">objs</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">objs_t</span><span class="p">)</span>
+            <span class="n">cons</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cons_t</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Self-adaptive parameters carried by every individual</span>
         <span class="n">params</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">params_t</span> <span class="o">=</span> <span class="p">{</span>
-                <span class="s1">&#39;F&#39;</span><span class="p">:</span> <span class="mf">0.2</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>  <span class="c1"># F in [0.2, 1.2]</span>
-                <span class="s1">&#39;CR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>  <span class="c1"># CR in [0, 1]</span>
-                <span class="s1">&#39;TR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>  <span class="c1"># Transfer rate in [0, 1]</span>
-                <span class="s1">&#39;KP&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>  <span class="c1"># Knowledge type proportion in [0, 1]</span>
-            <span class="p">}</span>
-            <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">params_t</span><span class="p">)</span>
+            <span class="n">params</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                <span class="s1">&#39;F&#39;</span><span class="p">:</span> <span class="mf">0.2</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>   <span class="c1"># F in [0.2, 1.2]</span>
+                <span class="s1">&#39;CR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>        <span class="c1"># CR in [0, 1]</span>
+                <span class="s1">&#39;TR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span>        <span class="c1"># Knowledge transfer rate</span>
+                <span class="s1">&#39;KP&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>         <span class="c1"># Knowledge type proportion</span>
+            <span class="p">})</span>
 
-        <span class="c1"># Initial SPEA2 selection and get fitness</span>
-        <span class="n">fitness</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># Initial SPEA2 environmental selection (sorts the population by fitness)</span>
+        <span class="c1"># and the initial distribution models</span>
+        <span class="n">fitness</span><span class="p">,</span> <span class="n">models</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
             <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">fit_t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_selection_spea2</span><span class="p">(</span>
                 <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
             <span class="p">)</span>
             <span class="n">fitness</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">fit_t</span><span class="p">)</span>
-
-        <span class="c1"># Initialize distribution models for each task</span>
-        <span class="n">models</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">model_t</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
                 <span class="s1">&#39;mean&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span>
-                <span class="s1">&#39;std&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-100</span>
-            <span class="p">}</span>
-            <span class="n">models</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model_t</span><span class="p">)</span>
+                <span class="s1">&#39;std&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-100</span>
+            <span class="p">})</span>
+
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]]</span> <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)],</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
         <span class="c1"># Progress bar</span>
         <span class="n">total_nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
@@ -231,59 +243,49 @@
             <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
 
-            <span class="c1"># Update ranks for all tasks based on fitness</span>
+            <span class="c1"># Rank of every individual w.r.t. its SPEA2 fitness (1 = best), and</span>
+            <span class="c1"># the exponentially smoothed per-task decision-space distribution.</span>
             <span class="n">ranks</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="c1"># Get rank from fitness (lower fitness = better rank)</span>
-                <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
-                <span class="n">rank_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
-                <span class="n">rank_t</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]))</span>
-                <span class="n">ranks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
-
-            <span class="c1"># Update distribution models with exponential moving average</span>
             <span class="n">alpha</span> <span class="o">=</span> <span class="mf">0.5</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-                <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-100</span><span class="p">)</span>
+                <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
+                <span class="n">rank_t</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+                <span class="n">rank_t</span><span class="p">[</span><span class="n">order</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">])</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="n">ranks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank_t</span><span class="p">)</span>
 
-            <span class="c1"># Generate offspring for all tasks</span>
-            <span class="n">off_decs_all</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">off_params_all</span> <span class="o">=</span> <span class="p">[]</span>
+                <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">alpha</span> <span class="o">*</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+                <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">alpha</span> <span class="o">*</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span>
+                                    <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">alpha</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">std</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">ddof</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span> <span class="o">+</span> <span class="mf">1e-100</span><span class="p">)</span>
+
+            <span class="c1"># All offspring are generated from the *same* pre-update populations</span>
+            <span class="n">off_decs_all</span><span class="p">,</span> <span class="n">off_params_all</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="n">off_decs_t</span><span class="p">,</span> <span class="n">off_params_t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">(</span>
-                    <span class="n">decs</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">n_per_task</span>
-                <span class="p">)</span>
+                <span class="n">off_decs_t</span><span class="p">,</span> <span class="n">off_params_t</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generation</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                 <span class="n">off_decs_all</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">)</span>
                 <span class="n">off_params_all</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">off_params_t</span><span class="p">)</span>
 
-            <span class="c1"># Evaluate and select for each task</span>
+            <span class="c1"># Evaluate and select task by task</span>
             <span class="k">for</span> <span class="n">idx</span><span class="p">,</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">active_tasks</span><span class="p">):</span>
                 <span class="n">off_decs_t</span> <span class="o">=</span> <span class="n">off_decs_all</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
                 <span class="n">off_params_t</span> <span class="o">=</span> <span class="n">off_params_all</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
 
-                <span class="c1"># Evaluate offspring</span>
-                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">)</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">off_decs_t</span><span class="p">))</span>
+                <span class="n">off_objs_t</span><span class="p">,</span> <span class="n">off_cons_t</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs_t</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="n">off_decs_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">off_decs_t</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
-                <span class="c1"># Merge parents and offspring</span>
                 <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_decs_t</span><span class="p">])</span>
                 <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_objs_t</span><span class="p">])</span>
-                <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons_t</span><span class="p">])</span> <span class="k">if</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">off_cons_t</span>
-                <span class="n">merged_params</span> <span class="o">=</span> <span class="p">{</span>
-                    <span class="s1">&#39;F&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;F&#39;</span><span class="p">],</span> <span class="n">off_params_t</span><span class="p">[</span><span class="s1">&#39;F&#39;</span><span class="p">]]),</span>
-                    <span class="s1">&#39;CR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;CR&#39;</span><span class="p">],</span> <span class="n">off_params_t</span><span class="p">[</span><span class="s1">&#39;CR&#39;</span><span class="p">]]),</span>
-                    <span class="s1">&#39;TR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;TR&#39;</span><span class="p">],</span> <span class="n">off_params_t</span><span class="p">[</span><span class="s1">&#39;TR&#39;</span><span class="p">]]),</span>
-                    <span class="s1">&#39;KP&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;KP&#39;</span><span class="p">],</span> <span class="n">off_params_t</span><span class="p">[</span><span class="s1">&#39;KP&#39;</span><span class="p">]])</span>
-                <span class="p">}</span>
+                <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">off_cons_t</span><span class="p">])</span>
+                <span class="n">merged_params</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">key</span><span class="p">],</span> <span class="n">off_params_t</span><span class="p">[</span><span class="n">key</span><span class="p">]])</span>
+                                 <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;F&#39;</span><span class="p">,</span> <span class="s1">&#39;CR&#39;</span><span class="p">,</span> <span class="s1">&#39;TR&#39;</span><span class="p">,</span> <span class="s1">&#39;KP&#39;</span><span class="p">)}</span>
 
-                <span class="c1"># SPEA2 selection</span>
                 <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">fitness</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_selection_spea2</span><span class="p">(</span>
                     <span class="n">merged_decs</span><span class="p">,</span> <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_cons</span><span class="p">,</span> <span class="n">merged_params</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
                 <span class="p">)</span>
 
-                <span class="c1"># Append to history</span>
-                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
+                <span class="n">append_history</span><span class="p">(</span><span class="n">all_decs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span>
+                               <span class="n">all_objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>
+                               <span class="n">all_cons</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">])</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -296,63 +298,51 @@
         <span class="k">return</span> <span class="n">results</span></div>
 
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_generation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">t</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_generation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">ranks</span><span class="p">,</span> <span class="n">models</span><span class="p">,</span> <span class="n">t</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Generate offspring for task t using rank-based DE with knowledge transfer.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        decs : list of np.ndarray</span>
-<span class="sd">            Decision variables for all tasks</span>
+<span class="sd">            Unified-space decision variables for all tasks</span>
 <span class="sd">        params : list of dict</span>
 <span class="sd">            Adaptive parameters for all tasks</span>
 <span class="sd">        ranks : list of np.ndarray</span>
-<span class="sd">            Ranks for all tasks (based on fitness)</span>
+<span class="sd">            1-based ranks for all tasks (based on SPEA2 fitness, 1 = best)</span>
 <span class="sd">        models : list of dict</span>
 <span class="sd">            Distribution models for all tasks</span>
 <span class="sd">        t : int</span>
 <span class="sd">            Current task index</span>
-<span class="sd">        n_per_task : list of int</span>
-<span class="sd">            Population sizes for all tasks</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        off_decs : np.ndarray</span>
-<span class="sd">            Offspring decision variables of shape (N, dim)</span>
+<span class="sd">            Offspring decision variables of shape (N, d_uni)</span>
 <span class="sd">        off_params : dict</span>
 <span class="sd">            Offspring adaptive parameters</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">Np</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+        <span class="n">pop</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span>
+        <span class="n">Np</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">pop</span><span class="o">.</span><span class="n">shape</span>
         <span class="n">nt</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">decs</span><span class="p">)</span>
-        <span class="n">dim</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
-        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Np</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span>
-        <span class="n">off_params</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s1">&#39;F&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">Np</span><span class="p">),</span>
-            <span class="s1">&#39;CR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">Np</span><span class="p">),</span>
-            <span class="s1">&#39;TR&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">Np</span><span class="p">),</span>
-            <span class="s1">&#39;KP&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-        <span class="p">}</span>
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">Np</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+        <span class="n">off_params</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;F&#39;</span><span class="p">,</span> <span class="s1">&#39;CR&#39;</span><span class="p">,</span> <span class="s1">&#39;TR&#39;</span><span class="p">,</span> <span class="s1">&#39;KP&#39;</span><span class="p">)}</span>
 
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Np</span><span class="p">):</span>
             <span class="c1"># Parameter disturbance with Gaussian noise</span>
-            <span class="n">off_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;F&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
-            <span class="n">off_F</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_F</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">)</span>
+            <span class="n">off_F</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;F&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">),</span> <span class="mf">0.2</span><span class="p">,</span> <span class="mf">1.2</span><span class="p">))</span>
+            <span class="n">off_CR</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;CR&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+            <span class="n">off_TR</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;TR&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
 
-            <span class="n">off_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;CR&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
-            <span class="n">off_CR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_CR</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-
-            <span class="n">off_TR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;TR&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
-            <span class="n">off_TR</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_TR</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-
-            <span class="n">off_KP</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;KP&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">)</span>
             <span class="c1"># Cyclic boundary for KP</span>
+            <span class="n">off_KP</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">normal</span><span class="p">(</span><span class="n">params</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;KP&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">],</span> <span class="mf">0.1</span><span class="p">))</span>
             <span class="k">if</span> <span class="n">off_KP</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">:</span>
                 <span class="n">off_KP</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">+</span> <span class="n">off_KP</span>
             <span class="k">elif</span> <span class="n">off_KP</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
                 <span class="n">off_KP</span> <span class="o">=</span> <span class="n">off_KP</span> <span class="o">-</span> <span class="mi">1</span>
 
-            <span class="c1"># Parameter mutation with probability</span>
+            <span class="c1"># Parameter mutation</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau1</span><span class="p">:</span>
                 <span class="n">off_F</span> <span class="o">=</span> <span class="mf">0.2</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">tau1</span><span class="p">:</span>
@@ -367,133 +357,85 @@
             <span class="n">off_params</span><span class="p">[</span><span class="s1">&#39;TR&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_TR</span>
             <span class="n">off_params</span><span class="p">[</span><span class="s1">&#39;KP&#39;</span><span class="p">][</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_KP</span>
 
-            <span class="c1"># Rank-based DE parent selection</span>
-            <span class="c1"># x1: selected with probability proportional to (Np - rank) / Np</span>
-            <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rank_selection</span><span class="p">(</span><span class="n">ranks</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-            <span class="n">x2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rank_selection</span><span class="p">(</span><span class="n">ranks</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">x1</span><span class="p">])</span>
-            <span class="n">x3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_random_selection</span><span class="p">(</span><span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">x1</span><span class="p">,</span> <span class="n">x2</span><span class="p">])</span>
+            <span class="c1"># Select individuals (rank-DE): x1 and x2 are accepted with</span>
+            <span class="c1"># probability (Np - rank) / Np, x3 is drawn uniformly.</span>
+            <span class="n">x1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rank_selection</span><span class="p">(</span><span class="n">ranks</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">Np</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span><span class="p">,))</span>
+            <span class="n">x2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rank_selection</span><span class="p">(</span><span class="n">ranks</span><span class="p">[</span><span class="n">t</span><span class="p">],</span> <span class="n">Np</span><span class="p">,</span> <span class="p">(</span><span class="n">i</span><span class="p">,</span> <span class="n">x1</span><span class="p">))</span>
+            <span class="n">x3</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">))</span>
+            <span class="k">while</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">i</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x1</span> <span class="ow">or</span> <span class="n">x3</span> <span class="o">==</span> <span class="n">x2</span><span class="p">:</span>
+                <span class="n">x3</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">))</span>
 
-            <span class="n">xDeci</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">i</span><span class="p">]</span>
-            <span class="n">xDec1</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x1</span><span class="p">]</span>
-            <span class="n">xDec2</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x2</span><span class="p">]</span>
-            <span class="n">xDec3</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">x3</span><span class="p">]</span>
+            <span class="n">x_dec_i</span> <span class="o">=</span> <span class="n">pop</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+            <span class="n">x_dec1</span> <span class="o">=</span> <span class="n">pop</span><span class="p">[</span><span class="n">x1</span><span class="p">]</span>
+            <span class="n">x_dec2</span> <span class="o">=</span> <span class="n">pop</span><span class="p">[</span><span class="n">x2</span><span class="p">]</span>
+            <span class="n">x_dec3</span> <span class="o">=</span> <span class="n">pop</span><span class="p">[</span><span class="n">x3</span><span class="p">]</span>
 
-            <span class="c1"># Knowledge transfer</span>
+            <span class="c1"># Knowledge transfer: replace the second difference vector member</span>
             <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">off_TR</span><span class="p">:</span>
-                <span class="c1"># Select a helper task (different from current task)</span>
-                <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">))</span>          <span class="c1"># help task</span>
                 <span class="k">while</span> <span class="n">k</span> <span class="o">==</span> <span class="n">t</span><span class="p">:</span>
-                    <span class="n">k</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                    <span class="n">k</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">nt</span><span class="p">))</span>
+                <span class="n">np_k</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-                <span class="n">Np_k</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">k</span><span class="p">]</span>
-
-                <span class="c1"># Two types of knowledge transfer based on KP</span>
                 <span class="k">if</span> <span class="n">off_KP</span> <span class="o">&gt;</span> <span class="mf">0.5</span><span class="p">:</span>
-                    <span class="c1"># Type 1: Direct transfer - randomly select a solution from helper task</span>
-                    <span class="n">xDeck</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np_k</span><span class="p">)]</span>
-                    <span class="c1"># Align dimensions to current task</span>
-                    <span class="n">xDeck</span> <span class="o">=</span> <span class="n">align_dimensions</span><span class="p">(</span><span class="n">xDeck</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+                    <span class="c1"># Solution-level knowledge: use the source solution as it is</span>
+                    <span class="n">x_dec_k</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">np_k</span><span class="p">)]</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># Type 2: Distribution-based transfer</span>
-                    <span class="c1"># Transform solution from helper task&#39;s distribution to current task&#39;s distribution</span>
-                    <span class="n">xDeck</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np_k</span><span class="p">)]</span>
-                    <span class="n">dim_k</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">xDeck</span><span class="p">)</span>
+                    <span class="c1"># Distribution-level knowledge: standardise with the source</span>
+                    <span class="c1"># model and map onto the target model</span>
+                    <span class="n">x_dec_k</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">np_k</span><span class="p">)]</span>
+                    <span class="n">x_dec_k</span> <span class="o">=</span> <span class="p">(</span><span class="n">x_dec_k</span> <span class="o">-</span> <span class="n">models</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="n">models</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span>
+                    <span class="n">x_dec_k</span> <span class="o">=</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span> <span class="o">+</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span> <span class="o">*</span> <span class="n">x_dec_k</span>
+                <span class="n">x_dec2</span> <span class="o">=</span> <span class="n">x_dec_k</span>
 
-                    <span class="c1"># Standardize using helper task&#39;s distribution</span>
-                    <span class="n">xDeck_normalized</span> <span class="o">=</span> <span class="p">(</span><span class="n">xDeck</span> <span class="o">-</span> <span class="n">models</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">])</span> <span class="o">/</span> <span class="n">models</span><span class="p">[</span><span class="n">k</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span>
+            <span class="c1"># DE/rand/1 mutation + binomial crossover (MToP DE_Crossover)</span>
+            <span class="n">mutant</span> <span class="o">=</span> <span class="n">x_dec1</span> <span class="o">+</span> <span class="n">off_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">x_dec2</span> <span class="o">-</span> <span class="n">x_dec3</span><span class="p">)</span>
+            <span class="n">replace</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">off_CR</span>
+            <span class="n">replace</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">d</span><span class="p">)]</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="n">child</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">replace</span><span class="p">,</span> <span class="n">x_dec_i</span><span class="p">,</span> <span class="n">mutant</span><span class="p">)</span>
 
-                    <span class="c1"># Align dimensions after normalization</span>
-                    <span class="n">xDeck_normalized_aligned</span> <span class="o">=</span> <span class="n">align_dimensions</span><span class="p">(</span><span class="n">xDeck_normalized</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
-
-                    <span class="c1"># Get aligned mean and std for current task</span>
-                    <span class="n">mean_t</span> <span class="o">=</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;mean&#39;</span><span class="p">]</span>
-                    <span class="n">std_t</span> <span class="o">=</span> <span class="n">models</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="s1">&#39;std&#39;</span><span class="p">]</span>
-
-                    <span class="c1"># Transform to current task&#39;s distribution</span>
-                    <span class="n">xDeck</span> <span class="o">=</span> <span class="n">mean_t</span> <span class="o">+</span> <span class="n">std_t</span> <span class="o">*</span> <span class="n">xDeck_normalized_aligned</span>
-
-                <span class="c1"># Use transferred solution as x2</span>
-                <span class="n">xDec2</span> <span class="o">=</span> <span class="n">xDeck</span>
-
-            <span class="c1"># DE/rand/1 mutation</span>
-            <span class="n">mutant</span> <span class="o">=</span> <span class="n">xDec1</span> <span class="o">+</span> <span class="n">off_F</span> <span class="o">*</span> <span class="p">(</span><span class="n">xDec2</span> <span class="o">-</span> <span class="n">xDec3</span><span class="p">)</span>
-
-            <span class="c1"># DE binomial crossover</span>
-            <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
-            <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">off_CR</span>
-            <span class="n">mask</span><span class="p">[</span><span class="n">j_rand</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="n">offspring_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">mask</span><span class="p">,</span> <span class="n">mutant</span><span class="p">,</span> <span class="n">xDeci</span><span class="p">)</span>
-
-            <span class="c1"># Boundary handling</span>
-            <span class="n">offspring_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring_dec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-
-            <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring_dec</span>
+            <span class="n">off_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">child</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">off_params</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_rank_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">rank</span><span class="p">,</span> <span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rank_selection</span><span class="p">(</span><span class="n">rank</span><span class="p">,</span> <span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Rank-based selection: select individual with probability proportional to (Np - rank) / Np.</span>
+<span class="sd">        Rank-based selection: accept a uniformly drawn index with probability</span>
+<span class="sd">        ``(Np - rank[x]) / Np`` and reject the excluded indices.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        rank : np.ndarray</span>
-<span class="sd">            Ranks of individuals (0-indexed, lower is better)</span>
+<span class="sd">            1-based ranks of individuals (1 = best, Np = worst)</span>
 <span class="sd">        Np : int</span>
 <span class="sd">            Population size</span>
-<span class="sd">        exclude : list, optional</span>
-<span class="sd">            Indices to exclude from selection</span>
+<span class="sd">        exclude : tuple of int</span>
+<span class="sd">            Indices that must not be selected</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        selected : int</span>
 <span class="sd">            Selected individual index</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">exclude</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">exclude</span> <span class="o">=</span> <span class="p">[]</span>
-
-        <span class="n">max_attempts</span> <span class="o">=</span> <span class="mi">1000</span>
-        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_attempts</span><span class="p">):</span>
-            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span>
-            <span class="c1"># Accept with probability (Np - rank[x]) / Np</span>
-            <span class="c1"># Higher probability for lower rank (better individuals)</span>
-            <span class="k">if</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="p">(</span><span class="n">Np</span> <span class="o">-</span> <span class="n">rank</span><span class="p">[</span><span class="n">x</span><span class="p">])</span> <span class="o">/</span> <span class="n">Np</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">10000</span><span class="p">):</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">Np</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;=</span> <span class="p">(</span><span class="n">Np</span> <span class="o">-</span> <span class="n">rank</span><span class="p">[</span><span class="n">x</span><span class="p">])</span> <span class="o">/</span> <span class="n">Np</span> <span class="ow">and</span> <span class="n">x</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">:</span>
                 <span class="k">return</span> <span class="n">x</span>
 
-        <span class="c1"># Fallback: random selection excluding specified indices</span>
-        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+        <span class="c1"># Safety net for degenerate populations (MATLAB would spin forever here)</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">j</span> <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span> <span class="k">if</span> <span class="n">j</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">]</span>
+        <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">candidates</span><span class="p">))</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_random_selection</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Np</span><span class="p">,</span> <span class="n">exclude</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_selection_spea2</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Random selection excluding specified indices.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        Np : int</span>
-<span class="sd">            Population size</span>
-<span class="sd">        exclude : list, optional</span>
-<span class="sd">            Indices to exclude from selection</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        selected : int</span>
-<span class="sd">            Selected individual index</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="k">if</span> <span class="n">exclude</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">exclude</span> <span class="o">=</span> <span class="p">[]</span>
-
-        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Np</span><span class="p">)</span> <span class="k">if</span> <span class="n">i</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">]</span>
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_selection_spea2</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        SPEA2 environmental selection.</span>
+<span class="sd">        SPEA2 environmental selection (MToP ``Selection_SPEA2`` with Epsilon = 0).</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        decs : np.ndarray</span>
-<span class="sd">            Decision variables of shape (pop_size, dim)</span>
+<span class="sd">            Decision variables of shape (pop_size, d_uni)</span>
 <span class="sd">        objs : np.ndarray</span>
 <span class="sd">            Objective values of shape (pop_size, n_obj)</span>
 <span class="sd">        cons : np.ndarray</span>
@@ -514,148 +456,36 @@
 <span class="sd">        selected_params : dict</span>
 <span class="sd">            Selected adaptive parameters</span>
 <span class="sd">        fitness : np.ndarray</span>
-<span class="sd">            Fitness values of selected population</span>
+<span class="sd">            Fitness values of the selected population, sorted ascending</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">pop_size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
+        <span class="n">pop_size</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="k">if</span> <span class="n">pop_size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">params</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
 
         <span class="n">n</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
+        <span class="n">fitness</span> <span class="o">=</span> <span class="n">spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">)</span>
 
-        <span class="c1"># Calculate constraint violation</span>
-        <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cons</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">cons</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">cvs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
-
-        <span class="c1"># Calculate SPEA2 fitness</span>
-        <span class="n">fitness</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_cal_spea2_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cvs</span><span class="p">)</span>
-
-        <span class="c1"># Environmental selection</span>
         <span class="n">next_mask</span> <span class="o">=</span> <span class="n">fitness</span> <span class="o">&lt;</span> <span class="mi">1</span>
-        <span class="n">n_selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)</span>
+        <span class="n">n_selected</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">))</span>
 
         <span class="k">if</span> <span class="n">n_selected</span> <span class="o">&lt;</span> <span class="n">n</span><span class="p">:</span>
-            <span class="c1"># Not enough: select top n by fitness</span>
-            <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">)</span>
+            <span class="c1"># Not enough non-dominated solutions: take the n best fitness values</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
             <span class="n">next_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-            <span class="n">next_mask</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">[:</span><span class="n">n</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
+            <span class="n">next_mask</span><span class="p">[</span><span class="n">order</span><span class="p">[:</span><span class="n">n</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
         <span class="k">elif</span> <span class="n">n_selected</span> <span class="o">&gt;</span> <span class="n">n</span><span class="p">:</span>
-            <span class="c1"># Too many: truncation</span>
-            <span class="n">selected_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">selected_objs_temp</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span>
-            <span class="n">del_indices</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_truncation</span><span class="p">(</span><span class="n">selected_objs_temp</span><span class="p">,</span> <span class="n">n_selected</span> <span class="o">-</span> <span class="n">n</span><span class="p">)</span>
-            <span class="n">next_mask</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">[</span><span class="n">del_indices</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">False</span>
+            <span class="c1"># Too many: truncate the most crowded ones away</span>
+            <span class="n">candidate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">keep</span> <span class="o">=</span> <span class="n">spea2_truncation</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">candidate</span><span class="p">],</span> <span class="n">n</span><span class="p">)</span>
+            <span class="n">next_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
+            <span class="n">next_mask</span><span class="p">[</span><span class="n">candidate</span><span class="p">[</span><span class="n">keep</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
 
-        <span class="c1"># Apply selection</span>
-        <span class="n">selected_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">next_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">selected</span> <span class="o">=</span> <span class="n">selected</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)]</span>
 
-        <span class="c1"># Sort by fitness</span>
-        <span class="n">sorted_fitness_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">fitness</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">])</span>
-        <span class="n">selected_indices</span> <span class="o">=</span> <span class="n">selected_indices</span><span class="p">[</span><span class="n">sorted_fitness_indices</span><span class="p">]</span>
+        <span class="n">selected_params</span> <span class="o">=</span> <span class="p">{</span><span class="n">key</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="n">key</span><span class="p">][</span><span class="n">selected</span><span class="p">]</span> <span class="k">for</span> <span class="n">key</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;F&#39;</span><span class="p">,</span> <span class="s1">&#39;CR&#39;</span><span class="p">,</span> <span class="s1">&#39;TR&#39;</span><span class="p">,</span> <span class="s1">&#39;KP&#39;</span><span class="p">)}</span>
 
-        <span class="n">selected_decs</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span>
-        <span class="n">selected_objs</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span>
-        <span class="n">selected_cons</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span> <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
-        <span class="n">selected_params</span> <span class="o">=</span> <span class="p">{</span>
-            <span class="s1">&#39;F&#39;</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;F&#39;</span><span class="p">][</span><span class="n">selected_indices</span><span class="p">],</span>
-            <span class="s1">&#39;CR&#39;</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;CR&#39;</span><span class="p">][</span><span class="n">selected_indices</span><span class="p">],</span>
-            <span class="s1">&#39;TR&#39;</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;TR&#39;</span><span class="p">][</span><span class="n">selected_indices</span><span class="p">],</span>
-            <span class="s1">&#39;KP&#39;</span><span class="p">:</span> <span class="n">params</span><span class="p">[</span><span class="s1">&#39;KP&#39;</span><span class="p">][</span><span class="n">selected_indices</span><span class="p">]</span>
-        <span class="p">}</span>
-        <span class="n">selected_fitness</span> <span class="o">=</span> <span class="n">fitness</span><span class="p">[</span><span class="n">selected_indices</span><span class="p">]</span>
-
-        <span class="k">return</span> <span class="n">selected_decs</span><span class="p">,</span> <span class="n">selected_objs</span><span class="p">,</span> <span class="n">selected_cons</span><span class="p">,</span> <span class="n">selected_params</span><span class="p">,</span> <span class="n">selected_fitness</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_cal_spea2_fitness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cvs</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Calculate SPEA2 fitness values.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        objs : np.ndarray</span>
-<span class="sd">            Objective values of shape (pop_size, n_obj)</span>
-<span class="sd">        cvs : np.ndarray</span>
-<span class="sd">            Constraint violations of shape (pop_size,)</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        fitness : np.ndarray</span>
-<span class="sd">            SPEA2 fitness values of shape (pop_size,)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
-        <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([])</span>
-
-        <span class="c1"># Detect dominance relations</span>
-        <span class="n">dominate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-            <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">n</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">cvs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">cvs</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
-                    <span class="n">dominate</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">elif</span> <span class="n">cvs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">cvs</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
-                    <span class="n">dominate</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># Compare objectives (minimization)</span>
-                    <span class="n">better_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">objs</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
-                    <span class="n">worse_i</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">objs</span><span class="p">[</span><span class="n">j</span><span class="p">])</span>
-                    <span class="k">if</span> <span class="n">better_i</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">worse_i</span><span class="p">:</span>
-                        <span class="n">dominate</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-                    <span class="k">elif</span> <span class="n">worse_i</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">better_i</span><span class="p">:</span>
-                        <span class="n">dominate</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-
-        <span class="c1"># Strength S(i) = number of solutions dominated by i</span>
-        <span class="n">s</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">dominate</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-
-        <span class="c1"># Raw fitness R(i) = sum of S(j) for all j that dominate i</span>
-        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-            <span class="n">dominating_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">dominate</span><span class="p">[:,</span> <span class="n">i</span><span class="p">])[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">r</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">s</span><span class="p">[</span><span class="n">dominating_indices</span><span class="p">])</span>
-
-        <span class="c1"># Density D(i)</span>
-        <span class="n">distance</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">objs</span><span class="p">)</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-        <span class="n">distance_sorted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="n">k_neighbor</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n</span><span class="p">)))</span>
-        <span class="n">k_neighbor</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="nb">min</span><span class="p">(</span><span class="n">k_neighbor</span><span class="p">,</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">))</span>
-        <span class="n">d</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">/</span> <span class="p">(</span><span class="n">distance_sorted</span><span class="p">[:,</span> <span class="n">k_neighbor</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span><span class="p">)</span>
-
-        <span class="c1"># Total fitness = R + D</span>
-        <span class="n">fitness</span> <span class="o">=</span> <span class="n">r</span> <span class="o">+</span> <span class="n">d</span>
-        <span class="k">return</span> <span class="n">fitness</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_truncation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Truncation operator for SPEA2.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        objs : np.ndarray</span>
-<span class="sd">            Objective values of shape (pop_size, n_obj)</span>
-<span class="sd">        k : int</span>
-<span class="sd">            Number of solutions to delete</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        del_indices : np.ndarray</span>
-<span class="sd">            Indices of solutions to delete</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
-        <span class="n">del_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-
-        <span class="n">distance</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">objs</span><span class="p">)</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">distance</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-
-        <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">del_mask</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">k</span><span class="p">:</span>
-            <span class="n">remain_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="o">~</span><span class="n">del_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">remain_dist</span> <span class="o">=</span> <span class="n">distance</span><span class="p">[</span><span class="n">remain_indices</span><span class="p">][:,</span> <span class="n">remain_indices</span><span class="p">]</span>
-            <span class="n">sorted_dist</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">remain_dist</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">sorted_rows_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">rot90</span><span class="p">(</span><span class="n">sorted_dist</span><span class="p">))</span>
-            <span class="n">del_idx_in_remain</span> <span class="o">=</span> <span class="n">sorted_rows_indices</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-            <span class="n">del_mask</span><span class="p">[</span><span class="n">remain_indices</span><span class="p">[</span><span class="n">del_idx_in_remain</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">True</span>
-
-        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">del_mask</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span></div>
+        <span class="k">return</span> <span class="n">decs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">cons</span><span class="p">[</span><span class="n">selected</span><span class="p">],</span> <span class="n">selected_params</span><span class="p">,</span> <span class="n">fitness</span><span class="p">[</span><span class="n">selected</span><span class="p">]</span></div>
 
 </pre></div>
 

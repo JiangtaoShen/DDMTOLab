@@ -116,6 +116,13 @@
 <span class="sd">    ----------</span>
 <span class="sd">    algorithm_information : dict</span>
 <span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    One generation costs ``4 * n * n_tasks + 2`` evaluations: two probes per parent</span>
+<span class="sd">    per pair for the finite-difference gradient (``2 * n * n_tasks``), the main</span>
+<span class="sd">    offspring (``n * n_tasks``), and the surviving probe buffer that the reference</span>
+<span class="sd">    implementation re-evaluates together with the offspring (``n * n_tasks + 2``).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
@@ -207,12 +214,12 @@
         <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">objs</span>
         <span class="n">pop_sfs</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">fill_value</span><span class="o">=</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
 
-        <span class="n">L</span> <span class="o">=</span> <span class="mf">0.0</span>  <span class="c1"># smoothed gradient norm</span>
-
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">nfes</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="n">gen</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="c1"># MToP increments Algo.Gen inside notTerminated before the first loop body,</span>
+        <span class="c1"># so the first generation executed by the reference runs with Gen == 2.</span>
+        <span class="n">gen</span> <span class="o">=</span> <span class="mi">2</span>
         <span class="k">while</span> <span class="n">nfes</span> <span class="o">&lt;</span> <span class="n">max_nfes</span><span class="p">:</span>
             <span class="c1"># Random sigma from {10^-1, ..., 10^-5}</span>
             <span class="n">sigma</span> <span class="o">=</span> <span class="mf">10.0</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">))</span>
@@ -229,52 +236,62 @@
                 <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">pop_sfs</span><span class="p">)</span>
 
             <span class="n">maxD</span> <span class="o">=</span> <span class="n">m_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
-            <span class="n">maxC</span> <span class="o">=</span> <span class="n">m_cons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>  <span class="c1"># unified constraint dimension</span>
+            <span class="n">n_obj</span> <span class="o">=</span> <span class="n">m_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
+            <span class="n">n_con</span> <span class="o">=</span> <span class="n">m_cons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
             <span class="n">n_pairs</span> <span class="o">=</span> <span class="n">pop_size</span> <span class="o">//</span> <span class="mi">2</span>
 
-            <span class="c1"># Preallocate main offspring and probe arrays</span>
+            <span class="c1"># Preallocate main offspring</span>
             <span class="n">main_off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">maxD</span><span class="p">))</span>
             <span class="n">main_off_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
 
-            <span class="n">probe_decs_list</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">probe_objs_list</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">probe_cons_list</span> <span class="o">=</span> <span class="p">[]</span>
-            <span class="n">probe_sfs_list</span> <span class="o">=</span> <span class="p">[]</span>
+            <span class="c1"># MToP&#39;s `offspring2` buffer. Pair i writes slots (2i, 2i+1, 2i+2, 2i+3)</span>
+            <span class="c1"># while the loop counter advances by 2, so every pair overwrites the two</span>
+            <span class="c1"># trailing slots of its predecessor. Exactly 2*n_pairs + 2 probes survive.</span>
+            <span class="n">probe_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="n">maxD</span><span class="p">))</span>
+            <span class="n">probe_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span> <span class="o">+</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
 
             <span class="n">shuffled</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
 
-            <span class="n">k</span> <span class="o">=</span> <span class="mf">0.7</span> <span class="o">+</span> <span class="mf">0.6</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+            <span class="c1"># MToP re-initialises L at the start of every Generation call</span>
+            <span class="n">L</span> <span class="o">=</span> <span class="mf">0.0</span>
 
             <span class="k">for</span> <span class="n">pair_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">):</span>
                 <span class="n">p1</span> <span class="o">=</span> <span class="n">shuffled</span><span class="p">[</span><span class="n">pair_idx</span><span class="p">]</span>
                 <span class="n">p2</span> <span class="o">=</span> <span class="n">shuffled</span><span class="p">[</span><span class="n">pair_idx</span> <span class="o">+</span> <span class="n">n_pairs</span><span class="p">]</span>
                 <span class="n">sf1</span> <span class="o">=</span> <span class="n">m_sfs</span><span class="p">[</span><span class="n">p1</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
                 <span class="n">sf2</span> <span class="o">=</span> <span class="n">m_sfs</span><span class="p">[</span><span class="n">p2</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+                <span class="n">base</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">pair_idx</span>
 
-                <span class="c1"># Random Gaussian direction (matching RandOrthMat(D, 1))</span>
+                <span class="c1"># Drawn once per pair in MToP</span>
+                <span class="n">k</span> <span class="o">=</span> <span class="mf">0.7</span> <span class="o">+</span> <span class="mf">0.6</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+
+                <span class="c1"># RandOrthMat(D, 1) returns the raw (un-normalised) Gaussian column</span>
                 <span class="n">sd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randn</span><span class="p">(</span><span class="n">maxD</span><span class="p">)</span>
 
                 <span class="c1"># --- Gradient estimation via finite differences ---</span>
                 <span class="n">QWE</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">2</span><span class="p">,</span> <span class="n">maxD</span><span class="p">))</span>
-                <span class="n">parents</span> <span class="o">=</span> <span class="p">[</span><span class="n">p1</span><span class="p">,</span> <span class="n">p2</span><span class="p">]</span>
-                <span class="n">factors</span> <span class="o">=</span> <span class="p">[</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">]</span>
+                <span class="n">parents</span> <span class="o">=</span> <span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">p2</span><span class="p">)</span>
+                <span class="n">factors</span> <span class="o">=</span> <span class="p">(</span><span class="n">sf1</span><span class="p">,</span> <span class="n">sf2</span><span class="p">)</span>
+
+                <span class="c1"># offspring2(count .. count+3) are copies of p1, p2, p1, p2, so the</span>
+                <span class="c1"># skill factors follow the copied individuals even though the decision</span>
+                <span class="c1"># vectors are later overwritten by the probes of a single parent.</span>
+                <span class="n">probe_sfs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
+                <span class="n">probe_sfs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
+                <span class="n">probe_sfs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
+                <span class="n">probe_sfs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
 
                 <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">2</span><span class="p">):</span>
                     <span class="n">pidx</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
                     <span class="n">ft</span> <span class="o">=</span> <span class="n">factors</span><span class="p">[</span><span class="n">x</span><span class="p">]</span>
 
-                    <span class="c1"># Positive probe</span>
                     <span class="n">probe_pos</span> <span class="o">=</span> <span class="n">m_decs</span><span class="p">[</span><span class="n">pidx</span><span class="p">]</span> <span class="o">+</span> <span class="n">sd</span> <span class="o">*</span> <span class="n">sigma</span>
-                    <span class="c1"># Negative probe</span>
                     <span class="n">probe_neg</span> <span class="o">=</span> <span class="n">m_decs</span><span class="p">[</span><span class="n">pidx</span><span class="p">]</span> <span class="o">-</span> <span class="n">sd</span> <span class="o">*</span> <span class="n">sigma</span>
 
-                    <span class="c1"># Evaluate probes on parent&#39;s task</span>
-                    <span class="n">probe_pos_trimmed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">probe_pos</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                    <span class="n">probe_neg_trimmed</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">probe_neg</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                    <span class="n">obj_pos</span><span class="p">,</span> <span class="n">con_pos</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
-                        <span class="n">problem</span><span class="p">,</span> <span class="n">probe_pos_trimmed</span><span class="p">,</span> <span class="n">ft</span><span class="p">)</span>
-                    <span class="n">obj_neg</span><span class="p">,</span> <span class="n">con_neg</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
-                        <span class="n">problem</span><span class="p">,</span> <span class="n">probe_neg_trimmed</span><span class="p">,</span> <span class="n">ft</span><span class="p">)</span>
+                    <span class="c1"># MToP evaluates the probes without clipping them back to [0, 1];</span>
+                    <span class="c1"># clipping would flatten the finite difference at the box boundary.</span>
+                    <span class="n">obj_pos</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">probe_pos</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]],</span> <span class="n">ft</span><span class="p">)</span>
+                    <span class="n">obj_neg</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">probe_neg</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]],</span> <span class="n">ft</span><span class="p">)</span>
                     <span class="n">nfes</span> <span class="o">+=</span> <span class="mi">2</span>
                     <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">2</span><span class="p">)</span>
 
@@ -282,43 +299,21 @@
                     <span class="n">L1</span> <span class="o">=</span> <span class="n">obj_pos</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">obj_neg</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span>
                     <span class="n">QWE</span><span class="p">[</span><span class="n">x</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="n">sd</span> <span class="o">*</span> <span class="n">L1</span> <span class="o">/</span> <span class="n">sigma</span>
 
-                    <span class="c1"># Store probes as offspring for selection</span>
-                    <span class="c1"># Pad constraints to unified dimension</span>
-                    <span class="n">con_pos_pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxC</span><span class="p">)</span>
-                    <span class="n">con_neg_pad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">maxC</span><span class="p">)</span>
-                    <span class="n">c_pos</span> <span class="o">=</span> <span class="n">con_pos</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-                    <span class="n">c_neg</span> <span class="o">=</span> <span class="n">con_neg</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_pos</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">con_pos_pad</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">c_pos</span><span class="p">)]</span> <span class="o">=</span> <span class="n">c_pos</span>
-                    <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_neg</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="n">con_neg_pad</span><span class="p">[:</span><span class="nb">len</span><span class="p">(</span><span class="n">c_neg</span><span class="p">)]</span> <span class="o">=</span> <span class="n">c_neg</span>
+                    <span class="n">probe_decs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">x</span><span class="p">]</span> <span class="o">=</span> <span class="n">probe_pos</span>
+                    <span class="n">probe_decs</span><span class="p">[</span><span class="n">base</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">x</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">probe_neg</span>
 
-                    <span class="c1"># Positive probe</span>
-                    <span class="n">probe_dec_pos_full</span> <span class="o">=</span> <span class="n">m_decs</span><span class="p">[</span><span class="n">pidx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                    <span class="n">probe_dec_pos_full</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]]</span> <span class="o">=</span> <span class="n">probe_pos_trimmed</span>
-                    <span class="n">probe_decs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">probe_dec_pos_full</span><span class="p">)</span>
-                    <span class="n">probe_objs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_pos</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
-                    <span class="n">probe_cons_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">con_pos_pad</span><span class="p">)</span>
-                    <span class="n">probe_sfs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ft</span><span class="p">)</span>
-
-                    <span class="c1"># Negative probe</span>
-                    <span class="n">probe_dec_neg_full</span> <span class="o">=</span> <span class="n">m_decs</span><span class="p">[</span><span class="n">pidx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-                    <span class="n">probe_dec_neg_full</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">ft</span><span class="p">]]</span> <span class="o">=</span> <span class="n">probe_neg_trimmed</span>
-                    <span class="n">probe_decs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">probe_dec_neg_full</span><span class="p">)</span>
-                    <span class="n">probe_objs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">obj_neg</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
-                    <span class="n">probe_cons_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">con_neg_pad</span><span class="p">)</span>
-                    <span class="n">probe_sfs_list</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">ft</span><span class="p">)</span>
-
-                <span class="c1"># Update smoothed gradient norm L</span>
-                <span class="n">qwe_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">QWE</span><span class="p">)</span>
+                <span class="c1"># Update smoothed gradient norm L.</span>
+                <span class="c1"># MATLAB norm() of a matrix is the spectral norm (largest singular</span>
+                <span class="c1"># value), not the Frobenius norm.</span>
+                <span class="n">qwe_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">QWE</span><span class="p">,</span> <span class="mi">2</span><span class="p">)</span>
                 <span class="k">if</span> <span class="n">qwe_norm</span> <span class="o">&gt;</span> <span class="n">L</span><span class="p">:</span>
                     <span class="n">L</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span><span class="p">)</span> <span class="o">*</span> <span class="n">qwe_norm</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">gamma</span> <span class="o">*</span> <span class="n">L</span>
 
                 <span class="c1"># Avoid division by zero</span>
                 <span class="n">L_safe</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="mf">1e-15</span><span class="p">)</span>
 
-                <span class="n">idx1</span> <span class="o">=</span> <span class="n">pair_idx</span> <span class="o">*</span> <span class="mi">2</span>
-                <span class="n">idx2</span> <span class="o">=</span> <span class="n">pair_idx</span> <span class="o">*</span> <span class="mi">2</span> <span class="o">+</span> <span class="mi">1</span>
+                <span class="n">idx1</span> <span class="o">=</span> <span class="n">base</span>
+                <span class="n">idx2</span> <span class="o">=</span> <span class="n">base</span> <span class="o">+</span> <span class="mi">1</span>
 
                 <span class="k">if</span> <span class="n">sf1</span> <span class="o">==</span> <span class="n">sf2</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmp</span><span class="p">:</span>
                     <span class="c1"># --- Transfer: gradient-guided crossover + OBL ---</span>
@@ -333,12 +328,11 @@
 
                     <span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_dec1</span>
 
-                    <span class="c1"># OBL: alternate between full OBL and bounds-based</span>
+                    <span class="c1"># MToP: `if rand() &gt; mod(Algo.Gen, 2)` selects plain OBL on even</span>
+                    <span class="c1"># generations and bound-reflected opposition on odd generations.</span>
                     <span class="k">if</span> <span class="n">gen</span> <span class="o">%</span> <span class="mi">2</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-                        <span class="c1"># Full OBL (even gen → mod(gen,2)=0, rand()&gt;0 always true)</span>
                         <span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="o">-</span> <span class="n">off_dec1</span>
                     <span class="k">else</span><span class="p">:</span>
-                        <span class="c1"># Bounds-based opposition (odd gen)</span>
                         <span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
                             <span class="n">k</span> <span class="o">*</span> <span class="p">(</span><span class="n">max_dec</span><span class="p">[</span><span class="n">factor</span><span class="p">]</span> <span class="o">+</span> <span class="n">min_dec</span><span class="p">[</span><span class="n">factor</span><span class="p">])</span> <span class="o">-</span> <span class="n">off_dec1</span><span class="p">)</span>
 
@@ -353,13 +347,13 @@
                     <span class="n">main_off_sfs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf1</span>
                     <span class="n">main_off_sfs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="n">sf2</span>
 
-                <span class="c1"># Clip to [0, 1]</span>
+                <span class="c1"># Clip to [0, 1] (MToP clips `offspring` only, never `offspring2`)</span>
                 <span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx1</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
                 <span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">main_off_decs</span><span class="p">[</span><span class="n">idx2</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
             <span class="c1"># --- Evaluate main offspring ---</span>
-            <span class="n">main_off_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">m_objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]),</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-            <span class="n">main_off_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">m_cons</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]))</span>
+            <span class="n">main_off_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">n_obj</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+            <span class="n">main_off_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">n_con</span><span class="p">))</span>
             <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">pop_size</span><span class="p">):</span>
                 <span class="n">t</span> <span class="o">=</span> <span class="n">main_off_sfs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
                 <span class="n">main_off_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">main_off_cons</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
@@ -367,24 +361,24 @@
             <span class="n">nfes</span> <span class="o">+=</span> <span class="n">pop_size</span>
             <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
 
-            <span class="c1"># --- Build probe arrays ---</span>
-            <span class="n">n_probes</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">probe_decs_list</span><span class="p">)</span>
-            <span class="n">probe_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">probe_decs_list</span><span class="p">)</span>
-            <span class="n">probe_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">probe_objs_list</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_probes</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">probe_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">probe_cons_list</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_probes</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">probe_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">probe_sfs_list</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n_probes</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="c1"># --- Re-evaluate the surviving probes on their own skill factor ---</span>
+            <span class="c1"># MToP appends offspring2 to the per-task offspring list and evaluates</span>
+            <span class="c1"># the whole list again, so each surviving probe costs a second FE.</span>
+            <span class="n">n_probes</span> <span class="o">=</span> <span class="n">probe_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="n">probe_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n_probes</span><span class="p">,</span> <span class="n">n_obj</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+            <span class="n">probe_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n_probes</span><span class="p">,</span> <span class="n">n_con</span><span class="p">))</span>
+            <span class="k">for</span> <span class="n">idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_probes</span><span class="p">):</span>
+                <span class="n">t</span> <span class="o">=</span> <span class="n">probe_sfs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
+                <span class="n">probe_objs</span><span class="p">[</span><span class="n">idx</span><span class="p">],</span> <span class="n">probe_cons</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span>
+                    <span class="n">problem</span><span class="p">,</span> <span class="n">probe_decs</span><span class="p">[</span><span class="n">idx</span><span class="p">,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">t</span><span class="p">]],</span> <span class="n">t</span><span class="p">)</span>
+            <span class="n">nfes</span> <span class="o">+=</span> <span class="n">n_probes</span>
+            <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n_probes</span><span class="p">)</span>
 
             <span class="c1"># --- Selection: merge parents + main offspring + probes ---</span>
-            <span class="n">all_off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">main_off_decs</span><span class="p">,</span> <span class="n">probe_decs</span><span class="p">])</span>
-            <span class="n">all_off_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">main_off_objs</span><span class="p">,</span> <span class="n">probe_objs</span><span class="p">])</span>
-            <span class="n">all_off_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">main_off_cons</span><span class="p">,</span> <span class="n">probe_cons</span><span class="p">])</span>
-            <span class="n">all_off_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span>
-                <span class="n">main_off_sfs</span><span class="p">,</span> <span class="n">probe_sfs</span><span class="p">])</span>
-
-            <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_decs</span><span class="p">,</span> <span class="n">all_off_decs</span><span class="p">])</span>
-            <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_objs</span><span class="p">,</span> <span class="n">all_off_objs</span><span class="p">])</span>
-            <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_cons</span><span class="p">,</span> <span class="n">all_off_cons</span><span class="p">])</span>
-            <span class="n">merged_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_sfs</span><span class="p">,</span> <span class="n">all_off_sfs</span><span class="p">])</span>
+            <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_decs</span><span class="p">,</span> <span class="n">main_off_decs</span><span class="p">,</span> <span class="n">probe_decs</span><span class="p">])</span>
+            <span class="n">merged_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_objs</span><span class="p">,</span> <span class="n">main_off_objs</span><span class="p">,</span> <span class="n">probe_objs</span><span class="p">])</span>
+            <span class="n">merged_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_cons</span><span class="p">,</span> <span class="n">main_off_cons</span><span class="p">,</span> <span class="n">probe_cons</span><span class="p">])</span>
+            <span class="n">merged_sfs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">m_sfs</span><span class="p">,</span> <span class="n">main_off_sfs</span><span class="p">,</span> <span class="n">probe_sfs</span><span class="p">])</span>
 
             <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">pop_cons</span><span class="p">,</span> <span class="n">pop_sfs</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>

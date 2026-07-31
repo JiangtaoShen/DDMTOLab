@@ -195,7 +195,7 @@
         <span class="n">n</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">total_max_nfes</span> <span class="o">=</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
-        <span class="n">elit_n</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">round</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">*</span> <span class="n">n</span><span class="p">))</span>
+        <span class="n">elit_n</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">*</span> <span class="n">n</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)))</span>
 
         <span class="c1"># Initialize population and evaluate</span>
         <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
@@ -241,12 +241,14 @@
                     <span class="n">CO</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">CO</span><span class="p">[</span><span class="n">t</span><span class="p">,</span> <span class="n">k</span><span class="p">]</span>
             <span class="c1"># Diagonal stays 0 (matches MATLAB&#39;s 1/inf initialization)</span>
 
+            <span class="c1"># MToP checks termination only at the top of the generation loop, so</span>
+            <span class="c1"># every task is always processed to completion; the overshoot is</span>
+            <span class="c1"># removed from the recorded history by trim_excess_evaluations.</span>
             <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-                <span class="k">if</span> <span class="n">total_nfes</span> <span class="o">&gt;=</span> <span class="n">total_max_nfes</span><span class="p">:</span>
-                    <span class="k">break</span>
-
                 <span class="c1"># --- Evaluate M{t} ---</span>
-                <span class="n">M_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+                <span class="c1"># MATLAB evaluates the distribution mean unclipped (M can leave</span>
+                <span class="c1"># [0, 1] through the 4-point correction below).</span>
+                <span class="n">M_dec</span> <span class="o">=</span> <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
                 <span class="n">OO_obj</span><span class="p">,</span> <span class="n">OO_con</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">M_dec</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                 <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
                 <span class="n">total_nfes</span> <span class="o">+=</span> <span class="mi">1</span>
@@ -275,12 +277,14 @@
                 <span class="k">else</span><span class="p">:</span>
                     <span class="c1"># Multi-source transfer</span>
                     <span class="n">PATH</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
-                    <span class="n">CO2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">CO</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:])[::</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-                    <span class="n">TOP_idx</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">CO2</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">topn</span><span class="p">])</span>
+                    <span class="n">CO2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">CO</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="p">:],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
+                    <span class="n">TOP_idx</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">i</span><span class="p">)</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">CO2</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">topn</span><span class="p">]]</span>
                     <span class="k">if</span> <span class="n">t</span> <span class="ow">in</span> <span class="n">TOP_idx</span><span class="p">:</span>
                         <span class="n">TOP_idx</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="n">t</span><span class="p">)</span>
-                    <span class="k">if</span> <span class="n">k</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">TOP_idx</span><span class="p">:</span>
-                        <span class="n">TOP_idx</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">k</span><span class="p">)</span>
+                    <span class="c1"># MATLAB appends k unconditionally, so k is counted twice</span>
+                    <span class="c1"># (and therefore double-weighted) when it is already a</span>
+                    <span class="c1"># top-TOPN neighbour of itself.</span>
+                    <span class="n">TOP_idx</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">k</span><span class="p">))</span>
 
                     <span class="c1"># Compute weights from CO(t, :)</span>
                     <span class="n">w</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">CO</span><span class="p">[</span><span class="n">t</span><span class="p">,</span> <span class="n">ti</span><span class="p">]</span> <span class="k">for</span> <span class="n">ti</span> <span class="ow">in</span> <span class="n">TOP_idx</span><span class="p">])</span>
@@ -309,12 +313,7 @@
                 <span class="n">n_cons_t</span> <span class="o">=</span> <span class="n">cons</span><span class="p">[</span><span class="n">t</span><span class="p">]</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
                 <span class="n">offspring_cons</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">n_cons_t</span><span class="p">))</span>
 
-                <span class="n">gen_count</span> <span class="o">=</span> <span class="mi">0</span>
                 <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">):</span>
-                    <span class="k">if</span> <span class="n">total_nfes</span> <span class="o">&gt;=</span> <span class="n">total_max_nfes</span><span class="p">:</span>
-                        <span class="n">gen_count</span> <span class="o">=</span> <span class="n">i</span>
-                        <span class="k">break</span>
-
                     <span class="k">if</span> <span class="n">flag</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
                         <span class="c1"># Generate from distribution</span>
                         <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">rmp</span><span class="p">:</span>
@@ -350,17 +349,15 @@
                         <span class="n">flag</span> <span class="o">=</span> <span class="mi">0</span>
 
                     <span class="n">offspring_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                    <span class="n">gen_count</span> <span class="o">=</span> <span class="n">i</span> <span class="o">+</span> <span class="mi">1</span>
 
                 <span class="c1"># Add best individual and OO as last two</span>
-                <span class="k">if</span> <span class="n">gen_count</span> <span class="o">&lt;=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">:</span>
-                    <span class="n">gen_count</span> <span class="o">=</span> <span class="n">n</span> <span class="o">-</span> <span class="mi">2</span>
                 <span class="n">offspring_decs</span><span class="p">[</span><span class="n">n</span> <span class="o">-</span> <span class="mi">2</span><span class="p">]</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">rank</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="mi">0</span><span class="p">]]</span>  <span class="c1"># best from current pop</span>
                 <span class="n">offspring_decs</span><span class="p">[</span><span class="n">n</span> <span class="o">-</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">M_dec</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>              <span class="c1"># OO point</span>
 
-                <span class="c1"># Evaluate non-evaluated offspring (mirrors + best + OO)</span>
+                <span class="c1"># Evaluate non-evaluated offspring (mirrors + best + OO).</span>
+                <span class="c1"># MATLAB re-evaluates the elite copy and OO here as well.</span>
                 <span class="n">non_eval_indices</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">)</span> <span class="k">if</span> <span class="ow">not</span> <span class="n">offspring_evaluated</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
-                <span class="k">if</span> <span class="n">non_eval_indices</span> <span class="ow">and</span> <span class="n">total_nfes</span> <span class="o">&lt;</span> <span class="n">total_max_nfes</span><span class="p">:</span>
+                <span class="k">if</span> <span class="n">non_eval_indices</span><span class="p">:</span>
                     <span class="n">ne_decs</span> <span class="o">=</span> <span class="n">offspring_decs</span><span class="p">[</span><span class="n">non_eval_indices</span><span class="p">]</span>
                     <span class="n">ne_objs</span><span class="p">,</span> <span class="n">ne_cons</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">ne_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
                     <span class="k">for</span> <span class="n">j</span><span class="p">,</span> <span class="n">ni</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">non_eval_indices</span><span class="p">):</span>
@@ -385,26 +382,26 @@
                 <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">average</span><span class="p">(</span><span class="n">elite_decs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">weights</span><span class="o">=</span><span class="n">log_weights</span><span class="p">)</span>
                 <span class="n">D_M</span> <span class="o">=</span> <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="n">M_O</span>
 
-                <span class="k">if</span> <span class="n">total_nfes</span> <span class="o">+</span> <span class="mi">4</span> <span class="o">&lt;=</span> <span class="n">total_max_nfes</span><span class="p">:</span>
-                    <span class="n">O_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
-                        <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">D_M</span><span class="p">,</span>   <span class="c1"># O1: overshoot</span>
-                        <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>             <span class="c1"># O2: current</span>
-                        <span class="n">M_O</span><span class="p">,</span>              <span class="c1"># O3: old</span>
-                        <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">D_M</span>  <span class="c1"># O4: between</span>
-                    <span class="p">]),</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-                    <span class="n">O_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">O_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
-                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">4</span>
-                    <span class="n">total_nfes</span> <span class="o">+=</span> <span class="mi">4</span>
-                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
+                <span class="c1"># MATLAB evaluates the four probe points unclipped</span>
+                <span class="n">O_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span>
+                    <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">D_M</span><span class="p">,</span>   <span class="c1"># O1: overshoot</span>
+                    <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">],</span>             <span class="c1"># O2: current</span>
+                    <span class="n">M_O</span><span class="p">,</span>              <span class="c1"># O3: old</span>
+                    <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">D_M</span>  <span class="c1"># O4: between</span>
+                <span class="p">])</span>
+                <span class="n">O_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">O_decs</span><span class="p">,</span> <span class="n">t</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">4</span>
+                <span class="n">total_nfes</span> <span class="o">+=</span> <span class="mi">4</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">4</span><span class="p">)</span>
 
-                    <span class="c1"># Adjust M based on objective trend</span>
-                    <span class="k">if</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="ow">and</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]:</span>
-                        <span class="c1"># Improving trend: use overshoot</span>
-                        <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">O_decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-                    <span class="k">elif</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="nb">max</span><span class="p">(</span><span class="n">O_objs</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">0</span><span class="p">]):</span>
-                        <span class="c1"># M went wrong: fallback</span>
-                        <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">O_decs</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
-                    <span class="c1"># else: keep M[t] as is</span>
+                <span class="c1"># Adjust M based on objective trend</span>
+                <span class="k">if</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="ow">and</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">]:</span>
+                    <span class="c1"># Improving trend: use overshoot</span>
+                    <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">O_decs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+                <span class="k">elif</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="nb">max</span><span class="p">(</span><span class="n">O_objs</span><span class="p">[</span><span class="mi">2</span><span class="p">,</span> <span class="mi">0</span><span class="p">],</span> <span class="n">O_objs</span><span class="p">[</span><span class="mi">3</span><span class="p">,</span> <span class="mi">0</span><span class="p">]):</span>
+                    <span class="c1"># M went wrong: fallback</span>
+                    <span class="n">M</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">=</span> <span class="n">O_decs</span><span class="p">[</span><span class="mi">3</span><span class="p">]</span>
+                <span class="c1"># else: keep M[t] as is</span>
 
                 <span class="c1"># --- Update S, path, M_old ---</span>
                 <span class="n">elite_decs</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">rank</span><span class="p">[</span><span class="n">t</span><span class="p">][:</span><span class="n">elit_n</span><span class="p">]]</span>

@@ -88,7 +88,7 @@
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
 <span class="sd">Date: 2025.12.14</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Version: 1.1</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
@@ -127,7 +127,7 @@
 
 <div class="viewcode-block" id="NSGA_II_SDR.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STMO.NSGA_II_SDR.NSGA_II_SDR.__init__">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">15.0</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mf">20.0</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
                  <span class="n">name</span><span class="o">=</span><span class="s1">&#39;NSGA-II-SDR&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize NSGA-II-SDR algorithm.</span>
@@ -143,7 +143,7 @@
 <span class="sd">        muc : float, optional</span>
 <span class="sd">            Distribution index for simulated binary crossover (SBX) (default: 20.0)</span>
 <span class="sd">        mum : float, optional</span>
-<span class="sd">            Distribution index for polynomial mutation (PM) (default: 15.0)</span>
+<span class="sd">            Distribution index for polynomial mutation (PM) (default: 20.0)</span>
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
@@ -187,11 +187,15 @@
         <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">init_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">)</span>
 
-        <span class="c1"># Perform initial non-dominated sorting for each task using SDR</span>
-        <span class="n">rank</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="c1"># Per-task ideal/nadir point estimates and initial environmental selection</span>
+        <span class="n">zmin</span><span class="p">,</span> <span class="n">zmax</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">crowd_dis</span> <span class="o">=</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[],</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
-            <span class="n">rank_i</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nsga2sdr_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-            <span class="n">rank</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank_i</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
+            <span class="n">zmin</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+            <span class="n">zmax</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+            <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">front_i</span><span class="p">,</span> <span class="n">crowd_i</span> <span class="o">=</span> <span class="n">sdr_environmental_selection</span><span class="p">(</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zmin</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zmax</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="n">front_no</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">front_i</span><span class="p">)</span>
+            <span class="n">crowd_dis</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">crowd_i</span><span class="p">)</span>
 
         <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
@@ -203,20 +207,25 @@
                 <span class="k">break</span>
 
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="c1"># Parent selection via binary tournament based on rank</span>
-                <span class="n">matingpool</span> <span class="o">=</span> <span class="n">tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">rank</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="c1"># Parent selection via binary tournament on front number, then crowding distance</span>
+                <span class="c1"># (PlatEMO: TournamentSelection(2,N,FrontNo,-CrowdDis))</span>
+                <span class="n">matingpool</span> <span class="o">=</span> <span class="n">platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">front_no</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="o">-</span><span class="n">crowd_dis</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
                 <span class="c1"># Generate offspring through crossover and mutation</span>
                 <span class="n">off_decs</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">matingpool</span><span class="p">,</span> <span class="p">:],</span> <span class="n">muc</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
                 <span class="n">off_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">off_decs</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                <span class="c1"># Merge parent and offspring populations</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">),</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">))</span>
+                <span class="c1"># Update the ideal point with all offspring, and estimate the nadir</span>
+                <span class="c1"># point from the first front of the current (pre-merge) population</span>
+                <span class="n">zmin</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">zmin</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">off_objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+                <span class="n">zmax</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">front_no</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">==</span> <span class="mi">1</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
-                <span class="c1"># Environmental selection: sort and keep best n individuals using SDR</span>
-                <span class="n">rank</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nsga2sdr_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">rank</span><span class="p">[</span><span class="n">i</span><span class="p">])[:</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
-                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">rank</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">select_by_index</span><span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">rank</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="c1"># Merge parent and offspring populations</span>
+                <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_decs</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_objs</span><span class="p">),</span> <span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">off_decs</span><span class="p">))</span>
+
+                <span class="c1"># Environmental selection with the strengthened dominance relation</span>
+                <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">front_no</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">crowd_dis</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">sdr_environmental_selection</span><span class="p">(</span>
+                    <span class="n">merged_objs</span><span class="p">,</span> <span class="n">merged_decs</span><span class="p">,</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zmin</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">zmax</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
                 <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
@@ -236,53 +245,150 @@
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">nsga2sdr_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">sdr_environmental_selection</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">decs</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="n">zmin</span><span class="p">,</span> <span class="n">zmax</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Sort solutions based on NSGA-II-SDR criteria using strengthened dominance relation and crowding distance.</span>
+<span class="sd">    Environmental selection of NSGA-II-SDR (PlatEMO EnvironmentalSelection.m).</span>
+
+<span class="sd">    The objectives are translated by the ideal point and, if the objective</span>
+<span class="sd">    ranges are sufficiently balanced (0.05*max(range) &lt; min(range)), scaled by</span>
+<span class="sd">    the range. Near-duplicate solutions (equal after rounding the normalized</span>
+<span class="sd">    objectives to 1e-6) are removed before SDR-based sorting, so fewer than N</span>
+<span class="sd">    solutions may be returned.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    objs : np.ndarray</span>
-<span class="sd">        Objective value matrix of shape (pop_size, n_obj)</span>
+<span class="sd">        Objective values, shape (pop_size, M)</span>
+<span class="sd">    decs : np.ndarray</span>
+<span class="sd">        Decision variables, shape (pop_size, D)</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of solutions to select (upper bound)</span>
+<span class="sd">    zmin : np.ndarray</span>
+<span class="sd">        Ideal point estimate, shape (M,)</span>
+<span class="sd">    zmax : np.ndarray</span>
+<span class="sd">        Nadir point estimate, shape (M,)</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
-<span class="sd">    rank : np.ndarray</span>
-<span class="sd">        Ranking of each solution (0-based index after sorting) of shape (pop_size,).</span>
-<span class="sd">        rank[i] indicates the position of solution i in the sorted order</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Selected objective values</span>
+<span class="sd">    decs : np.ndarray</span>
+<span class="sd">        Selected decision variables</span>
 <span class="sd">    front_no : np.ndarray</span>
-<span class="sd">        Non-dominated front number of each solution of shape (pop_size,)</span>
+<span class="sd">        SDR front number of each selected solution</span>
 <span class="sd">    crowd_dis : np.ndarray</span>
-<span class="sd">        Crowding distance of each solution of shape (pop_size,)</span>
-
-<span class="sd">    Notes</span>
-<span class="sd">    -----</span>
-<span class="sd">    Solutions are sorted first by front number (ascending), then by crowding distance (descending).</span>
-<span class="sd">    Larger crowding distance values indicate better diversity preservation.</span>
-<span class="sd">    The strengthened dominance relation (SDR) is used for non-dominated sorting to improve</span>
-<span class="sd">    performance on many-objective optimization problems.</span>
+<span class="sd">        Crowding distance (in normalized objective space) of each selected solution</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">pop_size</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="c1"># Normalization (conditional, as in PlatEMO)</span>
+    <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">objs</span> <span class="o">-</span> <span class="n">zmin</span>
+    <span class="n">obj_range</span> <span class="o">=</span> <span class="n">zmax</span> <span class="o">-</span> <span class="n">zmin</span>
+    <span class="k">if</span> <span class="mf">0.05</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">obj_range</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">obj_range</span><span class="p">):</span>
+        <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">pop_obj</span> <span class="o">/</span> <span class="n">obj_range</span>
 
-    <span class="c1"># Perform non-dominated sorting using strengthened dominance relation</span>
-    <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort_sdr</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
+    <span class="c1"># Remove (near-)duplicate solutions; MATLAB&#39;s unique(...,&#39;rows&#39;) keeps the</span>
+    <span class="c1"># first occurrence of each duplicate and sorts the rows lexicographically</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">keep</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">round</span><span class="p">(</span><span class="n">pop_obj</span> <span class="o">*</span> <span class="mf">1e6</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1e6</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_index</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">pop_obj</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+    <span class="n">objs</span> <span class="o">=</span> <span class="n">objs</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+    <span class="n">decs</span> <span class="o">=</span> <span class="n">decs</span><span class="p">[</span><span class="n">keep</span><span class="p">]</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
 
-    <span class="c1"># Calculate crowding distance for diversity preservation</span>
-    <span class="n">crowd_dis</span> <span class="o">=</span> <span class="n">crowding_distance</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">front_no</span><span class="p">)</span>
+    <span class="c1"># Non-dominated sorting with the strengthened dominance relation</span>
+    <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span> <span class="o">=</span> <span class="n">sdr_sort_core</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
 
-    <span class="c1"># Sort by front number (ascending), then by crowding distance (descending)</span>
-    <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="o">-</span><span class="n">crowd_dis</span><span class="p">,</span> <span class="n">front_no</span><span class="p">))</span>
+    <span class="c1"># Crowding distance in the normalized objective space</span>
+    <span class="n">crowd_dis</span> <span class="o">=</span> <span class="n">crowding_distance</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">front_no</span><span class="p">)</span>
 
-    <span class="c1"># Create rank array: rank[i] gives the sorted position of solution i</span>
-    <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
-    <span class="n">rank</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+    <span class="c1"># Select the solutions in the last front based on their crowding distances</span>
+    <span class="n">next_mask</span> <span class="o">=</span> <span class="n">front_no</span> <span class="o">&lt;</span> <span class="n">max_fno</span>
+    <span class="n">last</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">front_no</span> <span class="o">==</span> <span class="n">max_fno</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="o">-</span><span class="n">crowd_dis</span><span class="p">[</span><span class="n">last</span><span class="p">],</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)</span>
+    <span class="n">n_needed</span> <span class="o">=</span> <span class="n">N</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">next_mask</span><span class="p">))</span>
+    <span class="n">next_mask</span><span class="p">[</span><span class="n">last</span><span class="p">[</span><span class="n">order</span><span class="p">[:</span><span class="n">n_needed</span><span class="p">]]]</span> <span class="o">=</span> <span class="kc">True</span>
 
-    <span class="k">return</span> <span class="n">rank</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">crowd_dis</span>
+    <span class="k">return</span> <span class="n">objs</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">decs</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">front_no</span><span class="p">[</span><span class="n">next_mask</span><span class="p">],</span> <span class="n">crowd_dis</span><span class="p">[</span><span class="n">next_mask</span><span class="p">]</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">sdr_sort_core</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_sort</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Non-dominated sorting by the strengthened dominance relation (SDR) on</span>
+<span class="sd">    pre-normalized objectives (core of PlatEMO&#39;s NDSort_SDR.m).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    pop_obj : np.ndarray</span>
+<span class="sd">        (Normalized) objective value matrix, shape (N, M)</span>
+<span class="sd">    n_sort : int</span>
+<span class="sd">        Number of solutions to sort</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    front_no : np.ndarray</span>
+<span class="sd">        Non-dominated front number for each solution, shape (N,)</span>
+<span class="sd">    max_fno : int</span>
+<span class="sd">        Maximum front number assigned</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># L1-norm (sum) of each solution as the convergence measure</span>
+    <span class="n">norm_p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+    <span class="c1"># Pairwise angles between solution vectors (diagonal treated as pi/2)</span>
+    <span class="k">if</span> <span class="n">N</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
+        <span class="n">cosine</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_obj</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">)</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">cosine</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">cosine</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">angle</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">cosine</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+
+    <span class="c1"># minA = temp(min(ceil(N/2),end)) in MATLAB (1-based indexing), with</span>
+    <span class="c1"># temp = sort(unique(min(Angle,[],2))). The literal unique() is not</span>
+    <span class="c1"># replicated here: solutions sharing a ray direction (common once the</span>
+    <span class="c1"># population converges, e.g. identical position variables on DTLZ</span>
+    <span class="c1"># problems) have an angle of exactly 0 in exact arithmetic, and</span>
+    <span class="c1"># collapsing those duplicates would push the index to the largest</span>
+    <span class="c1"># min-angle, making Theta=1 for most pairs and destroying diversity.</span>
+    <span class="c1"># In MATLAB the same angles come out as distinct floating-point noise</span>
+    <span class="c1"># (pdist2/acos round-off, complex acos for cosines slightly above 1),</span>
+    <span class="c1"># so unique() barely collapses anything and minA stays at the</span>
+    <span class="c1"># ceil(N/2)-th smallest value -- which the plain sort below reproduces.</span>
+    <span class="n">min_angles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">angle</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">N</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)),</span> <span class="n">min_angles</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span> <span class="o">-</span> <span class="mi">1</span>
+    <span class="n">minA</span> <span class="o">=</span> <span class="n">min_angles</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+
+    <span class="c1"># Theta = max(1,(Angle./minA).^1); MATLAB&#39;s max(1,NaN) yields 1</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">divide</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">):</span>
+        <span class="n">ratio</span> <span class="o">=</span> <span class="n">angle</span> <span class="o">/</span> <span class="n">minA</span>
+    <span class="n">theta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">ratio</span><span class="p">),</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">ratio</span><span class="p">))</span>
+
+    <span class="c1"># Strengthened dominance: i dominates j if norm_p[i]*Theta[i,j] &lt; norm_p[j]</span>
+    <span class="n">dominate</span> <span class="o">=</span> <span class="n">norm_p</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">theta</span> <span class="o">&lt;</span> <span class="n">norm_p</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">dominate</span><span class="p">,</span> <span class="kc">False</span><span class="p">)</span>
+    <span class="c1"># Resolve mutual domination as in the MATLAB pairwise loop (i &lt; j has priority)</span>
+    <span class="n">mutual</span> <span class="o">=</span> <span class="n">dominate</span> <span class="o">&amp;</span> <span class="n">dominate</span><span class="o">.</span><span class="n">T</span>
+    <span class="n">dominate</span> <span class="o">&amp;=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">tril</span><span class="p">(</span><span class="n">mutual</span><span class="p">)</span>
+
+    <span class="c1"># Front-by-front peeling</span>
+    <span class="n">front_no</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+    <span class="n">max_fno</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">front_no</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_sort</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+        <span class="n">max_fno</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="n">current</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">dominate</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">front_no</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
+        <span class="n">front_no</span><span class="p">[</span><span class="n">current</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_fno</span>
+        <span class="n">dominate</span><span class="p">[</span><span class="n">current</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
+
+    <span class="k">return</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">nd_sort_sdr</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n_sort</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Do non-dominated sorting by strengthened dominance relation (SDR).</span>
+<span class="sd">    SDR-based non-dominated sorting with internal min-max normalization.</span>
+
+<span class="sd">    This matches the NDSort_SDR variant shipped with PlatEMO&#39;s PIEA, which</span>
+<span class="sd">    normalizes the objectives by the population minimum and maximum before</span>
+<span class="sd">    applying the strengthened dominance relation (NSGA-II-SDR itself</span>
+<span class="sd">    normalizes in its environmental selection instead; see</span>
+<span class="sd">    :func:`sdr_environmental_selection`).</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
@@ -298,68 +404,45 @@
 <span class="sd">    max_fno : int</span>
 <span class="sd">        Maximum front number assigned</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">N</span> <span class="o">=</span> <span class="n">pop_obj</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-
-    <span class="c1"># Min-Max Normalization</span>
     <span class="n">obj_min</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">obj_max</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
     <span class="n">obj_range</span> <span class="o">=</span> <span class="n">obj_max</span> <span class="o">-</span> <span class="n">obj_min</span>
     <span class="n">obj_range</span><span class="p">[</span><span class="n">obj_range</span> <span class="o">==</span> <span class="mi">0</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
-    <span class="n">pop_obj</span> <span class="o">=</span> <span class="p">(</span><span class="n">pop_obj</span> <span class="o">-</span> <span class="n">obj_min</span><span class="p">)</span> <span class="o">/</span> <span class="n">obj_range</span>
+    <span class="n">normalized</span> <span class="o">=</span> <span class="p">(</span><span class="n">pop_obj</span> <span class="o">-</span> <span class="n">obj_min</span><span class="p">)</span> <span class="o">/</span> <span class="n">obj_range</span>
 
-    <span class="c1"># Calculate L1-norm (sum) of each solution for convergence measure</span>
-    <span class="n">norm_p</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">sdr_sort_core</span><span class="p">(</span><span class="n">normalized</span><span class="p">,</span> <span class="n">n_sort</span><span class="p">)</span>
 
-    <span class="c1"># Calculate cosine similarity for diversity measure</span>
-    <span class="k">if</span> <span class="n">N</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="n">cosine</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pop_obj</span><span class="p">,</span> <span class="n">pop_obj</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;cosine&#39;</span><span class="p">)</span>
-        <span class="n">np</span><span class="o">.</span><span class="n">fill_diagonal</span><span class="p">(</span><span class="n">cosine</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">cosine</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
 
-    <span class="c1"># Calculate angle (in radians) between solution vectors</span>
-    <span class="n">angle</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arccos</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">cosine</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">platemo_tournament_selection</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="o">*</span><span class="n">fitness</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exact port of PlatEMO&#39;s TournamentSelection.</span>
 
-    <span class="c1"># Find minimum angle threshold for strengthened dominance</span>
-    <span class="k">if</span> <span class="n">N</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-        <span class="c1"># Get minimum angle for each solution</span>
-        <span class="n">min_angle_per_sol</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">angle</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="c1"># Get unique sorted minimum angles</span>
-        <span class="n">unique_min_angles</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">min_angle_per_sol</span><span class="p">))</span>
-        <span class="c1"># Select the middle value (or the ceil(N/2)-th smallest unique value)</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="mi">50</span><span class="o">*</span><span class="n">N</span> <span class="o">/</span> <span class="mi">100</span><span class="p">)</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">unique_min_angles</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="n">minA</span> <span class="o">=</span> <span class="n">unique_min_angles</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
-    <span class="k">else</span><span class="p">:</span>
-        <span class="n">minA</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mi">4</span>  <span class="c1"># Default for single solution</span>
+<span class="sd">    Candidates are compared lexicographically on the given fitness keys</span>
+<span class="sd">    (lower values are better). Solutions with identical fitness values share</span>
+<span class="sd">    the same rank, so a tournament among tied candidates is decided by the</span>
+<span class="sd">    (random) draw order, i.e. uniformly at random. This differs from ranking</span>
+<span class="sd">    with a composite total order, which would break ties deterministically.</span>
 
-    <span class="c1"># Calculate theta values for strengthened dominance relation</span>
-    <span class="n">Theta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="p">(</span><span class="n">angle</span> <span class="o">/</span> <span class="n">minA</span><span class="p">)</span> <span class="o">**</span> <span class="mi">1</span><span class="p">)</span>
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    K : int</span>
+<span class="sd">        Tournament size</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of parents to select</span>
+<span class="sd">    *fitness : np.ndarray</span>
+<span class="sd">        One or more fitness vectors of equal length (primary key first)</span>
 
-    <span class="c1"># Build dominance matrix using strengthened dominance relation</span>
-    <span class="c1"># Solution i strengthened-dominates solution j if: norm_p[i] * Theta[i,j] &lt; norm_p[j]</span>
-    <span class="n">dominate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">N</span><span class="p">,</span> <span class="n">N</span><span class="p">),</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">bool</span><span class="p">)</span>
-
-    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span> <span class="o">-</span> <span class="mi">1</span><span class="p">):</span>
-        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">i</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">norm_p</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="n">Theta</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">norm_p</span><span class="p">[</span><span class="n">j</span><span class="p">]:</span>
-                <span class="n">dominate</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">j</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-            <span class="k">elif</span> <span class="n">norm_p</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">*</span> <span class="n">Theta</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">norm_p</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
-                <span class="n">dominate</span><span class="p">[</span><span class="n">j</span><span class="p">,</span> <span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="kc">True</span>
-
-    <span class="c1"># Non-dominated sorting based on strengthened dominance</span>
-    <span class="n">front_no</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-    <span class="n">max_fno</span> <span class="o">=</span> <span class="mi">0</span>
-
-    <span class="k">while</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">front_no</span> <span class="o">!=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">min</span><span class="p">(</span><span class="n">n_sort</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
-        <span class="n">max_fno</span> <span class="o">+=</span> <span class="mi">1</span>
-        <span class="c1"># Find solutions not dominated by any others under SDR</span>
-        <span class="n">current</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">dominate</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">&amp;</span> <span class="p">(</span><span class="n">front_no</span> <span class="o">==</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span><span class="p">)</span>
-        <span class="c1"># Assign front number</span>
-        <span class="n">front_no</span><span class="p">[</span><span class="n">current</span><span class="p">]</span> <span class="o">=</span> <span class="n">max_fno</span>
-        <span class="c1"># Remove current solutions from domination relationships</span>
-        <span class="n">dominate</span><span class="p">[</span><span class="n">current</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="kc">False</span>
-
-    <span class="k">return</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">max_fno</span>
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    index : np.ndarray</span>
+<span class="sd">        Indices of the selected parents, shape (N,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fitness</span><span class="p">])</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">fits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fits</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
+    <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">loc</span><span class="p">[</span><span class="n">parents</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parents</span><span class="p">[</span><span class="n">best</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
 </pre></div>
 
            </div>
