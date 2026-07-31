@@ -44,6 +44,10 @@ class ParEGO_KT:
         'max_nfes': 'unequal'
     }
 
+    @classmethod
+    def get_algorithm_information(cls, print_info=True):
+        return get_algorithm_information(cls, print_info)
+
     def __init__(self, problem, n_initial=None, n_weights=None, max_nfes=None, rho=0.05,
                  save_data=True, save_path='./Data', name='ParEGO-KT', disable_tqdm=True):
         """

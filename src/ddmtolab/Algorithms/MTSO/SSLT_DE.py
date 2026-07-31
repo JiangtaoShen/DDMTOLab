@@ -26,12 +26,46 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+# ---------------------------------------------------------------------------
+# Dropout network hyper-parameters (MToP: SSLT/Dropout/{trainmodel,updatemodel,
+# trainNet,testNet,iniA}.m).  Everything below matches the reference except the
+# number of mini-batch steps: MATLAB runs 80000 steps to build and 8000 steps to
+# update, i.e. ~16M sample gradients per build, which is intractable here.  The
+# round counts are therefore scaled down by 10x while keeping the 10:1 ratio.
+# ---------------------------------------------------------------------------
+_BUILD_ROUNDS = 8000
+_UPDATE_ROUNDS = 800
+_BATCH_SIZE = 200
+_LEARN_RATE = 0.01
+_WEIGHT_DECAY = 1e-05
+_HIDDEN = 40
+_DROP_P = (0.2, 0.5)
+
+
 # ============================================================================
 # Helper Functions
 # ============================================================================
 
+def _matlab_round(x):
+    """MATLAB round(): half away from zero (numpy rounds half to even)."""
+    return int(np.floor(x + 0.5)) if x >= 0 else -int(np.floor(-x + 0.5))
+
+
+def _safe_div(num, den):
+    """
+    MATLAB evaluates the ratios below without guarding the denominator (a zero
+    denominator yields Inf/NaN which then poisons the network inputs).  Zero
+    denominators are mapped to 0 here so the state stays finite; every other
+    case is bit-identical to the reference.
+    """
+    return float(num) / float(den) if den != 0 else 0.0
+
+
 def _wasserstein_1d(u_decs, v_decs):
-    """Compute 1D Wasserstein distance between two flattened population arrays."""
+    """
+    1D Wasserstein distance between two flattened population arrays
+    (SSLT_DE.m ``Ws`` + ``find_interval``).
+    """
     u = np.sort(u_decs.ravel())
     v = np.sort(v_decs.ravel())
     all_vals = np.unique(np.concatenate([u, v]))
@@ -43,9 +77,20 @@ def _wasserstein_1d(u_decs, v_decs):
 
 
 def _dispersion_metric(decs, objs):
-    """Mean pairwise squared distance among top 10% individuals."""
-    M = max(int(0.1 * len(objs)), 1)
-    rank = np.argsort(objs.flatten())
+    """
+    Mean pairwise squared distance among the top 10% individuals
+    (SSLT_DE.m ``Dispersion``).
+
+    Notes
+    -----
+    The MATLAB reference indexes ``M_pop(i + 1:end)`` linearly instead of
+    row-wise, so ``up`` accumulates vectors of different lengths and the
+    function raises a size-mismatch error for any M >= 3 (M = round(0.1 * N),
+    i.e. M = 10 at the default N = 100).  The intended scalar reading -- the
+    sum of squared distances over all elite pairs -- is used here.
+    """
+    M = max(_matlab_round(0.1 * len(objs)), 1)
+    rank = np.argsort(objs.flatten(), kind='stable')
     top = decs[rank[:M]]
     if M <= 1:
         return 0.0
@@ -60,9 +105,9 @@ def _dispersion_type(decs, objs, decs_old, objs_old):
     """Compare dispersion: 1=decreasing, 2=same, 3=increasing."""
     dm = _dispersion_metric(decs, objs)
     dm_old = _dispersion_metric(decs_old, objs_old)
-    if dm < dm_old:
+    if dm - dm_old < 0:
         return 1
-    elif dm == dm_old:
+    elif dm - dm_old == 0:
         return 2
     else:
         return 3
@@ -76,27 +121,94 @@ def _convergence_dist(decs_old, decs_new):
 
 
 def _smooth(decs, objs):
-    """Keep the best individual from each consecutive triple."""
-    keep = []
+    """
+    Keep the best individual of every consecutive triple (SSLT_DE.m ``Smooth``).
+
+    MATLAB deletes the 2nd- and 3rd-best member of each triple and keeps
+    everything else, so any trailing individuals that do not fill a complete
+    triple survive.
+    """
     n = len(decs)
+    delete = set()
     for i in range(0, n - 2, 3):
-        triple_objs = objs[i:i + 3].flatten()
-        best = np.argmin(triple_objs)
-        keep.append(i + best)
-    if len(keep) == 0:
-        keep = [np.argmin(objs.flatten())]
+        order = np.argsort(objs[i:i + 3].flatten(), kind='stable')
+        delete.add(i + order[1])
+        delete.add(i + order[2])
+    keep = [i for i in range(n) if i not in delete]
     return decs[keep], objs[keep]
 
 
 def _de_crossover_single(trial, target, CR):
-    """Binomial crossover for a single individual pair."""
+    """
+    Binomial crossover for a single pair, matching MToP's ``DE_Crossover``:
+    the trial value is kept where rand < CR (plus one forced position) and the
+    target value is taken elsewhere.
+    """
     d = len(trial)
     mask = np.random.rand(d) < CR
-    j_rand = np.random.randint(d)
-    mask[j_rand] = True
+    mask[np.random.randint(d)] = True
     offspring = target.copy()
     offspring[mask] = trial[mask]
     return offspring
+
+
+def _de_generation_sslt(parents, F, CR):
+    """
+    DE/rand/1/bin exactly as SSLT_DE.m ``Generation``.
+
+    x1, x2 and x3 are distinct from each other but -- unlike the shared
+    ``de_generation`` helper -- they are *not* excluded from equalling the
+    target index i.
+    """
+    n, d = parents.shape
+    off = np.zeros((n, d))
+    for i in range(n):
+        x1 = np.random.randint(n)
+        x2 = np.random.randint(n)
+        while x2 == x1:
+            x2 = np.random.randint(n)
+        x3 = np.random.randint(n)
+        while x3 == x2 or x3 == x1:
+            x3 = np.random.randint(n)
+        v = parents[x1] + F * (parents[x2] - parents[x3])
+        off[i] = _de_crossover_single(v, parents[i], CR)
+    return np.clip(off, 0.0, 1.0)
+
+
+def _selection_tournament(p_objs, p_cons, o_objs, o_cons):
+    """
+    One-to-one selection matching MToP's ``Selection_Tournament`` (epsilon = 0):
+    the parent is replaced only if both are infeasible and the offspring has a
+    strictly lower CV, or both are feasible and the offspring has a strictly
+    lower objective.  Ties always keep the parent.
+    """
+    n = p_objs.shape[0]
+    p_cv = np.sum(np.maximum(0, p_cons), axis=1) \
+        if p_cons.shape[1] > 0 else np.zeros(n)
+    o_cv = np.sum(np.maximum(0, o_cons), axis=1) \
+        if o_cons.shape[1] > 0 else np.zeros(n)
+    replace_cv = (p_cv > o_cv) & (p_cv > 0) & (o_cv > 0)
+    equal_cv = (p_cv <= 0) & (o_cv <= 0)
+    replace_f = p_objs[:, 0] > o_objs[:, 0]
+    return (equal_cv & replace_f) | replace_cv
+
+
+def _constrained_rank(objs, cons):
+    """Sort ascending by constraint violation then objective (sortrows [1,2])."""
+    n = objs.shape[0]
+    cv = np.sum(np.maximum(0, cons), axis=1) if cons.shape[1] > 0 \
+        else np.zeros(n)
+    return np.lexsort((objs[:, 0], cv))
+
+
+def _pad_cons(cons_real, max_c):
+    """Pad a per-task constraint matrix to the unified width max_c."""
+    n = cons_real.shape[0]
+    out = np.zeros((n, max_c))
+    if max_c > 0 and cons_real.shape[1] > 0:
+        c = min(max_c, cons_real.shape[1])
+        out[:, :c] = cons_real[:, :c]
+    return out
 
 
 def _normalize(X):
@@ -116,38 +228,74 @@ def _normalize_apply(x, mins, maxs):
 
 
 # ============================================================================
-# Q-Network for DQN
+# Q-Network for DQN (port of MToP SSLT/Dropout)
 # ============================================================================
 
 class _QNet(nn.Module):
-    """Simple MLP for Q-value prediction."""
+    """
+    Port of MToP's ``trainNet``/``testNet``: 7 -> 40 (ReLU) -> 40 (tanh) -> 1,
+    with dropout p = 0.2 on the input and p = 0.5 on the first hidden
+    activation.  MATLAB's ``testNet`` applies dropout at inference time as well,
+    so predictions are stochastic; that behaviour is reproduced here.
 
-    def __init__(self, input_dim=7, hidden_dim=32):
+    The reference network has 7 outputs (reward plus the 6 next-state features)
+    but only column 1 is ever read, and ``updatemodel`` broadcasts the scalar
+    Q-target onto all 7 columns.  A single output is therefore equivalent.
+    """
+
+    def __init__(self, input_dim=7, hidden_dim=_HIDDEN, output_dim=1):
         super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.Tanh(),
-            nn.Linear(hidden_dim, 1)
-        )
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc3 = nn.Linear(hidden_dim, output_dim)
+        self.drop_in = nn.Dropout(_DROP_P[0])
+        self.drop_hidden = nn.Dropout(_DROP_P[1])
+
+        # iniA.m: W ~ N(0, 1/fan_in); B{1} = 0.1 * sqrt(1/n); B{2}, B{3} random
+        with torch.no_grad():
+            for layer in (self.fc1, self.fc2, self.fc3):
+                fan_in = layer.weight.shape[1]
+                layer.weight.normal_(0.0, np.sqrt(1.0 / fan_in))
+            self.fc1.bias.fill_(0.1 * np.sqrt(1.0 / hidden_dim))
+            self.fc2.bias.normal_(0.0, np.sqrt(1.0 / hidden_dim))
+            self.fc3.bias.normal_(0.0, np.sqrt(1.0 / output_dim))
 
     def forward(self, x):
-        return self.net(x).squeeze(-1)
+        x = self.drop_in(x)
+        x = torch.relu(self.fc1(x))
+        x = self.drop_hidden(x)
+        x = torch.tanh(self.fc2(x))
+        return self.fc3(x)
 
 
-def _train_qnet(model, X, y, epochs=200, lr=0.005):
-    """Train Q-network on normalized data."""
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    X_t = torch.tensor(X, dtype=torch.float32)
-    y_t = torch.tensor(y, dtype=torch.float32)
+def _train_qnet(model, X, y, rounds):
+    """Mini-batch SGD exactly as trainNet.m (0.5 * squared error, lr = 0.01)."""
+    weights = [model.fc1.weight, model.fc2.weight, model.fc3.weight]
+    biases = [model.fc1.bias, model.fc2.bias, model.fc3.bias]
+    optimizer = torch.optim.SGD(
+        [{'params': weights, 'weight_decay': _WEIGHT_DECAY / _BATCH_SIZE},
+         {'params': biases, 'weight_decay': 0.0}], lr=_LEARN_RATE)
+
+    X_t = torch.tensor(np.asarray(X), dtype=torch.float32)
+    y_t = torch.tensor(np.asarray(y), dtype=torch.float32).reshape(-1, 1)
+    n = X_t.shape[0]
+
     model.train()
-    for _ in range(epochs):
-        pred = model(X_t)
-        loss = nn.functional.mse_loss(pred, y_t)
+    for _ in range(rounds):
+        sel = torch.randint(0, n, (_BATCH_SIZE,))
+        pred = model(X_t[sel])
+        loss = 0.5 * ((pred - y_t[sel]) ** 2).sum() / _BATCH_SIZE
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+
+
+def _predict_qnet(model, X):
+    """Forward pass with dropout active, matching testNet.m."""
+    model.train()
+    with torch.no_grad():
+        out = model(torch.tensor(np.asarray(X), dtype=torch.float32))
+    return out.numpy().reshape(-1)
 
 
 # ============================================================================
@@ -255,7 +403,6 @@ class SSLT_DE:
         n = self.n
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
-        eps = 1e-30
 
         # Initialize and evaluate
         decs = initialization(problem, n)
@@ -266,7 +413,7 @@ class SSLT_DE:
         # Convert to unified space for cross-task operations
         pop_decs, pop_cons = space_transfer(
             problem=problem, decs=decs, cons=cons, type='uni', padding='mid')
-        pop_objs = objs
+        pop_objs = [o.copy() for o in objs]
         maxD = pop_decs[0].shape[1]
         maxC = pop_cons[0].shape[1]
 
@@ -281,7 +428,9 @@ class SSLT_DE:
         pop_decs_old = [d.copy() for d in pop_decs]
         pop_objs_old = [o.copy() for o in pop_objs]
 
-        gen = 0
+        # MToP increments Algo.Gen inside notTerminated before the loop body
+        # runs, so the first executed generation is Gen = 2.
+        gen = 2
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
@@ -298,13 +447,13 @@ class SSLT_DE:
                 # ============================================================
                 # Compute state features
                 # ============================================================
-                min_old_t = np.min(pop_objs_old[t]) + eps
-                min_cur_t = np.min(pop_objs[t]) + eps
-                min_old_s = np.min(pop_objs_old[s]) + eps
-                min_cur_s = np.min(pop_objs[s]) + eps
+                min_old_t = np.min(pop_objs_old[t])
+                min_cur_t = np.min(pop_objs[t])
+                min_old_s = np.min(pop_objs_old[s])
+                min_cur_s = np.min(pop_objs[s])
 
-                conv_target = (min_old_t - min_cur_t) / abs(min_old_t)
-                conv_source = (min_old_s - min_cur_s) / abs(min_old_s)
+                conv_target = _safe_div(min_old_t - min_cur_t, min_old_t)
+                conv_source = _safe_div(min_old_s - min_cur_s, min_old_s)
                 wsd = _wasserstein_1d(pop_decs[t], pop_decs[s])
                 ls_target = _dispersion_type(pop_decs[t], pop_objs[t],
                                              pop_decs_old[t], pop_objs_old[t])
@@ -329,8 +478,8 @@ class SSLT_DE:
                     y_norm, y_min, y_max = _normalize(y_raw.reshape(-1, 1))
                     y_norm = y_norm.flatten()
 
-                    q_model[t] = _QNet(input_dim=7, hidden_dim=32)
-                    _train_qnet(q_model[t], X_norm, y_norm)
+                    q_model[t] = _QNet()
+                    _train_qnet(q_model[t], X_norm, y_norm, _BUILD_ROUNDS)
                     norm_params[t] = (x_min, x_max, y_min, y_max)
                     model_built[t] = True
                     action = np.random.randint(1, 5)
@@ -340,15 +489,11 @@ class SSLT_DE:
                         action = np.random.randint(1, 5)
                     else:
                         x_min, x_max, y_min, y_max = norm_params[t]
-                        q_vals = []
-                        q_model[t].eval()
-                        with torch.no_grad():
-                            for a in range(1, 5):
-                                x_raw = np.append(state, a).reshape(1, -1)
-                                x_n = _normalize_apply(x_raw, x_min, x_max)
-                                x_t = torch.tensor(x_n, dtype=torch.float32)
-                                q_vals.append(q_model[t](x_t).item())
-                        action = np.argmax(q_vals) + 1
+                        cand = np.array([np.append(state, a)
+                                         for a in range(1, 5)])
+                        cand = _normalize_apply(cand, x_min, x_max)
+                        q_vals = _predict_qnet(q_model[t], cand)
+                        action = int(np.argmax(q_vals)) + 1
 
                 # ============================================================
                 # Execute action
@@ -358,39 +503,47 @@ class SSLT_DE:
 
                 if action == 1:
                     # No KT: standard DE/rand/1/bin
-                    off_decs = de_generation(pop_decs[t], F=self.F, CR=self.CR)
+                    off_decs = _de_generation_sslt(pop_decs[t], self.F, self.CR)
                     off_objs, off_cons_real = evaluation_single(
                         problem, off_decs[:, :dims[t]], t)
+                    off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += n
                     pbar.update(n)
 
-                    # 1-to-1 DE selection
-                    better = off_objs.flatten() <= pop_objs[t].flatten()
+                    # One-to-one Selection_Tournament
+                    better = _selection_tournament(
+                        pop_objs[t], pop_cons[t], off_objs, off_cons)
                     pop_decs[t][better] = off_decs[better]
                     pop_objs[t][better] = off_objs[better]
+                    pop_cons[t][better] = off_cons[better]
 
                 elif action == 2:
-                    # Shape KT: shift smoothed source toward target center
+                    # Shape KT: shift smoothed source toward target center.
+                    # MATLAB does not clip the shifted decisions before
+                    # evaluating them, so no clipping is applied here either.
                     sm_s_decs, sm_s_objs = _smooth(pop_decs[s], pop_objs[s])
                     sm_t_decs, _ = _smooth(pop_decs[t], pop_objs[t])
 
                     center_t = np.mean(sm_t_decs, axis=0)
                     center_s = np.mean(sm_s_decs, axis=0)
                     shifted = sm_s_decs + (center_t - center_s)
-                    shifted = np.clip(shifted, 0, 1)
 
                     n_shifted = len(shifted)
                     sh_objs, sh_cons_real = evaluation_single(
                         problem, shifted[:, :dims[t]], t)
+                    sh_cons = _pad_cons(sh_cons_real, maxC)
                     nfes += n_shifted
                     pbar.update(n_shifted)
 
-                    # Elite selection (target ∪ shifted)
+                    # Elite selection (target U shifted)
                     merged_decs = np.vstack([pop_decs[t], shifted])
                     merged_objs = np.vstack([pop_objs[t], sh_objs])
-                    sel = selection_elit(objs=merged_objs, n=n)
+                    merged_cons = np.vstack([pop_cons[t], sh_cons])
+                    sel = selection_elit(objs=merged_objs, n=n,
+                                         cons=merged_cons)
                     pop_decs[t] = merged_decs[sel]
                     pop_objs[t] = merged_objs[sel]
+                    pop_cons[t] = merged_cons[sel]
 
                 elif action == 3:
                     # Bi-KT: DE on merged populations
@@ -399,7 +552,7 @@ class SSLT_DE:
 
                     off_decs = np.zeros_like(merged)
                     for i in range(n_merged):
-                        # DE/current-to-rand/1
+                        # DE/current-to-rand/1 on the merged population
                         idxs = list(range(n_merged))
                         idxs.remove(i)
                         r1, r2, r3 = np.random.choice(idxs, 3, replace=False)
@@ -410,23 +563,27 @@ class SSLT_DE:
 
                     off_objs, off_cons_real = evaluation_single(
                         problem, off_decs[:, :dims[t]], t)
+                    off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += n_merged
                     pbar.update(n_merged)
 
-                    # Elite selection (target ∪ offspring)
+                    # Elite selection (target U offspring)
                     merged_sel = np.vstack([pop_decs[t], off_decs])
                     merged_sel_objs = np.vstack([pop_objs[t], off_objs])
-                    sel = selection_elit(objs=merged_sel_objs, n=n)
+                    merged_sel_cons = np.vstack([pop_cons[t], off_cons])
+                    sel = selection_elit(objs=merged_sel_objs, n=n,
+                                         cons=merged_sel_cons)
                     pop_decs[t] = merged_sel[sel]
                     pop_objs[t] = merged_sel_objs[sel]
+                    pop_cons[t] = merged_sel_cons[sel]
 
                 elif action == 4:
                     # Domain KT: direction-guided transfer
-                    best_s = np.argmin(pop_objs[s].flatten())
-                    best_t = np.argmin(pop_objs[t].flatten())
-                    direction = pop_decs[s][best_s] - pop_decs[t][best_t]
+                    rank_s = _constrained_rank(pop_objs[s], pop_cons[s])
+                    rank_t = _constrained_rank(pop_objs[t], pop_cons[t])
+                    direction = pop_decs[s][rank_s[0]] - pop_decs[t][rank_t[0]]
 
-                    num = max(1, round(pha * 10))
+                    num = max(1, _matlab_round(pha * 10))
                     perm = np.random.permutation(n)
 
                     off_decs = np.zeros((num, maxD))
@@ -438,33 +595,36 @@ class SSLT_DE:
 
                     off_objs, off_cons_real = evaluation_single(
                         problem, off_decs[:, :dims[t]], t)
+                    off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += num
                     pbar.update(num)
 
-                    # Elite selection (target ∪ offspring)
+                    # Elite selection (target U offspring)
                     merged_decs = np.vstack([pop_decs[t], off_decs])
                     merged_objs = np.vstack([pop_objs[t], off_objs])
-                    sel = selection_elit(objs=merged_objs, n=n)
+                    merged_cons = np.vstack([pop_cons[t], off_cons])
+                    sel = selection_elit(objs=merged_objs, n=n,
+                                         cons=merged_cons)
                     pop_decs[t] = merged_decs[sel]
                     pop_objs[t] = merged_objs[sel]
+                    pop_cons[t] = merged_cons[sel]
 
                 # ============================================================
                 # Compute reward and store experience
                 # ============================================================
-                fold = np.min(pop_decs_old[t] @ np.ones((maxD, 1)))  # dummy
                 fold = np.min(pop_objs_old[t])
                 f = np.min(pop_objs[t])
                 fold_mean = np.mean(pop_objs_old[t])
                 f_mean = np.mean(pop_objs[t])
 
-                imp_rate = (fold - f) / (abs(fold) + eps)
-                pop_rate = (fold_mean - f_mean) / (abs(fold_mean) + eps)
+                imp_rate = _safe_div(fold - f, fold)
+                pop_rate = _safe_div(fold_mean - f_mean, fold_mean)
                 move_dis = _convergence_dist(pop_decs_old[t], pop_decs[t])
 
                 vals = np.array([imp_rate, pop_rate, move_dis])
                 max_val, min_val = vals.max(), vals.min()
                 rng = max_val - min_val
-                if rng > eps:
+                if rng != 0:
                     imp_rate_n = (imp_rate - min_val) / rng
                     pop_rate_n = (pop_rate - min_val) / rng
                     move_dis_n = (move_dis - min_val) / rng
@@ -475,10 +635,12 @@ class SSLT_DE:
                 reward = (imp_rate_n + pop_rate_n + move_dis_n) * pha_new
 
                 # New state features
-                min_new_t = np.min(pop_objs[t]) + eps
-                min_new_s = np.min(pop_objs[s]) + eps
-                conv_new_target = (np.min(pop_objs_old[t]) - min_new_t) / abs(np.min(pop_objs_old[t]) + eps)
-                conv_new_source = (np.min(pop_objs_old[s]) - min_new_s) / abs(np.min(pop_objs_old[s]) + eps)
+                conv_new_target = _safe_div(
+                    np.min(pop_objs_old[t]) - np.min(pop_objs[t]),
+                    np.min(pop_objs_old[t]))
+                conv_new_source = _safe_div(
+                    np.min(pop_objs_old[s]) - np.min(pop_objs[s]),
+                    np.min(pop_objs_old[s]))
                 wsd_new = _wasserstein_1d(pop_decs[s], pop_decs[t])
                 ls_new_target = _dispersion_type(pop_decs[t], pop_objs[t],
                                                  pop_decs_old[t], pop_objs_old[t])
@@ -506,22 +668,16 @@ class SSLT_DE:
 
                         X_norm, x_min, x_max = _normalize(X_raw)
 
-                        # Compute max Q across all experiences
-                        q_model[t].eval()
-                        with torch.no_grad():
-                            X_t = torch.tensor(X_norm, dtype=torch.float32)
-                            q_preds = q_model[t](X_t).numpy()
-                        max_q = np.max(q_preds)
-
-                        # Q-learning target: R + gamma * max(Q)
+                        # Bootstrapped target: R + gamma * max(Q)
+                        max_q = np.max(_predict_qnet(q_model[t], X_norm))
                         target_q = rewards_raw + self.gamma * max_q
 
-                        y_norm, y_min, y_max = _normalize(target_q.reshape(-1, 1))
+                        y_norm, y_min, y_max = _normalize(
+                            target_q.reshape(-1, 1))
                         y_norm = y_norm.flatten()
 
                         norm_params[t] = (x_min, x_max, y_min, y_max)
-                        q_model[t] = _QNet(input_dim=7, hidden_dim=32)
-                        _train_qnet(q_model[t], X_norm, y_norm)
+                        _train_qnet(q_model[t], X_norm, y_norm, _UPDATE_ROUNDS)
                         count_task[t] = 0
 
             # Record history in real space

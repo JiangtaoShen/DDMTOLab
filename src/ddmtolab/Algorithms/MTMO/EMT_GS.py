@@ -6,73 +6,116 @@ EMT-GS uses Generative Adversarial Networks (GANs) to transfer knowledge between
 
 References
 ----------
-    [1] Z. Liang, Y. Zhu, X. Wang, Z. Li, and Z. Zhu, "Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies," IEEE Transactions on Evolutionary Computation, 2022.
+    [1] Liang, Zhengping, Yingmiao Zhu, Xiyu Wang, Zhi Li, and Zexuan Zhu. "Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies." IEEE Transactions on Evolutionary Computation (2022): 1-1.
 
 Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2026.02.22
-Version: 1.0
+Version: 1.1
 """
 import time
-import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F_nn
 from tqdm import tqdm
 from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
+# MATLAB's ``eps`` used inside the GAN log-losses
+_MATLAB_EPS = 2.220446049250313e-16
+
+
+def _gaussian_linear(in_features, out_features, sigma):
+    """
+    Fully connected layer initialized as MTO-Platform ``initializeGaussian``.
+
+    The weights are drawn from the NumPy global stream so that the whole
+    algorithm stays reproducible through ``np.random.seed``, mirroring MATLAB
+    where a single random stream drives both the evolution and the network.
+
+    Parameters
+    ----------
+    in_features : int
+        Number of input features
+    out_features : int
+        Number of output features
+    sigma : float
+        Standard deviation of the Gaussian weight initialization
+
+    Returns
+    -------
+    layer : nn.Linear
+        Initialized linear layer with zero bias
+    """
+    layer = nn.Linear(in_features, out_features)
+    with torch.no_grad():
+        layer.weight.copy_(torch.from_numpy(
+            (np.random.randn(out_features, in_features) * sigma).astype(np.float32)))
+        layer.bias.zero_()
+    return layer
+
+
+def _matlab_dropout(x, p=0.5):
+    """
+    Dropout of MTO-Platform ``InitialGAN/dropout``: a plain 0/1 mask, no rescaling.
+
+    Parameters
+    ----------
+    x : torch.Tensor
+        Input activations
+    p : float, optional
+        Drop probability (default: 0.5)
+
+    Returns
+    -------
+    y : torch.Tensor
+        Masked activations
+    """
+    mask = (np.random.randint(1, 11, size=tuple(x.shape)) > p * 10).astype(np.float32)
+    return x * torch.from_numpy(mask)
+
 
 class _Generator(nn.Module):
-    """Generator network: maps source task solutions to target task space."""
+    """
+    Generator of MTO-Platform ``InitialGAN``: FC -> LeakyReLU(0.5) -> BN, twice, then FC -> sigmoid.
 
-    def __init__(self, dim):
+    ``width`` is the size of the vectors the network maps. Following the MATLAB
+    reference the network is applied along the *population* axis: a sample is one
+    decision-variable column of the population matrix, hence ``width`` equals the
+    population size and the mini-batches iterate over decision variables.
+    """
+
+    def __init__(self, width):
         super().__init__()
-        self.fc1 = nn.Linear(dim, dim)
-        self.bn1 = nn.BatchNorm1d(dim)
-        self.fc2 = nn.Linear(dim, dim)
-        self.bn2 = nn.BatchNorm1d(dim)
-        self.fc_out = nn.Linear(dim, dim)
-
-        # Small initialization like MATLAB (sigma=0.03 for fc1, 0.06 for others)
-        nn.init.normal_(self.fc1.weight, 0, 0.03)
-        nn.init.zeros_(self.fc1.bias)
-        nn.init.normal_(self.fc2.weight, 0, 0.06)
-        nn.init.zeros_(self.fc2.bias)
-        nn.init.normal_(self.fc_out.weight, 0, 0.06)
-        nn.init.zeros_(self.fc_out.bias)
+        self.fc1 = _gaussian_linear(width, width, 0.03)
+        self.bn1 = nn.BatchNorm1d(width)
+        self.fc2 = _gaussian_linear(width, width, 0.06)
+        self.bn2 = nn.BatchNorm1d(width)
+        self.fc_out = _gaussian_linear(width, width, 0.06)
 
     def forward(self, x):
-        h = torch.nn.functional.leaky_relu(self.fc1(x), 0.5)
-        h = self.bn1(h)
-        h = torch.nn.functional.leaky_relu(self.fc2(h), 0.5)
-        h = self.bn2(h)
-        out = torch.sigmoid(self.fc_out(h))
-        return out
+        h = self.bn1(F_nn.leaky_relu(self.fc1(x), 0.5))
+        h = self.bn2(F_nn.leaky_relu(self.fc2(h), 0.5))
+        return torch.sigmoid(self.fc_out(h))
 
 
 class _Discriminator(nn.Module):
-    """Discriminator network: distinguishes real target solutions from generated ones."""
+    """
+    Discriminator of MTO-Platform ``InitialGAN``: FC -> LeakyReLU(0.5) -> dropout -> BN -> FC -> sigmoid.
+    """
 
-    def __init__(self, dim):
+    def __init__(self, width):
         super().__init__()
-        self.fc1 = nn.Linear(dim, dim)
-        self.bn1 = nn.BatchNorm1d(dim)
-        self.fc_out = nn.Linear(dim, 1)
-        self.dropout = nn.Dropout(0.5)
-
-        nn.init.normal_(self.fc1.weight, 0, 0.03)
-        nn.init.zeros_(self.fc1.bias)
-        nn.init.normal_(self.fc_out.weight, 0, 0.06)
-        nn.init.zeros_(self.fc_out.bias)
+        self.fc1 = _gaussian_linear(width, width, 0.03)
+        self.bn1 = nn.BatchNorm1d(width)
+        self.fc_out = _gaussian_linear(width, 1, 0.06)
 
     def forward(self, x):
-        h = torch.nn.functional.leaky_relu(self.fc1(x), 0.5)
-        h = self.dropout(h)
+        h = _matlab_dropout(F_nn.leaky_relu(self.fc1(x), 0.5))
         h = self.bn1(h)
-        out = torch.sigmoid(self.fc_out(h))
-        return out
+        return torch.sigmoid(self.fc_out(h))
 
 
 class EMT_GS:
@@ -80,9 +123,8 @@ class EMT_GS:
     Evolutionary Multitasking for Multi-objective Optimization Based on Generative Strategies.
 
     This algorithm features:
-    - GAN-based cross-task knowledge transfer
-    - Generator maps source task solutions to target task space
-    - DE mutation with rand-or-best strategy
+    - GAN-based cross-task knowledge transfer, one GAN per ordered task pair
+    - DE mutation with a rand-or-best base vector and the previous population
     - NSGA-II based environmental selection per task
 
     Attributes
@@ -108,11 +150,8 @@ class EMT_GS:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None,
-                 G=10, lrD=0.0002, lrG=0.0003, BS=10,
-                 pp=0.5, CR=0.6,
-                 save_data=True, save_path='./Data',
-                 name='EMT-GS', disable_tqdm=True):
+    def __init__(self, problem, n=None, max_nfes=None, G=10, lrD=0.0002, lrG=0.0003, BS=10,
+                 save_data=True, save_path='./Data', name='EMT-GS', disable_tqdm=True):
         """
         Initialize EMT-GS algorithm.
 
@@ -127,15 +166,11 @@ class EMT_GS:
         G : int, optional
             GAN training gap in generations (default: 10)
         lrD : float, optional
-            Learning rate for discriminator (default: 0.0002)
+            Learning rate for the discriminator (default: 0.0002)
         lrG : float, optional
-            Learning rate for generator (default: 0.0003)
+            Learning rate for the generator (default: 0.0003)
         BS : int, optional
             Batch size for GAN training (default: 10)
-        pp : float, optional
-            Probability of using random (vs best) base vector (default: 0.5)
-        CR : float, optional
-            Crossover rate for DE (default: 0.6)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -152,8 +187,9 @@ class EMT_GS:
         self.lrD = lrD
         self.lrG = lrG
         self.BS = BS
-        self.pp = pp
-        self.CR = CR
+        # DE constants hard coded in the MATLAB reference
+        self.pp = 0.5
+        self.CR = 0.6
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -170,171 +206,113 @@ class EMT_GS:
         """
         start_time = time.time()
         problem = self.problem
-        nt = problem.n_tasks
         n = self.n
+        nt = problem.n_tasks
         dims = problem.dims
-        d_uni = max(dims)
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
-        # Initialize population in native space, then transfer to unified
-        decs = initialization(problem, n)
-        objs, cons = evaluation(problem, decs)
+        # Population lives in the unified [0, 1] space of dimension max(dims); the
+        # genes beyond a task's own dimension are initialized at random and keep
+        # evolving, exactly as in the MATLAB reference (Dec = rand(1, max(D))).
+        decs = space_transfer(problem, initialization(problem, n), type='uni', padding='random')
+
+        objs, cons = [], []
+        for t in range(nt):
+            obj_t, con_t = evaluation_single(problem, decs[t][:, :dims[t]], t)
+            objs.append(obj_t)
+            cons.append(con_t)
         nfes = n * nt
 
-        # Transfer to unified space for operations
-        decs, objs, cons = space_transfer(problem, decs, objs, cons, type='uni')
-
-        # NSGA-II sorting per task
+        # Sort each task's population by non-dominated rank then crowding distance
         for t in range(nt):
             rank_t, _, _ = nsga2_sort(objs[t], cons[t])
-            sorted_idx = np.argsort(rank_t)
-            decs[t] = decs[t][sorted_idx]
-            objs[t] = objs[t][sorted_idx]
-            cons[t] = cons[t][sorted_idx]
+            order = np.argsort(rank_t)
+            decs[t], objs[t], cons[t] = decs[t][order], objs[t][order], cons[t][order]
 
-        # Transfer back to native for history
-        decs_native, objs_native, cons_native = space_transfer(
-            problem, decs, objs, cons, type='real')
-        all_decs, all_objs, all_cons = init_history(decs_native, objs_native, cons_native)
+        all_decs, all_objs, all_cons = init_history(
+            [decs[t][:, :dims[t]] for t in range(nt)], objs, cons)
 
-        # Save previous population for DE mutation
+        # Previous generation population, used as the DE difference base
         prepop = [d.copy() for d in decs]
 
-        # Initialize GANs: GAN[t][k] maps task k solutions -> task t space
-        generators = {}
-        discriminators = {}
-        opt_G = {}
-        opt_D = {}
-        gan_outputs = {}
-
-        device = torch.device('cpu')
-
+        # One GAN per ordered task pair: GAN[(t, k)] maps task k solutions to task t
+        generators, discriminators, gan_off = {}, {}, {}
         for t in range(nt):
             for k in range(nt):
                 if t == k:
                     continue
-                gen, disc, o_g, o_d = self._init_gan(d_uni, device)
-                generators[(t, k)] = gen
-                discriminators[(t, k)] = disc
-                opt_G[(t, k)] = o_g
-                opt_D[(t, k)] = o_d
-                # Initial training (20 epochs)
-                gan_out = self._train_gan(
-                    generators[(t, k)], discriminators[(t, k)],
-                    opt_G[(t, k)], opt_D[(t, k)],
-                    decs[t], decs[k], epochs=20, device=device
-                )
-                gan_outputs[(t, k)] = gan_out
+                generators[(t, k)] = _Generator(n)
+                discriminators[(t, k)] = _Discriminator(n)
+                gan_off[(t, k)] = self._train_gan(
+                    generators[(t, k)], discriminators[(t, k)], decs[t], decs[k], epochs=20)
 
-        pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
-                    disable=self.disable_tqdm)
+        pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}", disable=self.disable_tqdm)
 
-        gen_count = 0
+        # MTO-Platform increments Algo.Gen inside notTerminated before the loop
+        # body runs, so the first executed generation already sees Gen == 2
+        gen = 1
         while nfes < max_nfes:
-            gen_count += 1
+            gen += 1
 
-            # Update GANs
             for t in range(nt):
                 for k in range(nt):
                     if t == k:
                         continue
-                    if gen_count % self.G == 0:
-                        # Retrain GAN (2 epochs)
-                        gan_out = self._train_gan(
-                            generators[(t, k)], discriminators[(t, k)],
-                            opt_G[(t, k)], opt_D[(t, k)],
-                            decs[t], decs[k], epochs=2, device=device
-                        )
-                        gan_outputs[(t, k)] = gan_out
+                    if gen % self.G == 0:
+                        # Train GAN
+                        gan_off[(t, k)] = self._train_gan(
+                            generators[(t, k)], discriminators[(t, k)], decs[t], decs[k], epochs=2)
                     else:
-                        # Generate using existing GAN
-                        if np.random.rand() < 0.5:
-                            gan_outputs[(t, k)] = self._generate_gan(
-                                generators[(t, k)], decs[k], device)
-                        else:
-                            # Use GAN{k,t} instead (swapped generator)
-                            gan_outputs[(t, k)] = self._generate_gan(
-                                generators[(k, t)], decs[k], device)
+                        # Both MATLAB branches run the same generator parameters and
+                        # normalize with the current batch statistics, so they only
+                        # differ in the discarded running-statistics bookkeeping
+                        np.random.rand()
+                        gan_off[(t, k)] = self._generate_gan(generators[(t, k)], decs[k])
 
-            # Generation: create offspring via DE with GAN transfer
-            off_decs, off_sfs = self._generation(
-                decs, prepop, gan_outputs, n, nt, d_uni)
-
-            # Save current as prepop for next generation
+            # Generation
+            off_decs, off_sfs = self._generation(decs, prepop, gan_off, n, nt)
             prepop = [d.copy() for d in decs]
 
-            # Evaluate and select per task
             for t in range(nt):
-                # Get offspring for this task
+                # Evaluation
                 mask = off_sfs == t
-                off_decs_t = off_decs[mask]
-                if len(off_decs_t) == 0:
+                if not np.any(mask):
                     continue
+                off_decs_t = off_decs[mask, :]
+                off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t[:, :dims[t]], t)
+                nfes += off_decs_t.shape[0]
+                pbar.update(off_decs_t.shape[0])
 
-                # Trim to task dimension for evaluation, then evaluate
-                off_decs_t_native = off_decs_t[:, :dims[t]]
-                off_objs_t, off_cons_t = evaluation_single(
-                    problem, off_decs_t_native, t)
-                nfes += len(off_decs_t)
-                pbar.update(len(off_decs_t))
-
-                # Pad objs/cons back to unified shape
-                off_objs_uni = np.zeros((len(off_decs_t), objs[t].shape[1]))
-                off_objs_uni[:, :off_objs_t.shape[1]] = off_objs_t
-                off_cons_uni = np.zeros((len(off_decs_t), cons[t].shape[1]))
-                if off_cons_t.shape[1] > 0:
-                    off_cons_uni[:, :off_cons_t.shape[1]] = off_cons_t
-
-                # Merge parent + offspring
-                merged_decs = np.vstack([decs[t], off_decs_t])
-                merged_objs = np.vstack([objs[t], off_objs_uni])
-                merged_cons = np.vstack([cons[t], off_cons_uni])
-
-                # NSGA-II selection
+                # Selection: NSGA-II sorting on the merged parent + offspring pool
+                merged_decs, merged_objs, merged_cons = vstack_groups(
+                    (decs[t], off_decs_t), (objs[t], off_objs_t), (cons[t], off_cons_t))
                 rank_t, _, _ = nsga2_sort(merged_objs, merged_cons)
-                sorted_idx = np.argsort(rank_t)[:n]
+                index = np.argsort(rank_t)[:n]
+                decs[t], objs[t], cons[t] = select_by_index(index, merged_decs, merged_objs, merged_cons)
 
-                decs[t] = merged_decs[sorted_idx]
-                objs[t] = merged_objs[sorted_idx]
-                cons[t] = merged_cons[sorted_idx]
-
-                # Save native-space history
-                decs_t_native = decs[t][:, :dims[t]]
-                objs_t_native = objs[t][:, :problem.n_objs[t]]
-                cons_t_native = cons[t][:, :problem.n_cons[t]] if problem.n_cons[t] > 0 else cons[t][:, :0]
-                append_history(all_decs[t], decs_t_native,
-                               all_objs[t], objs_t_native,
-                               all_cons[t], cons_t_native)
-
-            if nfes >= max_nfes:
-                break
+            append_history(all_decs, [decs[t][:, :dims[t]] for t in range(nt)],
+                           all_objs, objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
 
-        results = build_save_results(
-            all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
-            bounds=problem.bounds, save_path=self.save_path,
-            filename=self.name, save_data=self.save_data)
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                     max_nfes=max_nfes_per_task, all_cons=all_cons,
+                                     bounds=problem.bounds, save_path=self.save_path,
+                                     filename=self.name, save_data=self.save_data)
 
         return results
 
-    def _init_gan(self, dim, device):
-        """Initialize Generator and Discriminator networks with Adam optimizers."""
-        gen = _Generator(dim).to(device)
-        disc = _Discriminator(dim).to(device)
-        opt_g = torch.optim.Adam(gen.parameters(), lr=self.lrG,
-                                 betas=(0.7, 0.9))
-        opt_d = torch.optim.Adam(disc.parameters(), lr=self.lrD,
-                                 betas=(0.7, 0.9))
-        return gen, disc, opt_g, opt_d
-
-    def _train_gan(self, gen, disc, opt_g, opt_d,
-                   target_data, source_data, epochs, device):
+    def _train_gan(self, gen, disc, target_decs, source_decs, epochs):
         """
-        Train GAN to map source task solutions to target task distribution.
+        Train one GAN (MTO-Platform ``InitialGAN`` / ``TrainGAN``).
+
+        Following the MATLAB reference the population matrices are consumed
+        column-wise: one training sample is one decision variable across the whole
+        population, so a mini-batch holds ``BS`` decision variables. The Adam
+        moment estimates are recreated at every call, as the reference resets
+        ``avgG``/``avgGS`` on entry.
 
         Parameters
         ----------
@@ -342,245 +320,225 @@ class EMT_GS:
             Generator network
         disc : _Discriminator
             Discriminator network
-        opt_g : torch.optim.Adam
-            Generator optimizer
-        opt_d : torch.optim.Adam
-            Discriminator optimizer
-        target_data : np.ndarray
-            Target task population (real data) of shape (N, dim)
-        source_data : np.ndarray
-            Source task population (noise input) of shape (N, dim)
+        target_decs : np.ndarray
+            Population of the target task, shape (n, d_uni)
+        source_decs : np.ndarray
+            Population of the source task used as latent input, shape (n, d_uni)
         epochs : int
-            Number of training epochs
-        device : torch.device
-            Device for computation
+            Number of training epochs (20 on the first call, 2 afterwards)
 
         Returns
         -------
         generated : np.ndarray
-            Generated solutions of shape (N, dim)
+            Solutions generated from the source population, shape (n, d_uni)
         """
         gen.train()
         disc.train()
-        n = target_data.shape[0]
-        bs = min(self.BS, n)
-        n_iter = max(1, n // bs)
+        opt_g = torch.optim.Adam(gen.parameters(), lr=self.lrG, betas=(0.7, 0.9))
+        opt_d = torch.optim.Adam(disc.parameters(), lr=self.lrD, betas=(0.7, 0.9))
 
-        # Shuffle source data
-        noise_data = source_data[np.random.permutation(n)]
+        d_uni = target_decs.shape[1]
+        noise_data = source_decs[:, np.random.permutation(d_uni)]
+        n_iter = d_uni // self.BS
 
-        for epoch in range(epochs):
-            perm = np.random.permutation(n)
-            target_shuffled = target_data[perm]
+        gen_params, disc_params = list(gen.parameters()), list(disc.parameters())
+        for _ in range(epochs):
+            train_shuffled = target_decs[:, np.random.permutation(d_uni)]
             for i in range(n_iter):
-                idx_start = i * bs
-                idx_end = min(idx_start + bs, n)
-                if idx_end - idx_start < 2:
+                sl = slice(i * self.BS, (i + 1) * self.BS)
+                if sl.stop - sl.start < 2:
                     continue
+                x_batch = torch.from_numpy(train_shuffled[:, sl].T.astype(np.float32))
+                z_batch = torch.from_numpy(noise_data[:, sl].T.astype(np.float32))
 
-                real_batch = torch.tensor(
-                    target_shuffled[idx_start:idx_end],
-                    dtype=torch.float32, device=device)
-                noise_batch = torch.tensor(
-                    noise_data[idx_start:idx_end],
-                    dtype=torch.float32, device=device)
+                fake = gen(z_batch)
+                d_real = disc(x_batch)
+                d_fake = disc(fake)
 
-                # Generate fake samples
-                fake_batch = gen(noise_batch)
+                d_loss = -torch.mean(0.9 * torch.log(d_real + _MATLAB_EPS) +
+                                     torch.log(1 - d_fake + _MATLAB_EPS))
+                g_loss = -torch.mean(torch.log(d_fake + _MATLAB_EPS))
 
-                # Discriminator loss: -mean(0.9*log(D(real)) + log(1-D(fake)))
-                d_real = disc(real_batch)
-                d_fake = disc(fake_batch.detach())
-                d_loss = -torch.mean(
-                    0.9 * torch.log(d_real + 1e-8) +
-                    torch.log(1 - d_fake + 1e-8))
+                # Both gradients come from the same forward pass, as in dlfeval
+                grad_g = torch.autograd.grad(g_loss, gen_params, retain_graph=True)
+                grad_d = torch.autograd.grad(d_loss, disc_params)
 
                 opt_d.zero_grad()
-                d_loss.backward()
+                for prm, grd in zip(disc_params, grad_d):
+                    prm.grad = grd
                 opt_d.step()
 
-                # Generator loss: -mean(log(D(fake)))
-                d_fake_for_g = disc(fake_batch)
-                g_loss = -torch.mean(torch.log(d_fake_for_g + 1e-8))
-
                 opt_g.zero_grad()
-                g_loss.backward()
+                for prm, grd in zip(gen_params, grad_g):
+                    prm.grad = grd
                 opt_g.step()
 
-        # Generate output
-        gen.eval()
         with torch.no_grad():
-            noise_all = torch.tensor(
-                noise_data, dtype=torch.float32, device=device)
-            generated = gen(noise_all).cpu().numpy()
+            generated = gen(torch.from_numpy(noise_data.T.astype(np.float32))).numpy().T
+        return generated.astype(np.float64)
 
-        return generated
-
-    def _generate_gan(self, gen, source_data, device):
+    def _generate_gan(self, gen, source_decs):
         """
-        Generate solutions using a trained generator.
+        Run a trained generator on a population (MTO-Platform ``GenerateGAN``).
+
+        The reference always normalizes with the statistics of the batch it is
+        given, so the network stays in training mode here (no running estimates).
 
         Parameters
         ----------
         gen : _Generator
             Trained generator network
-        source_data : np.ndarray
-            Source task population of shape (N, dim)
-        device : torch.device
-            Device for computation
+        source_decs : np.ndarray
+            Population used as latent input, shape (n, d_uni)
 
         Returns
         -------
         generated : np.ndarray
-            Generated solutions of shape (N, dim)
+            Generated solutions, shape (n, d_uni)
         """
-        gen.eval()
+        gen.train()
         with torch.no_grad():
-            noise = torch.tensor(
-                source_data, dtype=torch.float32, device=device)
-            generated = gen(noise).cpu().numpy()
-        return generated
+            generated = gen(torch.from_numpy(source_decs.T.astype(np.float32))).numpy().T
+        return generated.astype(np.float64)
 
-    def _generation(self, population, prepop, gan_outputs, Np, nt, d_uni):
+    def _generation(self, population, prepop, gan_off, n, nt):
         """
-        Generate offspring using DE mutation with GAN-based cross-task transfer.
+        Offspring generation (MTO-Platform ``EMT_GS.Generation``).
 
-        Same-task pairs: standard DE/rand-or-best/1
-        Cross-task pairs: GAN-transferred solutions + DE
+        The concatenated population is randomly permuted and paired as
+        (i, i + floor(L/2)). Same-task pairs use DE/rand-or-best/1 with the
+        difference taken against the previous generation; cross-task pairs
+        replace the DE donor by the GAN image of the partner task.
 
         Parameters
         ----------
         population : list of np.ndarray
-            Current populations per task, each of shape (Np, d_uni)
+            Current population of each task in unified space, shape (n, d_uni)
         prepop : list of np.ndarray
-            Previous generation populations per task
-        gan_outputs : dict
-            GAN outputs: gan_outputs[(t,k)] = generated from task k to task t
-        Np : int
+            Population of each task at the previous generation
+        gan_off : dict
+            ``gan_off[(t, k)]`` holds the task-k population mapped into task t
+        n : int
             Population size per task
         nt : int
             Number of tasks
-        d_uni : int
-            Unified dimension
 
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables of shape (total, d_uni)
+            Offspring decision variables, shape (2 * ceil(L / 2), d_uni)
         off_sfs : np.ndarray
-            Skill factors of offspring
+            Offspring skill factors, shape (2 * ceil(L / 2),)
         """
-        # Merge all populations and assign skill factors
-        parent_list = []
-        sf_list = []
-        for t in range(nt):
-            parent_list.append(population[t])
-            sf_list.append(np.full(Np, t))
+        parent = np.vstack(population)
+        sfs = np.repeat(np.arange(nt), n)
+        length, d = parent.shape
 
-        all_parent = np.vstack(parent_list)
-        all_sf = np.concatenate(sf_list)
-        total = len(all_parent)
+        rndper = np.random.permutation(length)
+        parent = parent[rndper, :]
+        rank = np.arange(length)[rndper]
+        mff_pool = sfs[rndper]
 
-        # Random permutation for pairing
-        rndper = np.random.permutation(total)
-        all_parent = all_parent[rndper]
-        # Track original position within task for GAN indexing
-        orig_idx = np.arange(total)[rndper]
-        all_sf = all_sf[rndper]
+        half = length // 2
+        n_pairs = int(np.ceil(length / 2))
+        off_decs = np.empty((2 * n_pairs, d))
+        off_sfs = np.empty(2 * n_pairs, dtype=int)
 
-        off_decs = np.zeros((total, d_uni))
-        off_sfs = np.zeros(total, dtype=int)
+        count = 0
+        for i in range(n_pairs):
+            p1, p2 = i, i + half
+            sf1, sf2 = int(mff_pool[p1]), int(mff_pool[p2])
 
-        for i in range(0, total - 1, 2):
-            p1, p2 = i, i + 1
-            sf1 = int(all_sf[p1])
-            sf2 = int(all_sf[p2])
-
-            # Sample F ~ N(0.5, 0.2) clipped to (0, 1)
-            F = np.random.normal(0.5, 0.2)
-            while F > 1 or F < 0:
-                F = np.random.normal(0.5, 0.2)
+            f_scale = np.random.normal(0.5, 0.2)
+            while f_scale > 1 or f_scale < 0:
+                f_scale = np.random.normal(0.5, 0.2)
 
             if sf1 == sf2:
-                # Same-task pair: standard DE/rand-or-best/1
-                # Offspring 1
-                r1 = np.random.randint(Np)
-                r2 = np.random.randint(Np)
-                if np.random.rand() < self.pp:
-                    x1 = population[sf1][r1]  # rand
-                else:
-                    x1 = population[sf1][0]  # best (index 0 = best after sorting)
-                mutant1 = x1 + F * (all_parent[p1] - prepop[sf1][r2])
-                off1 = self._de_crossover(mutant1, all_parent[p1], self.CR)
-
-                # Offspring 2
-                r1 = np.random.randint(Np)
-                r2 = np.random.randint(Np)
-                if np.random.rand() < self.pp:
-                    x1 = population[sf2][r1]
-                else:
-                    x1 = population[sf2][0]
-                mutant2 = x1 + F * (all_parent[p2] - prepop[sf2][r2])
-                off2 = self._de_crossover(mutant2, all_parent[p2], self.CR)
+                donor1, donor2 = parent[p1, :], parent[p2, :]
+                partner_is_base = False
             else:
-                # Cross-task pair: GAN-transferred + DE
-                # p1r, p2r: index within task population (mod Np)
-                p1r = orig_idx[p1] % Np
-                p2r = orig_idx[p2] % Np
+                # GAN generation: the donor of parent p1 is the image of p1
+                # inside the partner task's generator, and vice versa
+                p1r = rank[p1] % n
+                p2r = rank[p2] % n
+                donor1 = gan_off[(sf2, sf1)][p1r, :]
+                donor2 = gan_off[(sf1, sf2)][p2r, :]
+                partner_is_base = True
 
-                # c1: GAN{sf1, sf2} output at p1r (map sf2 -> sf1 for parent p1)
-                c1 = gan_outputs.get((sf1, sf2), None)
-                if c1 is not None and p1r < len(c1):
-                    c1_dec = c1[p1r]
-                else:
-                    c1_dec = all_parent[p1]
+            off_dec1 = self._de_offspring(population, prepop, sf1, parent[p1, :],
+                                          donor1, f_scale, partner_is_base)
+            off_dec2 = self._de_offspring(population, prepop, sf2, parent[p2, :],
+                                          donor2, f_scale, partner_is_base)
 
-                # c2: GAN{sf2, sf1} output at p2r (map sf1 -> sf2 for parent p2)
-                c2 = gan_outputs.get((sf2, sf1), None)
-                if c2 is not None and p2r < len(c2):
-                    c2_dec = c2[p2r]
-                else:
-                    c2_dec = all_parent[p2]
-
-                # Offspring 1: x1 + F*(c1 - prepop[sf1][r2])
-                r1 = np.random.randint(Np)
-                r2 = np.random.randint(Np)
-                if np.random.rand() < self.pp:
-                    x1 = population[sf1][r1]
-                else:
-                    x1 = population[sf1][0]
-                mutant1 = x1 + F * (c1_dec - prepop[sf1][r2])
-                off1 = self._de_crossover(mutant1, x1, self.CR)
-
-                # Offspring 2: x1 + F*(c2 - prepop[sf2][r2])
-                r1 = np.random.randint(Np)
-                r2 = np.random.randint(Np)
-                if np.random.rand() < self.pp:
-                    x1 = population[sf2][r1]
-                else:
-                    x1 = population[sf2][0]
-                mutant2 = x1 + F * (c2_dec - prepop[sf2][r2])
-                off2 = self._de_crossover(mutant2, x1, self.CR)
-
-            # Assign skill factors (imitation: offspring inherits parent's task)
-            off_sfs[p1] = sf1
-            off_sfs[p2] = sf2
-
-            # Clip to [0, 1]
-            off_decs[p1] = np.clip(off1, 0, 1)
-            off_decs[p2] = np.clip(off2, 0, 1)
-
-        # Handle odd last individual
-        if total % 2 == 1:
-            off_decs[-1] = all_parent[-1]
-            off_sfs[-1] = int(all_sf[-1])
+            # Imitation
+            off_sfs[count] = sf1
+            off_sfs[count + 1] = sf2
+            off_decs[count, :] = np.clip(off_dec1, 0, 1)
+            off_decs[count + 1, :] = np.clip(off_dec2, 0, 1)
+            count += 2
 
         return off_decs, off_sfs
 
-    def _de_crossover(self, mutant, target, CR):
-        """DE binomial crossover."""
-        dim = len(mutant)
-        j_rand = np.random.randint(dim)
-        mask = np.random.rand(dim) < CR
-        mask[j_rand] = True
-        return np.where(mask, mutant, target)
+    def _de_offspring(self, population, prepop, sf, par_dec, donor, f_scale, partner_is_base):
+        """
+        One DE/rand-or-best/1 offspring with the difference against the previous population.
+
+        Parameters
+        ----------
+        population : list of np.ndarray
+            Current population of each task
+        prepop : list of np.ndarray
+            Population of each task at the previous generation
+        sf : int
+            Skill factor (task index) of the parent
+        par_dec : np.ndarray
+            Parent decision vector
+        donor : np.ndarray
+            Vector added to the base: the parent itself for a same-task pair,
+            its GAN image for a cross-task pair
+        f_scale : float
+            DE scaling factor, shared by the two children of a pair
+        partner_is_base : bool
+            If True the binomial crossover partner is the base vector (cross-task
+            pair), otherwise it is the parent itself (same-task pair)
+
+        Returns
+        -------
+        off_dec : np.ndarray
+            Offspring decision vector, not yet clipped
+        """
+        n = population[sf].shape[0]
+        r1 = np.random.randint(n)
+        r2 = np.random.randint(n)
+        if np.random.rand() < self.pp:
+            base = population[sf][r1, :]
+        else:
+            base = population[sf][0, :]
+        off_dec = base + f_scale * (donor - prepop[sf][r2, :])
+        return self._de_crossover(off_dec, base if partner_is_base else par_dec, self.CR)
+
+    @staticmethod
+    def _de_crossover(off_dec, par_dec, cr):
+        """
+        Binomial crossover of MTO-Platform ``DE_Crossover``.
+
+        Parameters
+        ----------
+        off_dec : np.ndarray
+            Mutant vector, shape (d,)
+        par_dec : np.ndarray
+            Vector supplying the non-inherited genes, shape (d,)
+        cr : float
+            Crossover rate
+
+        Returns
+        -------
+        off_dec : np.ndarray
+            Trial vector, shape (d,)
+        """
+        d = off_dec.shape[0]
+        replace = np.random.rand(d) > cr
+        replace[np.random.randint(d)] = False
+        off_dec = off_dec.copy()
+        off_dec[replace] = par_dec[replace]
+        return off_dec

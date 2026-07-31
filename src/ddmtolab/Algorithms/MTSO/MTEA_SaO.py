@@ -20,6 +20,49 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
+    [0, 1]: the MATLAB reference clips only once at the end of Generation_GA,
+    after mutation has acted on the raw crossover output.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with prob 1/D per gene.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT
+    clip; the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
 class MTEA_SaO:
     """
     Multi-task Evolutionary Algorithm with Self-adaptive Solvers for single-objective optimization.
@@ -120,6 +163,7 @@ class MTEA_SaO:
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
+        dims = problem.dims
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
@@ -129,27 +173,39 @@ class MTEA_SaO:
         nfes_per_task = n_per_task.copy()
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
+        # MToP evolves one unified genome of length max(D) per individual and
+        # truncates to D(t) only at evaluation time. Keeping the unified space
+        # here matters because a transferred individual is injected verbatim
+        # into another task, so its genes beyond the source dimension become
+        # active decision variables of the target task. Padding is U[0, 1] to
+        # match MToP's rand(1, max(D)) initialization.
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
+
         # Strategy settings
         st_num = 2  # Number of strategies (GA, DE)
 
-        # Initialize strategy population sizes (equal split)
-        # stn[t] = [size_strategy_1, size_strategy_2]
+        # Initialize strategy population sizes (equal split, remainder to last)
         stn = []
         for t in range(nt):
-            base_size = n_per_task[t] // st_num
-            sizes = [base_size] * st_num
-            sizes[-1] = n_per_task[t] - sum(sizes[:-1])  # Adjust last strategy size
+            sizes = [n_per_task[t] // st_num] * st_num
+            sizes[-1] = n_per_task[t] - sum(sizes[:-1])
             stn.append(sizes)
 
-        # Success/failure history
-        succ_history = []  # List of arrays with shape (nt, st_num)
-        fail_history = []
+        # Success/failure history. MToP stores a flat matrix that receives T
+        # rows (one per task) every generation and trims it with
+        # succ(end - Memory * T : end, :), i.e. it keeps Memory * T + 1 rows;
+        # the per-task slices are then read back as succ(t:T:end, :). The
+        # structure is ported verbatim so the memory window matches.
+        succ_rows = np.zeros((0, st_num))
+        fail_rows = np.zeros((0, st_num))
 
         # Progress bar
         total_nfes = sum(max_nfes_per_task)
         pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task), desc=f"{self.name}", disable=self.disable_tqdm)
 
-        gen = 0
+        # MToP increments Algo.Gen once before entering the loop body, so the
+        # first generation the reference executes already has Gen == 2.
+        gen = 1
         # Main optimization loop
         while sum(nfes_per_task) < total_nfes:
             gen += 1
@@ -160,26 +216,24 @@ class MTEA_SaO:
                 if nfes_per_task[t] >= max_nfes_per_task[t]:
                     continue
 
-                # Calculate median objectives and CV for comparison
-                cvs = np.sum(np.maximum(0, cons[t]), axis=1) if cons[t] is not None and cons[t].size > 0 else np.zeros(len(objs[t]))
+                # Median objective / CV of the whole task population, taken
+                # before the transferred solutions are injected
+                cvs = np.sum(np.maximum(0, cons[t]), axis=1)
                 median_obj = np.median(objs[t][:, 0])
                 median_cv = np.median(cvs)
 
-                # Prepare parent population (with potential transfer)
-                parent_decs = decs[t].copy()
+                # Parent pool used only to generate offspring
+                parent_decs = pop_decs[t].copy()
 
                 # Knowledge Transfer
-                # Condition: t_num > 0 AND within the window before memory period AND at transfer gap
                 if (self.t_num > 0 and
-                    (gen - 1) % self.sa_gap + 1 < (self.sa_gap - self.memory) and
-                    gen % self.t_gap == 0):
-                    # Get transfer solutions from other tasks
-                    transfer_decs = self._transfer(decs, t, problem.dims)
-                    if len(transfer_decs) > 0:
-                        # Randomly replace some parents with transferred solutions
-                        replace_indices = np.random.permutation(len(parent_decs))[:len(transfer_decs)]
-                        for i, idx in enumerate(replace_indices):
-                            parent_decs[idx] = transfer_decs[i]
+                        (gen - 1) % self.sa_gap + 1 < (self.sa_gap - self.memory) and
+                        gen % self.t_gap == 0):
+                    transfer_decs = self._transfer(pop_decs, t)
+                    n_transfer = min(len(transfer_decs), len(parent_decs))
+                    if n_transfer > 0:
+                        replace_indices = np.random.permutation(len(parent_decs))[:n_transfer]
+                        parent_decs[replace_indices] = transfer_decs[:n_transfer]
 
                 # Process each strategy
                 start_idx = 0
@@ -189,103 +243,94 @@ class MTEA_SaO:
                         start_idx = end_idx
                         continue
 
-                    st_indices = list(range(start_idx, end_idx))
+                    st_indices = np.arange(start_idx, end_idx)
                     st_parent_decs = parent_decs[st_indices]
 
                     if st == 0:
-                        # Strategy 1: GA (SBX + PM) with elitist selection
+                        # Strategy 1: GA (SBX + PM) with elitist selection over
+                        # the strategy sub-population (MToP Selection_Elit)
                         off_decs = self._generation_ga(st_parent_decs)
-                        off_objs, off_cons = evaluation_single(problem, off_decs, t)
+                        off_objs, off_cons = evaluation_single(problem, off_decs[:, :dims[t]], t)
                         nfes_per_task[t] += len(off_decs)
                         pbar.update(len(off_decs))
 
-                        # Elitist selection: compare parent vs offspring one-by-one
-                        for i, idx in enumerate(st_indices):
-                            parent_cv = cvs[idx]
-                            parent_obj = objs[t][idx, 0]
-                            off_cv = np.sum(np.maximum(0, off_cons[i])) if off_cons is not None and off_cons[i].size > 0 else 0
-                            off_obj = off_objs[i, 0]
-
-                            # Constrained comparison: prefer lower CV, then lower objective
-                            if off_cv < parent_cv or (off_cv == parent_cv and off_obj < parent_obj):
-                                decs[t][idx] = off_decs[i]
-                                objs[t][idx] = off_objs[i]
-                                if cons[t] is not None:
-                                    cons[t][idx] = off_cons[i]
-
+                        merged_decs = np.vstack([pop_decs[t][st_indices], off_decs])
+                        merged_objs = np.vstack([objs[t][st_indices], off_objs])
+                        merged_cons = np.vstack([cons[t][st_indices], off_cons])
+                        sel = selection_elit(merged_objs, len(st_indices), merged_cons)
+                        pop_decs[t][st_indices] = merged_decs[sel]
+                        objs[t][st_indices] = merged_objs[sel]
+                        cons[t][st_indices] = merged_cons[sel]
                     else:
-                        # Strategy 2: DE with tournament selection
+                        # Strategy 2: DE (DE/rand/1/bin) with pairwise
+                        # tournament selection (MToP Selection_Tournament, Ep=0)
                         off_decs = self._generation_de(st_parent_decs)
-                        off_objs, off_cons = evaluation_single(problem, off_decs, t)
+                        off_objs, off_cons = evaluation_single(problem, off_decs[:, :dims[t]], t)
                         nfes_per_task[t] += len(off_decs)
                         pbar.update(len(off_decs))
 
-                        # Tournament selection: compare parent vs offspring one-by-one
-                        for i, idx in enumerate(st_indices):
-                            parent_cv = cvs[idx]
-                            parent_obj = objs[t][idx, 0]
-                            off_cv = np.sum(np.maximum(0, off_cons[i])) if off_cons is not None and off_cons[i].size > 0 else 0
-                            off_obj = off_objs[i, 0]
+                        pop_cv = np.sum(np.maximum(0, cons[t][st_indices]), axis=1)
+                        off_cv = np.sum(np.maximum(0, off_cons), axis=1)
+                        pop_obj = objs[t][st_indices, 0]
+                        off_obj = off_objs[:, 0]
 
-                            # Constrained comparison: prefer lower CV, then lower objective
-                            if off_cv < parent_cv or (off_cv == parent_cv and off_obj <= parent_obj):
-                                decs[t][idx] = off_decs[i]
-                                objs[t][idx] = off_objs[i]
-                                if cons[t] is not None:
-                                    cons[t][idx] = off_cons[i]
+                        # Both infeasible: the offspring must reduce the CV.
+                        # Both feasible: the offspring must strictly improve
+                        # the objective. A feasible offspring never replaces an
+                        # infeasible parent, exactly as in MToP.
+                        replace_cv = (pop_cv > off_cv) & (pop_cv > 0) & (off_cv > 0)
+                        equal_cv = (pop_cv <= 0) & (off_cv <= 0)
+                        replace = (equal_cv & (pop_obj > off_obj)) | replace_cv
 
-                    # Calculate success/failure for this strategy
-                    # Recalculate CVs after potential updates
-                    current_cvs = np.sum(np.maximum(0, cons[t][st_indices]), axis=1) if cons[t] is not None and cons[t].size > 0 else np.zeros(len(st_indices))
+                        rep_idx = st_indices[replace]
+                        pop_decs[t][rep_idx] = off_decs[replace]
+                        objs[t][rep_idx] = off_objs[replace]
+                        cons[t][rep_idx] = off_cons[replace]
+
+                    # Success / failure of this strategy, measured on the
+                    # updated sub-population against the pre-generation medians
+                    current_cvs = np.sum(np.maximum(0, cons[t][st_indices]), axis=1)
                     current_objs = objs[t][st_indices, 0]
 
-                    # Success: CV < median_cv OR (CV == median_cv AND obj < median_obj)
-                    succ_mask = (current_cvs < median_cv) | (
-                        (current_cvs == median_cv) & (current_objs < median_obj)
+                    succ_iter[t, st] = np.sum(
+                        (current_cvs < median_cv) |
+                        ((current_cvs == median_cv) & (current_objs < median_obj))
                     )
-                    succ_iter[t, st] = np.sum(succ_mask)
-
-                    # Failure: CV > median_cv OR (CV == median_cv AND obj > median_obj)
-                    fail_mask = (current_cvs > median_cv) | (
-                        (current_cvs == median_cv) & (current_objs > median_obj)
+                    fail_iter[t, st] = np.sum(
+                        (current_cvs > median_cv) |
+                        ((current_cvs == median_cv) & (current_objs > median_obj))
                     )
-                    fail_iter[t, st] = np.sum(fail_mask)
 
                     start_idx = end_idx
 
-                # Append to history
-                append_history(all_decs[t], decs[t], all_objs[t], objs[t], all_cons[t], cons[t])
+                # Append to history in the task's own (real) decision space
+                append_history(all_decs[t], pop_decs[t][:, :dims[t]],
+                               all_objs[t], objs[t], all_cons[t], cons[t])
 
-            # Update success/failure history
-            succ_history.append(succ_iter)
-            fail_history.append(fail_iter)
-
-            # Trim history to memory length (per-task adjustment)
-            max_history_len = self.memory * nt
-            if len(succ_history) > max_history_len:
-                succ_history = succ_history[-max_history_len:]
-                fail_history = fail_history[-max_history_len:]
+            # Update success/failure history (T rows per generation)
+            succ_rows = np.vstack([succ_rows, succ_iter])
+            fail_rows = np.vstack([fail_rows, fail_iter])
+            if succ_rows.shape[0] > self.memory * nt:
+                keep = self.memory * nt + 1
+                succ_rows = succ_rows[-keep:, :]
+                fail_rows = fail_rows[-keep:, :]
 
             # Update strategy population sizes
             for t in range(nt):
-                # Aggregate history for task t (every nt-th entry belongs to all tasks)
-                succ_t = np.zeros(st_num)
-                fail_t = np.zeros(st_num)
-                for i in range(len(succ_history)):
-                    succ_t += succ_history[i][t]
-                    fail_t += fail_history[i][t]
+                succ_t = succ_rows[t::nt, :]
+                fail_t = fail_rows[t::nt, :]
 
                 # Calculate success probability
                 succ_p = np.zeros(st_num)
                 for st in range(st_num):
-                    total = succ_t[st] + fail_t[st]
+                    total = succ_t[:, st].sum() + fail_t[:, st].sum()
                     if total == 0:
                         succ_p[st] = 0.01
                     else:
-                        succ_p[st] = succ_t[st] / total + 0.01
+                        succ_p[st] = succ_t[:, st].sum() / total + 0.01
 
-                # Combine with previous allocation (momentum)
-                succ_old = np.array(stn[t]) / sum(stn[t])
+                # Combine with the previous allocation
+                succ_old = np.array(stn[t], dtype=float) / sum(stn[t])
                 succ_p = succ_old / 2 + succ_p
                 succ_p = succ_p / np.sum(succ_p)
 
@@ -297,10 +342,9 @@ class MTEA_SaO:
 
                     # Shuffle population to redistribute among strategies
                     shuffle_indices = np.random.permutation(n_per_task[t])
-                    decs[t] = decs[t][shuffle_indices]
+                    pop_decs[t] = pop_decs[t][shuffle_indices]
                     objs[t] = objs[t][shuffle_indices]
-                    if cons[t] is not None:
-                        cons[t] = cons[t][shuffle_indices]
+                    cons[t] = cons[t][shuffle_indices]
 
         pbar.close()
         runtime = time.time() - start_time
@@ -312,46 +356,47 @@ class MTEA_SaO:
 
         return results
 
-    def _transfer(self, decs, t, dims):
+    def _transfer(self, pop_decs, t):
         """
         Perform random knowledge transfer from other tasks.
 
+        MToP builds an archive holding the populations of every other task and
+        draws ``TNum`` individuals from it, each time picking a random task and
+        then a random individual. The unified genome is copied verbatim.
+
         Parameters
         ----------
-        decs : list of np.ndarray
-            Decision variables for all tasks
+        pop_decs : list of np.ndarray
+            Decision variables (unified space) for all tasks
         t : int
             Current task index
-        dims : list of int
-            Dimensions for all tasks
 
         Returns
         -------
         transfer_decs : np.ndarray
-            Transferred decision variables aligned to target task dimension
+            Transferred decision variables of shape (t_num, d_max)
         """
-        nt = len(decs)
-        if nt <= 1:
-            return np.array([])
+        dim = pop_decs[t].shape[1]
+        archive = [k for k in range(len(pop_decs)) if k != t]
+        if not archive:
+            return np.zeros((0, dim))
 
-        transfer_decs = []
-        other_tasks = [k for k in range(nt) if k != t]
-
-        for _ in range(self.t_num):
-            # Random task and random individual
-            rand_t = other_tasks[np.random.randint(len(other_tasks))]
-            rand_p = np.random.randint(len(decs[rand_t]))
-            dec = decs[rand_t][rand_p].copy()
-
-            # Align dimensions to target task
-            dec = align_dimensions(dec, dims[t])
-            transfer_decs.append(dec)
-
-        return np.array(transfer_decs)
+        transfer_decs = np.empty((self.t_num, dim))
+        for i in range(self.t_num):
+            rand_t = archive[np.random.randint(len(archive))]
+            rand_p = np.random.randint(pop_decs[rand_t].shape[0])
+            transfer_decs[i] = pop_decs[rand_t][rand_p]
+        return transfer_decs
 
     def _generation_ga(self, parent_decs):
         """
         Generate offspring using GA (SBX crossover + polynomial mutation).
+
+        Matches MToP ``Generation_GA``: for a sub-population of at most one
+        individual only polynomial mutation is applied; otherwise a random
+        permutation is split in halves, parent i is paired with parent
+        i + floor(N/2) for i = 1..ceil(N/2), the single clip to [0, 1] happens
+        after mutation, and the offspring list is truncated back to N.
 
         Parameters
         ----------
@@ -363,40 +408,31 @@ class MTEA_SaO:
         off_decs : np.ndarray
             Offspring decision variables of shape (pop_size, dim)
         """
-        pop_size = len(parent_decs)
+        pop_size, dim = parent_decs.shape
 
         if pop_size <= 1:
-            # Only mutation for very small population
-            off_decs = np.array([mutation(parent_decs[i].copy(), mu=self.ga_mum) for i in range(pop_size)])
-            return np.clip(off_decs, 0, 1)
+            off_decs = np.empty((pop_size, dim))
+            for i in range(pop_size):
+                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+            return off_decs
 
-        dim = parent_decs.shape[1]
-        off_decs = np.zeros((pop_size, dim))
-
-        # Shuffle indices for pairing
-        ind_order = np.random.permutation(pop_size)
+        order = np.random.permutation(pop_size)
+        half = pop_size // 2
+        n_pairs = int(np.ceil(pop_size / 2))
+        off_decs = np.empty((2 * n_pairs, dim))
 
         count = 0
-        for i in range(pop_size // 2):
-            p1 = ind_order[i]
-            p2 = ind_order[i + pop_size // 2]
+        for i in range(n_pairs):
+            p1 = parent_decs[order[i]]
+            p2 = parent_decs[order[i + half]]
 
-            # Crossover
-            off_dec1, off_dec2 = crossover(parent_decs[p1], parent_decs[p2], mu=self.ga_muc)
+            c1, c2 = _sbx_crossover_unclipped(p1, p2, self.ga_muc)
+            c1 = _poly_mutation_unclipped(c1, self.ga_mum)
+            c2 = _poly_mutation_unclipped(c2, self.ga_mum)
 
-            # Mutation
-            off_dec1 = mutation(off_dec1, mu=self.ga_mum)
-            off_dec2 = mutation(off_dec2, mu=self.ga_mum)
-
-            # Boundary handling
-            off_decs[count] = np.clip(off_dec1, 0, 1)
-            off_decs[count + 1] = np.clip(off_dec2, 0, 1)
+            off_decs[count] = np.clip(c1, 0, 1)
+            off_decs[count + 1] = np.clip(c2, 0, 1)
             count += 2
-
-        # Handle odd population size
-        if pop_size % 2 == 1:
-            off_decs[count] = mutation(parent_decs[ind_order[-1]].copy(), mu=self.ga_mum)
-            off_decs[count] = np.clip(off_decs[count], 0, 1)
 
         return off_decs[:pop_size]
 
@@ -404,6 +440,9 @@ class MTEA_SaO:
         """
         Generate offspring using DE (DE/rand/1/bin).
 
+        Matches MToP ``Generation_DE``: sub-populations with fewer than four
+        individuals fall back to polynomial mutation only.
+
         Parameters
         ----------
         parent_decs : np.ndarray
@@ -414,33 +453,29 @@ class MTEA_SaO:
         off_decs : np.ndarray
             Offspring decision variables of shape (pop_size, dim)
         """
-        pop_size = len(parent_decs)
-        dim = parent_decs.shape[1]
+        pop_size, dim = parent_decs.shape
 
         if pop_size < 4:
-            # Fallback to mutation only when population too small for DE
-            off_decs = np.array([mutation(parent_decs[i].copy(), mu=self.ga_mum) for i in range(pop_size)])
-            return np.clip(off_decs, 0, 1)
+            off_decs = np.empty((pop_size, dim))
+            for i in range(pop_size):
+                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+            return off_decs
 
-        off_decs = np.zeros((pop_size, dim))
-
+        off_decs = np.empty((pop_size, dim))
         for i in range(pop_size):
-            # Select 3 different individuals (different from i)
-            candidates = list(range(pop_size))
-            candidates.remove(i)
-            selected = np.random.choice(candidates, 3, replace=False)
-            x1, x2, x3 = selected
+            candidates = np.arange(pop_size)
+            candidates = candidates[candidates != i]
+            x1, x2, x3 = np.random.choice(candidates, 3, replace=False)
 
             # DE/rand/1 mutation
-            mutant = parent_decs[x1] + self.de_f * (parent_decs[x2] - parent_decs[x3])
+            trial = parent_decs[x1] + self.de_f * (parent_decs[x2] - parent_decs[x3])
 
-            # DE binomial crossover
-            j_rand = np.random.randint(dim)
-            mask = np.random.rand(dim) < self.de_cr
-            mask[j_rand] = True  # Ensure at least one dimension from mutant
-            off_dec = np.where(mask, mutant, parent_decs[i])
+            # DE binomial crossover (MToP DE_Crossover)
+            replace = np.random.rand(dim) > self.de_cr
+            replace[np.random.randint(dim)] = False
+            trial = np.where(replace, parent_decs[i], trial)
 
             # Boundary handling
-            off_decs[i] = np.clip(off_dec, 0, 1)
+            off_decs[i] = np.clip(trial, 0, 1)
 
         return off_decs

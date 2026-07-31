@@ -116,12 +116,16 @@ class MKTDE:
         nfes = n * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Convert to unified space for DE operations (matching MATLAB max-D space)
-        pop_decs, pop_cons = space_transfer(
-            problem=problem, decs=decs, cons=cons, type='uni', padding='mid')
+        # Convert decisions to the unified max-D space used by MToP. MToP
+        # initializes the whole unified genome with rand(1, max(D)), so the
+        # padding genes are U[0, 1] rather than a constant.
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
         pop_objs = objs
+        # Constraints stay in each task's native width: MToP keeps one Con
+        # vector per task and padding them to c_max would inflate the CV of
+        # tasks that declare fewer constraints than the maximum.
+        pop_cons = [c.copy() for c in cons]
         maxD = pop_decs[0].shape[1]
-        maxC = pop_cons[0].shape[1]
 
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -178,11 +182,8 @@ class MKTDE:
                     off_decs[i] = np.clip(u, 0, 1)
 
                 # Evaluate offspring (trim to task dimension)
-                off_objs_t, off_cons_real = evaluation_single(
+                off_objs_t, off_cons_t = evaluation_single(
                     problem, off_decs[:, :dims[t]], t)
-                off_cons_t = np.zeros((n, maxC))
-                if maxC > 0 and off_cons_real.shape[1] > 0:
-                    off_cons_t[:, :off_cons_real.shape[1]] = off_cons_real
                 nfes += n
                 pbar.update(n)
 
@@ -201,23 +202,19 @@ class MKTDE:
                 # Replace last (worst) with first (best) from source task
                 elite_dec = pop_decs[s][0].copy()
 
-                elite_obj, elite_con_real = evaluation_single(
+                elite_obj, elite_con = evaluation_single(
                     problem, elite_dec[:dims[t]].reshape(1, -1), t)
                 nfes += 1
                 pbar.update(1)
 
                 pop_decs[t][-1] = elite_dec
                 pop_objs[t][-1] = elite_obj.flatten()
-                pop_cons[t][-1] = 0
-                if maxC > 0 and elite_con_real.shape[1] > 0:
-                    pop_cons[t][-1, :elite_con_real.shape[1]] = \
-                        elite_con_real.flatten()
+                pop_cons[t][-1] = elite_con.flatten()
 
             # Record history in real space
-            real_decs, real_cons = space_transfer(
-                problem, decs=pop_decs, cons=pop_cons, type='real')
+            real_decs = space_transfer(problem, decs=pop_decs, type='real')
             append_history(all_decs, real_decs, all_objs, pop_objs,
-                           all_cons, real_cons)
+                           all_cons, pop_cons)
 
         pbar.close()
         runtime = time.time() - start_time

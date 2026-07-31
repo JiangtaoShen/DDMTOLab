@@ -1,23 +1,94 @@
 """
-Multiobjective Multifactorial Evolutionary Algorithm (MOMFEA)
+Multiobjective Multifactorial Evolutionary Algorithm (MO-MFEA)
 
-This module implements MOMFEA for multi-objective multi-task optimization with knowledge transfer.
+This module implements MO-MFEA for multi-objective multi-task optimization with knowledge transfer.
 
 References
 ----------
-    [1] Abhishek Gupta, Yew-Soon Ong, and Liang Feng. "Multifactorial Evolution: Toward Evolutionary Multitasking." IEEE Transactions on Evolutionary Computation, 20(3): 343-357, 2015.
+    [1] Gupta, Abhishek, Yew-Soon Ong, Liang Feng, and Kay Chen Tan. "Multiobjective Multifactorial Optimization in Evolutionary Multitasking." IEEE Transactions on Cybernetics 47, no. 7 (2017): 1652-1665.
 
 Notes
 -----
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.11.27
-Version: 1.0
+Version: 1.1
 """
 import time
 from tqdm import tqdm
-from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort
+from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort, platemo_tournament_selection
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
+
+
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
+    [0, 1] here: the MATLAB reference clips once at the end of ``Generation``,
+    after polynomial mutation has acted on the raw crossover output.
+
+    Parameters
+    ----------
+    par_dec1 : np.ndarray
+        First parent decision vector, shape (d,)
+    par_dec2 : np.ndarray
+        Second parent decision vector, shape (d,)
+    mu : float
+        Distribution index for the crossover
+
+    Returns
+    -------
+    off_dec1 : np.ndarray
+        First offspring decision vector, shape (d,)
+    off_dec2 : np.ndarray
+        Second offspring decision vector, shape (d,)
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+
+    Parameters
+    ----------
+    dec : np.ndarray
+        Decision vector to mutate, shape (d,)
+    mu : float
+        Distribution index for the mutation
+
+    Returns
+    -------
+    dec : np.ndarray
+        Mutated decision vector, shape (d,)
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
 
 
 class MO_MFEA:
@@ -47,10 +118,10 @@ class MO_MFEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./Data',
-                 name='MO-MFEA', disable_tqdm=True):
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, muc=20.0, mum=15.0, save_data=True,
+                 save_path='./Data', name='MO-MFEA', disable_tqdm=True):
         """
-        Initialize MOMFEA algorithm.
+        Initialize MO-MFEA algorithm.
 
         Parameters
         ----------
@@ -62,12 +133,16 @@ class MO_MFEA:
             Maximum number of function evaluations per task (default: 10000)
         rmp : float, optional
             Random mating probability for inter-task crossover (default: 0.3)
+        muc : float, optional
+            Distribution index for simulated binary crossover (SBX) (default: 20.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (PM) (default: 15.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
             Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'momfea_test')
+            Name for the experiment (default: 'MO-MFEA')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -75,6 +150,8 @@ class MO_MFEA:
         self.n = n if n is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.rmp = rmp
+        self.muc = muc
+        self.mum = mum
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -82,7 +159,7 @@ class MO_MFEA:
 
     def optimize(self):
         """
-        Execute the MOMFEA algorithm.
+        Execute the MO-MFEA algorithm.
 
         Returns
         -------
@@ -97,100 +174,61 @@ class MO_MFEA:
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
-        # Initialize population and evaluate for each task
-        decs = initialization(problem, n)
-        objs, cons = evaluation(problem, decs)
+        # Population lives in the unified [0, 1] space of dimension max(dims); the
+        # genes beyond a task's own dimension are initialized at random and keep
+        # evolving, exactly as in the MATLAB reference (Dec = rand(1, max(D))).
+        decs = space_transfer(problem, initialization(problem, n), type='uni', padding='random')
+
+        objs, cons = [], []
+        for t in range(nt):
+            obj_t, con_t = evaluation_single(problem, decs[t][:, :dims[t]], t)
+            objs.append(obj_t)
+            cons.append(con_t)
         nfes = n * nt
 
-        # Skill factor indicates which task each individual belongs to
-        pop_sfs = [np.full((n, 1), fill_value=i) for i in range(nt)]
+        # Sort each task's population by non-dominated rank then crowding distance
+        for t in range(nt):
+            rank_t, _, _ = nsga2_sort(objs[t], cons[t])
+            order = np.argsort(rank_t)
+            decs[t], objs[t], cons[t] = decs[t][order], objs[t][order], cons[t][order]
 
-        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
+        all_decs, all_objs, all_cons = init_history(
+            [decs[t][:, :dims[t]] for t in range(nt)], objs, cons)
 
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}", disable=self.disable_tqdm)
 
+        # Skill factor of the concatenated population: task-ordered blocks of size n
+        pop_sfs = np.repeat(np.arange(nt), n)
+        # Tournament fitness is the position inside the own (sorted) sub-population
+        pool_fitness = np.tile(np.arange(n), nt)
+
         while nfes < max_nfes:
+            # Mating pool drawn from the union of all sub-populations
+            mating_pool = platemo_tournament_selection(2, n * nt, pool_fitness)
+            par_decs = np.vstack(decs)[mating_pool, :]
+            par_sfs = pop_sfs[mating_pool]
 
-            # Perform NSGA-II sorting to get dominance ranks for each task
-            rank = []
-            for i in range(nt):
-                rank_i, _, _ = nsga2_sort(objs[i], cons[i])
-                rank.append(rank_i.copy())
+            off_decs, off_sfs = self._generation(par_decs, par_sfs)
 
-            # Select parents using binary tournament selection
-            pop_decs = []
-            pop_objs = []
-            pop_cons = []
-            for i in range(nt):
-                matingpool_i = tournament_selection(2, n, rank[i])
-                pop_decs.append(decs[i][matingpool_i, :])
-                pop_objs.append(objs[i][matingpool_i, :])
-                pop_cons.append(cons[i][matingpool_i, :])
+            for t in range(nt):
+                # Evaluation
+                mask = off_sfs == t
+                if not np.any(mask):
+                    continue
+                off_decs_t = off_decs[mask, :]
+                off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t[:, :dims[t]], t)
+                nfes += off_decs_t.shape[0]
+                pbar.update(off_decs_t.shape[0])
 
-            # Transform populations to unified search space for knowledge transfer
-            pop_decs, pop_objs, pop_cons = space_transfer(problem, pop_decs, pop_objs, pop_cons, type='uni')
+                # Selection: NSGA-II sorting on the merged parent + offspring pool
+                merged_decs, merged_objs, merged_cons = vstack_groups(
+                    (decs[t], off_decs_t), (objs[t], off_objs_t), (cons[t], off_cons_t))
+                rank_t, _, _ = nsga2_sort(merged_objs, merged_cons)
+                index = np.argsort(rank_t)[:n]
+                decs[t], objs[t], cons[t] = select_by_index(index, merged_decs, merged_objs, merged_cons)
 
-            # Merge populations from all tasks into single arrays
-            pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_cons, pop_sfs)
-
-            off_decs = np.zeros_like(pop_decs)
-            off_objs = np.zeros_like(pop_objs)
-            off_cons = np.zeros_like(pop_cons)
-            off_sfs = np.zeros_like(pop_sfs)
-
-            # Randomly pair individuals for assortative mating
-            shuffled_index = np.random.permutation(pop_decs.shape[0])
-
-            for i in range(0, len(shuffled_index), 2):
-                p1 = shuffled_index[i]
-                p2 = shuffled_index[i + 1]
-                sf1 = pop_sfs[p1].item()
-                sf2 = pop_sfs[p2].item()
-
-                # Cross-task transfer: crossover if same task or rmp condition met
-                if sf1 == sf2 or np.random.rand() < self.rmp:
-                    off_dec1, off_dec2 = crossover(pop_decs[p1, :], pop_decs[p2, :], mu=2)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = np.random.choice([sf1, sf2])
-                    off_sfs[i + 1] = sf1 if off_sfs[i] == sf2 else sf2
-                else:
-                    # No transfer: mutate within own task
-                    off_dec1 = mutation(pop_decs[p1, :], mu=5)
-                    off_dec2 = mutation(pop_decs[p2, :], mu=5)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = sf1
-                    off_sfs[i + 1] = sf2
-
-                # Trim to task dimensionality and evaluate offspring
-                task_idx1 = off_sfs[i].item()
-                task_idx2 = off_sfs[i + 1].item()
-
-                off_dec1_trimmed = off_decs[i, :dims[task_idx1]]
-                off_dec2_trimmed = off_decs[i + 1, :dims[task_idx2]]
-
-                off_objs[i, :], off_cons[i, :] = (
-                    x[0] for x in evaluation_single(problem, off_dec1_trimmed, task_idx1, unified=True, fill_value=0.)
-                )
-                off_objs[i + 1, :], off_cons[i + 1, :] = (
-                    x[0] for x in evaluation_single(problem, off_dec2_trimmed, task_idx2, unified=True, fill_value=0.)
-                )
-
-            # Merge parents and offspring populations
-            pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups((pop_decs, off_decs), (pop_objs, off_objs),
-                                                                  (pop_cons, off_cons), (pop_sfs, off_sfs))
-
-            # Environmental selection: keep best n individuals per task
-            pop_decs, objs, cons, pop_sfs = momfea_selection(pop_decs, pop_objs, pop_cons, pop_sfs, n, nt)
-
-            # Transform back to native search space
-            decs, objs, cons = space_transfer(problem, pop_decs, objs, cons, type='real')
-
-            nfes += n * nt
-            pbar.update(n * nt)
-
-            append_history(all_decs, decs, all_objs, objs, all_cons, cons)
+            append_history(all_decs, [decs[t][:, :dims[t]] for t in range(nt)],
+                           all_objs, objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
@@ -202,68 +240,62 @@ class MO_MFEA:
 
         return results
 
+    def _generation(self, par_decs, par_sfs):
+        """
+        Multifactorial offspring generation (MTO-Platform ``MO_MFEA.Generation``).
 
-def momfea_selection(all_decs, all_objs, all_cons, all_sfs, n, nt):
-    """
-    Environmental selection for MOMFEA using NSGA-II criteria.
+        Parents are paired deterministically as (i, i + floor(L/2)); the mating
+        pool order is already randomized by tournament selection. Assortative
+        mating applies SBX + polynomial mutation when both parents share a skill
+        factor or when a random draw falls below ``rmp``, and polynomial mutation
+        alone otherwise. Each child imitates the skill factor of one of the two
+        parents drawn independently at random.
 
-    Parameters
-    ----------
-    all_decs : np.ndarray
-        Decision variable matrix of the combined population of shape (n_total, d_max)
-    all_objs : np.ndarray
-        Objective value matrix corresponding to all_decs of shape (n_total, n_obj)
-    all_cons : np.ndarray
-        Constraint value matrix corresponding to all_decs of shape (n_total, n_con)
-    all_sfs : np.ndarray
-        Skill factor array indicating task assignment for each individual of shape (n_total, 1)
-    n : int
-        Number of individuals to select per task (population size per task)
-    nt : int
-        Number of tasks in the multi-task optimization problem
+        Parameters
+        ----------
+        par_decs : np.ndarray
+            Mating pool decision variables in unified space, shape (L, d_uni)
+        par_sfs : np.ndarray
+            Mating pool skill factors, shape (L,)
 
-    Returns
-    -------
-    pop_decs : list[np.ndarray]
-        Selected decision variable matrices for each task, length nt, each of shape (n, d_max)
-    pop_objs : list[np.ndarray]
-        Selected objective value matrices for each task, length nt, each of shape (n, n_obj)
-    pop_cons : list[np.ndarray]
-        Selected constraint matrices for each task, length nt, each of shape (n, n_con)
-    pop_sfs : list[np.ndarray]
-        Selected skill factor arrays for each task, length nt, each of shape (n, 1)
+        Returns
+        -------
+        off_decs : np.ndarray
+            Offspring decision variables, shape (2 * ceil(L / 2), d_uni)
+        off_sfs : np.ndarray
+            Offspring skill factors, shape (2 * ceil(L / 2),)
+        """
+        length, d = par_decs.shape
+        half = length // 2
+        n_pairs = int(np.ceil(length / 2))
+        off_decs = np.empty((2 * n_pairs, d))
+        off_sfs = np.empty(2 * n_pairs, dtype=int)
 
-    Notes
-    -----
-    Selection is performed independently for each task using NSGA-II sorting based on
-    non-dominated rank and crowding distance. The top-n individuals with smallest rank
-    values are retained for each task.
-    """
-    pop_decs, pop_objs, pop_cons, pop_sfs = [], [], [], []
+        count = 0
+        for i in range(n_pairs):
+            p1, p2 = i, i + half
+            sf1, sf2 = int(par_sfs[p1]), int(par_sfs[p2])
 
-    # Process each task separately
-    for i in range(nt):
-        # Extract all individuals belonging to task i
-        indices = np.where(all_sfs.flatten() == i)[0]
-        current_decs, current_objs, current_cons, current_sfs = select_by_index(
-            indices, all_decs, all_objs, all_cons, all_sfs
-        )
+            if sf1 == sf2 or np.random.rand() < self.rmp:
+                # Crossover
+                off_dec1, off_dec2 = _sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
+                # Mutation
+                off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
+                off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                # Imitation: each child picks one of the two parents independently
+                pair = (sf1, sf2)
+                off_sfs[count] = pair[np.random.randint(2)]
+                off_sfs[count + 1] = pair[np.random.randint(2)]
+            else:
+                # Mutation only
+                off_dec1 = _poly_mutation_unclipped(par_decs[p1, :], self.mum)
+                off_dec2 = _poly_mutation_unclipped(par_decs[p2, :], self.mum)
+                # Imitation
+                off_sfs[count] = sf1
+                off_sfs[count + 1] = sf2
 
-        # NSGA-II sorting: rank based on non-dominated sorting and crowding distance
-        rank, _, _ = nsga2_sort(current_objs, current_cons)
+            off_decs[count, :] = np.clip(off_dec1, 0, 1)
+            off_decs[count + 1, :] = np.clip(off_dec2, 0, 1)
+            count += 2
 
-        # Select top-n individuals with smallest rank values
-        indices_select = np.argsort(rank)[:n]
-        selected_decs, selected_objs, selected_cons, selected_sfs = select_by_index(
-            indices_select, current_decs, current_objs, current_cons, current_sfs
-        )
-
-        # Store selected individuals for this task
-        pop_decs, pop_objs, pop_cons, pop_sfs = append_history(
-            pop_decs, selected_decs,
-            pop_objs, selected_objs,
-            pop_cons, selected_cons,
-            pop_sfs, selected_sfs
-        )
-
-    return pop_decs, pop_objs, pop_cons, pop_sfs
+        return off_decs, off_sfs

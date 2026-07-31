@@ -69,9 +69,12 @@ class ParEGO:
         n_initial : int or List[int], optional
             Number of initial samples per task (default: 11*dim - 1, following Knowles 2006)
         n_weights : int or List[int], optional
-            Number of reference weight vectors per task (default: 10)
+            Number of reference weight vectors per task (default: 100, matching
+            PlatEMO's ``Problem.N``; the actual count is adjusted by
+            ``uniform_point``)
         max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 100)
+            Maximum number of function evaluations per task, including the
+            initial design (default: 200)
         rho : float, optional
             Augmentation coefficient for augmented Tchebycheff scalarization (default: 0.05)
         save_data : bool, optional
@@ -147,8 +150,12 @@ class ParEGO:
                 # Scalarize multi-objective values to single objective using augmented Tchebycheff
                 scalar_objs = self._scalarize(objs[i], weight)
 
+                # Truncate the training set to the 11*D-1+25 best-scalarized
+                # solutions and drop duplicated inputs/outputs before fitting
+                train_decs, train_objs = self._select_training_set(decs[i], scalar_objs, dims[i])
+
                 # Fit GP surrogate and select next candidate via BO with EI
-                candidate_np = bo_next_point(dims[i], decs[i], scalar_objs, data_type=data_type)
+                candidate_np = bo_next_point(dims[i], train_decs, train_objs, data_type=data_type)
 
                 # Evaluate the candidate solution (get true multi-objective values)
                 obj, _ = evaluation_single(problem, candidate_np, i)
@@ -173,6 +180,80 @@ class ParEGO:
                                      save_data=self.save_data)
 
         return results
+
+    @staticmethod
+    def _round6(x):
+        """
+        MATLAB-style ``round(x*1e6)/1e6`` (round half away from zero).
+
+        NumPy's ``np.round`` uses banker's rounding, so the tie-breaking rule is
+        reproduced explicitly to match the duplicate detection in ParEGO.m.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Values to round.
+
+        Returns
+        -------
+        np.ndarray
+            Values rounded to six decimal places.
+        """
+        return np.sign(x) * np.floor(np.abs(x) * 1e6 + 0.5) / 1e6
+
+    def _select_training_set(self, decs, scalar_objs, dim):
+        """
+        Build the surrogate training set following ParEGO.m (lines 41-55).
+
+        Two reductions are applied, in this order:
+
+        1. If the archive holds more than ``11*dim - 1 + 25`` solutions, only
+           the best ``11*dim - 1 + 25`` (smallest scalarized value) are kept.
+           The retained rows are ordered by ascending scalarized value, as in
+           MATLAB's ``sort``-based indexing.
+        2. Solutions whose decision vector (rounded to 1e-6) or scalarized
+           value (rounded to 1e-6) duplicates an earlier row are removed; a row
+           survives only if it is the first occurrence of both, matching
+           ``intersect(distinct1, distinct2)``.
+
+        Parameters
+        ----------
+        decs : np.ndarray
+            Archive of decision variables, shape (N, dim).
+        scalar_objs : np.ndarray
+            Augmented Tchebycheff values of the archive, shape (N, 1).
+        dim : int
+            Number of decision variables.
+
+        Returns
+        -------
+        train_decs : np.ndarray
+            Decision variables used to fit the surrogate, shape (n, dim).
+        train_objs : np.ndarray
+            Matching scalarized values, shape (n, 1).
+        """
+        cheby = np.asarray(scalar_objs).flatten()
+        n = decs.shape[0]
+
+        # Keep only the best 11*D-1+25 solutions once the archive grows past it
+        n_keep = 11 * dim - 1 + 25
+        if n > n_keep:
+            keep = np.argsort(cheby, kind='stable')[:n_keep]
+        else:
+            keep = np.arange(n)
+        p_dec = decs[keep]
+        p_cheby = cheby[keep]
+
+        # Eliminate solutions with duplicated inputs or duplicated outputs
+        _, distinct1 = np.unique(self._round6(p_dec), axis=0, return_index=True)
+        _, distinct2 = np.unique(self._round6(p_cheby), return_index=True)
+        distinct = np.intersect1d(distinct1, distinct2)
+
+        # Guard against a degenerate archive collapsing the training set
+        if distinct.size < 2:
+            distinct = np.arange(p_dec.shape[0])
+
+        return p_dec[distinct], p_cheby[distinct].reshape(-1, 1)
 
     def _scalarize(self, objs, weight):
         """

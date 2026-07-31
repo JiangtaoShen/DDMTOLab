@@ -132,8 +132,10 @@ class MFEA_AKT:
         pop_objs = objs
         pop_sfs = [np.full((n, 1), fill_value=i) for i in range(nt)]
 
-        # Per-individual metadata (as lists of arrays, one per task)
+        # Individual_AKT bookkeeping: CXFactor = randi(6), isTran = 0, parNum = 0.
+        # parNum is stored 0-based; -1 stands for MATLAB's "parNum == 0" (untracked).
         pop_cxf = [np.random.randint(0, 6, size=(n,)) for _ in range(nt)]
+        pop_parnum = [np.full(n, -1, dtype=int) for _ in range(nt)]
 
         # Record of best CX factor per generation (for fallback selection)
         cfb_record = []
@@ -141,12 +143,15 @@ class MFEA_AKT:
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
-        gen = 1
+        # MToP increments Algo.Gen inside notTerminated before the first loop body,
+        # so the first generation executed by the reference runs with Gen == 2.
+        gen = 2
         while nfes < max_nfes:
             # Merge populations from all tasks into single arrays
             m_decs, m_objs, m_cons, m_sfs = vstack_groups(
                 pop_decs, pop_objs, pop_cons, pop_sfs)
             m_cxf = np.concatenate(pop_cxf)  # (pop_size,)
+            m_parnum = np.concatenate(pop_parnum)  # (pop_size,)
 
             # --- Generation ---
             off_decs = np.zeros_like(m_decs)
@@ -154,55 +159,59 @@ class MFEA_AKT:
             off_cons = np.zeros_like(m_cons)
             off_sfs = np.zeros_like(m_sfs)
             off_cxf = np.zeros(pop_size, dtype=int)
-            off_istran = np.zeros(pop_size, dtype=bool)
-            off_parnum = np.full(pop_size, -1, dtype=int)  # -1 = no parent tracked
+            off_parnum = np.full(pop_size, -1, dtype=int)
 
-            shuffled_index = np.random.permutation(pop_size)
+            indorder = np.random.permutation(pop_size)
+            n_pairs = pop_size // 2
 
-            for i in range(0, pop_size, 2):
-                p1 = shuffled_index[i]
-                p2 = shuffled_index[i + pop_size // 2] if i + pop_size // 2 < pop_size else shuffled_index[(i + 1) % pop_size]
+            for pair in range(n_pairs):
+                # MToP pairs indorder(i) with indorder(i + fix(len/2))
+                p1 = indorder[pair]
+                p2 = indorder[pair + n_pairs]
                 sf1 = m_sfs[p1].item()
                 sf2 = m_sfs[p2].item()
+                i1, i2 = 2 * pair, 2 * pair + 1
+
+                # MToP starts from `offspring(count) = population(p1)`, so CXFactor
+                # and parNum are inherited from the copied parent unless overwritten.
+                off_cxf[i1], off_cxf[i2] = m_cxf[p1], m_cxf[p2]
+                off_parnum[i1], off_parnum[i2] = m_parnum[p1], m_parnum[p2]
 
                 if sf1 == sf2 or np.random.rand() < self.rmp:
-                    p = [p1, p2]
+                    p = (p1, p2)
                     if sf1 == sf2:
-                        # Same task: SBX crossover
-                        off_decs[i], off_decs[i + 1] = crossover(
+                        # Same task: SBX crossover, isTran = 0
+                        off_decs[i1], off_decs[i2] = crossover(
                             m_decs[p1], m_decs[p2], mu=self.muc)
-                        off_cxf[i] = m_cxf[p1]
-                        off_cxf[i + 1] = m_cxf[p2]
-                        off_istran[i] = False
-                        off_istran[i + 1] = False
+                        off_cxf[i1] = m_cxf[p1]
+                        off_cxf[i2] = m_cxf[p2]
+                        is_tran = False
                     else:
-                        # Different tasks: hyberCX with adaptive operator
+                        # Different tasks: hyberCX with adaptive operator, isTran = 1
                         alpha = m_cxf[p[np.random.randint(2)]]
-                        off_decs[i], off_decs[i + 1] = _hyber_crossover(
+                        off_decs[i1], off_decs[i2] = _hyber_crossover(
                             m_decs[p1], m_decs[p2], alpha, self.muc)
-                        off_cxf[i] = alpha
-                        off_cxf[i + 1] = alpha
-                        off_istran[i] = True
-                        off_istran[i + 1] = True
+                        off_cxf[i1] = alpha
+                        off_cxf[i2] = alpha
+                        is_tran = True
 
-                    # Task imitation (random parent's task)
-                    for k in [i, i + 1]:
+                    # Task imitation (random parent's task); parNum only refreshed
+                    # for transferred offspring, matching `if isTran == 1`.
+                    for k in (i1, i2):
                         rand_p = p[np.random.randint(2)]
                         off_sfs[k] = m_sfs[rand_p]
-                        if off_istran[k]:
+                        if is_tran:
                             off_parnum[k] = rand_p
                 else:
-                    # No transfer: mutation
-                    off_decs[i] = mutation(m_decs[p1], mu=self.mum)
-                    off_decs[i + 1] = mutation(m_decs[p2], mu=self.mum)
-                    off_sfs[i] = sf1
-                    off_sfs[i + 1] = sf2
-                    off_cxf[i] = m_cxf[p1]
-                    off_cxf[i + 1] = m_cxf[p2]
+                    # No transfer: mutation (CXFactor/parNum stay inherited)
+                    off_decs[i1] = mutation(m_decs[p1], mu=self.mum)
+                    off_decs[i2] = mutation(m_decs[p2], mu=self.mum)
+                    off_sfs[i1] = sf1
+                    off_sfs[i2] = sf2
 
                 # Clip to [0, 1]
-                off_decs[i] = np.clip(off_decs[i], 0, 1)
-                off_decs[i + 1] = np.clip(off_decs[i + 1], 0, 1)
+                off_decs[i1] = np.clip(off_decs[i1], 0, 1)
+                off_decs[i2] = np.clip(off_decs[i2], 0, 1)
 
             # --- Evaluation ---
             for idx in range(pop_size):
@@ -215,54 +224,49 @@ class MFEA_AKT:
             pbar.update(pop_size)
 
             # --- Calculate best CXFactor ---
-            imp_num = np.full(6, -np.inf)  # max improvement per operator
-            has_any_improvement = False
-            for idx in range(pop_size):
-                if off_parnum[idx] >= 0:
-                    cfc = off_objs[idx, 0]
-                    par_idx = off_parnum[idx]
-                    pfc = m_objs[par_idx, 0]
-                    if pfc != 0:
-                        imp = (pfc - cfc) / abs(pfc)
-                    else:
-                        imp = -cfc if cfc > 0 else 0.0
-                    cx = off_cxf[idx]
-                    if imp > imp_num[cx]:
-                        imp_num[cx] = imp
-                        if imp > 0:
-                            has_any_improvement = True
+            # MToP seeds imp_num with zeros, so only strictly positive relative
+            # improvements are ever recorded and `any(imp_num)` decides the branch.
+            tracked = off_parnum >= 0
+            with np.errstate(divide='ignore', invalid='ignore'):
+                rel_imp = np.zeros(pop_size)
+                if np.any(tracked):
+                    pfc = m_objs[off_parnum[tracked], 0]
+                    cfc = off_objs[tracked, 0]
+                    rel_imp[tracked] = (pfc - cfc) / pfc
 
-            if has_any_improvement:
+            imp_num = np.zeros(6)
+            for idx in np.flatnonzero(tracked):
+                cx = off_cxf[idx]
+                if rel_imp[idx] > imp_num[cx]:
+                    imp_num[cx] = rel_imp[idx]
+
+            if np.any(imp_num):
                 # Best operator is the one with highest max improvement
-                max_idx = np.argmax(imp_num)
+                max_idx = int(np.argmax(imp_num))
             else:
-                # Fallback: most frequent best operator in recent history
+                # Fallback: most frequent best operator over the last `gap` records.
+                # MToP takes max() of an all-zero counter when the window is empty,
+                # which resolves to the first operator.
                 if len(cfb_record) > 0:
                     start = max(0, len(cfb_record) - self.gap)
                     recent = cfb_record[start:]
                     counts = np.bincount(recent, minlength=6)
-                    max_idx = np.argmax(counts)
+                    max_idx = int(np.argmax(counts))
                 else:
-                    max_idx = np.random.randint(0, 6)
+                    max_idx = 0
 
             cfb_record.append(max_idx)
 
             # --- Adaptive CXFactor update ---
             for idx in range(pop_size):
-                if off_parnum[idx] >= 0:
-                    cfc = off_objs[idx, 0]
-                    par_idx = off_parnum[idx]
-                    pfc = m_objs[par_idx, 0]
-                    imp = (pfc - cfc) / abs(pfc) if pfc != 0 else 0.0
-                    if imp < 0:
-                        # Offspring worsened → adopt best operator
+                if tracked[idx]:
+                    if rel_imp[idx] < 0:
+                        # Offspring worsened -> adopt best operator
                         off_cxf[idx] = max_idx
                 else:
-                    # Non-transfer offspring: 50% best, 50% random
-                    if np.random.rand() < 0.5:
-                        off_cxf[idx] = max_idx
-                    else:
-                        off_cxf[idx] = np.random.randint(0, 6)
+                    # Untracked offspring: 50% best operator, 50% random operator
+                    off_cxf[idx] = (max_idx if np.random.randint(2) == 0
+                                    else np.random.randint(0, 6))
 
             # --- Selection: merge parents + offspring, keep best n per task ---
             merged_decs = np.vstack([m_decs, off_decs])
@@ -270,14 +274,16 @@ class MFEA_AKT:
             merged_cons = np.vstack([m_cons, off_cons])
             merged_sfs = np.vstack([m_sfs, off_sfs])
             merged_cxf = np.concatenate([m_cxf, off_cxf])
+            merged_parnum = np.concatenate([m_parnum, off_parnum])
 
             pop_decs, pop_objs, pop_cons, pop_sfs = [], [], [], []
-            pop_cxf = []
+            pop_cxf, pop_parnum = [], []
             for t in range(nt):
                 indices = np.where(merged_sfs.flatten() == t)[0]
                 t_decs, t_objs, t_cons = select_by_index(
                     indices, merged_decs, merged_objs, merged_cons)
                 t_cxf = merged_cxf[indices]
+                t_parnum = merged_parnum[indices]
 
                 sel = selection_elit(objs=t_objs, n=n, cons=t_cons)
                 pop_decs.append(t_decs[sel])
@@ -285,6 +291,7 @@ class MFEA_AKT:
                 pop_cons.append(t_cons[sel])
                 pop_sfs.append(np.full((n, 1), t))
                 pop_cxf.append(t_cxf[sel])
+                pop_parnum.append(t_parnum[sel])
 
             # Record history (transform back to real space for storage)
             real_decs, real_cons = space_transfer(
@@ -370,10 +377,8 @@ def _ari_crossover(par1, par2, r=0.25):
 
 
 def _geo_crossover(par1, par2, r=0.2):
-    """Geometric crossover with ratio r."""
-    p1 = np.maximum(par1, 1e-15)
-    p2 = np.maximum(par2, 1e-15)
-    return np.power(p1, r) * np.power(p2, 1 - r)
+    """Geometric crossover with ratio r (MToP: ParDec1^r * ParDec2^(1-r))."""
+    return np.power(par1, r) * np.power(par2, 1 - r)
 
 
 def _blxa_crossover(par1, par2, a=0.3):

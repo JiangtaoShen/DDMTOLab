@@ -25,6 +25,120 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Offspring are NOT clipped here: the MATLAB reference clips once at the end
+    of ``Generation``, after polynomial mutation.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
+def _ga_generation_matlab(parents, muc, mum):
+    """
+    Offspring generation matching MToP ``MO_SBO.Generation``.
+
+    A random permutation is split in halves and parent i is paired with parent
+    i + floor(N/2) for i = 1..ceil(N/2); each pair yields two children (SBX
+    then polynomial mutation) and the single clip to [0, 1] happens only after
+    mutation. The result is truncated back to N so the positional bookkeeping
+    (``rankO``/``BelongT``) stays well defined for odd N.
+
+    Parameters
+    ----------
+    parents : np.ndarray
+        Parent population of shape (n, d)
+    muc : float
+        SBX distribution index
+    mum : float
+        Polynomial mutation distribution index
+
+    Returns
+    -------
+    offdecs : np.ndarray
+        Offspring of shape (n, d)
+    """
+    n, d = parents.shape
+    order = np.random.permutation(n)
+    half = n // 2
+    n_pairs = int(np.ceil(n / 2))
+    offdecs = np.empty((2 * n_pairs, d))
+
+    count = 0
+    for i in range(n_pairs):
+        p1 = parents[order[i], :]
+        p2 = parents[order[i + half], :]
+        c1, c2 = _sbx_crossover_unclipped(p1, p2, muc)
+        c1 = _poly_mutation_unclipped(c1, mum)
+        c2 = _poly_mutation_unclipped(c2, mum)
+        offdecs[count] = np.clip(c1, 0, 1)
+        offdecs[count + 1] = np.clip(c2, 0, 1)
+        count += 2
+
+    return offdecs[:n]
+
+
+def _nsga2_rank(objs, cons):
+    """
+    Compute the 1-based NSGA-II rank of each individual (MToP ``NSGA2Sort``).
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective values, shape (pop_size, n_obj)
+    cons : np.ndarray
+        Constraint values, shape (pop_size, n_con)
+
+    Returns
+    -------
+    rank : np.ndarray
+        1-based rank of each individual (lower is better), shape (pop_size,)
+    """
+    pop_size = objs.shape[0]
+    if cons is not None and cons.size > 0:
+        front_no, _ = nd_sort(objs, cons, pop_size)
+    else:
+        front_no, _ = nd_sort(objs, pop_size)
+    crowd_dis = crowding_distance(objs, front_no)
+    order = np.lexsort((-crowd_dis, front_no))
+    rank = np.empty(pop_size, dtype=int)
+    rank[order] = np.arange(1, pop_size + 1)
+    return rank
+
+
 class MO_SBO:
     """
     Multi-Objective Symbiosis-Based Optimization for many-task multi-objective optimization.
@@ -124,12 +238,14 @@ class MO_SBO:
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
-        # Initialize population in native space and evaluate
+        # Initialize the population and evaluate. MToP evolves one unified
+        # genome of length max(D) per individual (Dec = rand(1, max(D))) and
+        # truncates to D(t) only at evaluation time; the padded genes are
+        # active because a whole genome is copied across tasks on transfer.
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
 
-        # Convert to unified space (pad with random values for unused dimensions)
         uni_decs = []
         for t in range(nt):
             padded = np.random.rand(n, max_dim)
@@ -137,6 +253,11 @@ class MO_SBO:
             uni_decs.append(padded)
 
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
+
+        # rankO of the current population. MToP assigns the NSGA-II rank to the
+        # (unsorted) initial population and, from the first environmental
+        # selection onwards, the population is kept sorted so rankO == position.
+        rank_o = [_nsga2_rank(objs[t], cons[t]) for t in range(nt)]
 
         # Symbiosis interaction counters (initialized to 1 to avoid division by zero)
         RIJ = 0.5 * np.ones((nt, nt))  # Transfer rates
@@ -151,20 +272,19 @@ class MO_SBO:
                     disable=self.disable_tqdm)
 
         while nfes < max_nfes:
-            # === Step 1: Generate offspring for each task (SBX + PM in unified space) ===
+            # === Step 1: Generate offspring for each task (SBX + PM) ===
             off_uni_decs = []
             off_rank_o = []
             off_belong_t = []
             for t in range(nt):
-                off_t = ga_generation(uni_decs[t], self.mu_c, self.mu_m)
-                off_uni_decs.append(off_t)
-                # Offspring inherits positional rank from parent (1-based)
-                off_rank_o.append(np.arange(1, n + 1))
+                off_uni_decs.append(_ga_generation_matlab(uni_decs[t], self.mu_c, self.mu_m))
+                # Positional inheritance of the parent's rankO, as in MToP
+                off_rank_o.append(rank_o[t].copy())
                 off_belong_t.append(np.full(n, t))
 
-            # === Step 2: Knowledge transfer based on symbiosis ===
+            # === Step 2: Knowledge transfer driven by the symbiosis rates ===
             for t in range(nt):
-                # Find task with highest transfer rate (exclude self)
+                # Task with the highest transfer rate, excluding t itself
                 rij_row = RIJ[t].copy()
                 rij_row[t] = -np.inf
                 transfer_task = int(np.argmax(rij_row))
@@ -174,64 +294,62 @@ class MO_SBO:
                     if si > 0:
                         ind1 = np.random.permutation(n)[:si]
                         ind2 = np.random.permutation(n)[:si]
-                        # Replace offspring of task t with solutions from transfer_task
+                        # Copies the (possibly already transferred) offspring of
+                        # the donor task, matching MToP's sequential loop
                         off_uni_decs[t][ind1] = off_uni_decs[transfer_task][ind2]
                         off_belong_t[t][ind1] = transfer_task
 
-            # === Step 3: Evaluate, compute rankC, and selection for each task ===
+            # === Step 3: Evaluate, compute rankC and select for each task ===
             all_rank_c = [None] * nt
             for t in range(nt):
-                # Evaluate offspring (trim to native dimensions)
-                off_native = off_uni_decs[t][:, :dims[t]]
-                off_objs_t, off_cons_t = evaluation_single(problem, off_native, t)
+                off_objs_t, off_cons_t = evaluation_single(problem, off_uni_decs[t][:, :dims[t]], t)
                 nfes += n
                 pbar.update(n)
 
-                # NSGA-II sort offspring to get rankC (1-based)
+                # rankC: NSGA-II rank of the offspring among themselves
                 all_rank_c[t] = _nsga2_rank(off_objs_t, off_cons_t)
 
-                # Merge parents and offspring
                 merged_uni = np.vstack([uni_decs[t], off_uni_decs[t]])
                 merged_objs = np.vstack([objs[t], off_objs_t])
                 merged_cons = np.vstack([cons[t], off_cons_t])
 
-                # NSGA-II selection: keep top n
                 merged_rank = _nsga2_rank(merged_objs, merged_cons)
-                select_idx = np.argsort(merged_rank)[:n]
+                select_idx = np.argsort(merged_rank, kind='stable')[:n]
 
                 uni_decs[t] = merged_uni[select_idx]
                 objs[t] = merged_objs[select_idx]
                 cons[t] = merged_cons[select_idx]
                 decs[t] = uni_decs[t][:, :dims[t]]
 
-            # === Step 4: Update symbiosis counters ===
+                # The surviving population is stored in rank order, so rankO
+                # becomes the 1-based position
+                rank_o[t] = np.arange(1, n + 1)
+
+            # === Step 4: Update the symbiosis counters ===
             for t in range(nt):
                 transferred_idx = np.where(off_belong_t[t] != t)[0]
                 for k in transferred_idx:
-                    rc = all_rank_c[t][k]  # Rank after evaluation on task t
-                    ro = off_rank_o[t][k]  # Positional rank from parent population
+                    rc = all_rank_c[t][k]        # rank on the receiving task
+                    ro = off_rank_o[t][k]        # rank inherited from the parent slot
                     src = int(off_belong_t[t][k])
 
                     if rc < n * self.benefit:
-                        # Transferred solution performs well on task t
                         if ro < n * self.benefit:
-                            MIJ[t, src] += 1  # Both benefit
+                            MIJ[t, src] += 1  # both benefit
                         elif ro > n * (1 - self.harm):
-                            PIJ[t, src] += 1  # One benefits, other harmed
+                            PIJ[t, src] += 1  # one benefits, other harmed
                         else:
-                            OIJ[t, src] += 1  # One benefits, other neutral
+                            OIJ[t, src] += 1  # one benefits, other neutral
                     elif rc > n * (1 - self.harm):
-                        # Transferred solution performs poorly on task t
                         if ro > n * (1 - self.harm):
-                            CIJ[t, src] += 1  # Both harmed
+                            CIJ[t, src] += 1  # both harmed
                     else:
-                        # Transferred solution is neutral on task t
                         if ro > n * (1 - self.harm):
-                            AIJ[t, src] += 1  # One harmed, other neutral
+                            AIJ[t, src] += 1  # one harmed, other neutral
                         elif n * self.benefit <= ro <= n * (1 - self.harm):
-                            NIJ[t, src] += 1  # Both neutral
+                            NIJ[t, src] += 1  # both neutral
 
-            # === Step 5: Update transfer rates ===
+            # === Step 5: Update the transfer rates ===
             RIJ = (MIJ + OIJ + PIJ) / (MIJ + OIJ + PIJ + AIJ + CIJ + NIJ)
 
             append_history(all_decs, decs, all_objs, objs, all_cons, cons)
@@ -247,31 +365,3 @@ class MO_SBO:
         )
 
         return results
-
-
-def _nsga2_rank(objs, cons):
-    """
-    Compute NSGA-II rank for each individual.
-
-    Parameters
-    ----------
-    objs : np.ndarray
-        Objective values, shape (pop_size, n_obj)
-    cons : np.ndarray
-        Constraint values, shape (pop_size, n_con)
-
-    Returns
-    -------
-    rank : np.ndarray
-        1-based rank for each individual (lower is better), shape (pop_size,)
-    """
-    pop_size = objs.shape[0]
-    if cons is not None and cons.size > 0:
-        front_no, _ = nd_sort(objs, cons, pop_size)
-    else:
-        front_no, _ = nd_sort(objs, pop_size)
-    crowd_dis = crowding_distance(objs, front_no)
-    sorted_indices = np.lexsort((-crowd_dis, front_no))
-    rank = np.empty(pop_size, dtype=int)
-    rank[sorted_indices] = np.arange(1, pop_size + 1)
-    return rank

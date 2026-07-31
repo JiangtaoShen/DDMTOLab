@@ -40,7 +40,7 @@ class TNG_SNES:
 
     algorithm_information = {
         'n_tasks': '[2, K]',
-        'dims': 'equal',
+        'dims': 'unequal',
         'objs': 'equal',
         'n_objs': '1',
         'cons': 'unequal',
@@ -157,9 +157,6 @@ class TNG_SNES:
         while total_nfes < total_max_nfes:
             # === First loop: sampling, evaluation, gradient computation ===
             for t in range(nt):
-                if total_nfes >= total_max_nfes:
-                    break
-
                 # Sampling: Z ~ N(0,1), X = x + S * Z
                 Z = np.random.randn(maxD, n)
                 X = x[:, t:t + 1] + S[:, t:t + 1] * Z  # (maxD, n)
@@ -168,8 +165,9 @@ class TNG_SNES:
                 X_clipped = np.clip(X, 0, 1)
                 bound_cvs = np.sum((X - X_clipped) ** 2, axis=0)  # (n,)
 
-                # Evaluate clipped samples (trimmed to task dimension)
-                eval_decs = X_clipped[:dims[t]].T  # (n, dims[t])
+                # Evaluate the raw (unclipped) decisions, exactly as MATLAB
+                # does; out-of-range samples are only penalised via bound_cvs
+                eval_decs = X[:dims[t]].T  # (n, dims[t])
                 task_objs, task_cons = evaluation_single(problem, eval_decs, t)
                 nfes_per_task[t] += n
                 total_nfes += n
@@ -200,15 +198,21 @@ class TNG_SNES:
                 cur_cons[t] = task_cons
 
                 # --- Adaptive transfer control (every adj_gap generations) ---
-                if gen % self.adj_gap == 0 and total_nfes + n <= total_max_nfes:
+                if gen % self.adj_gap == 0:
                     # Generate virtual samples using same Z but virtual params
                     vX = vx[:, t:t + 1] + vS[:, t:t + 1] * Z
-                    vX_clipped = np.clip(vX, 0, 1)
-                    veval_decs = vX_clipped[:dims[t]].T
+                    veval_decs = vX[:dims[t]].T
                     vobjs, vcons = evaluation_single(problem, veval_decs, t)
                     nfes_per_task[t] += n
                     total_nfes += n
                     pbar.update(n)
+
+                    # The virtual probes are genuine evaluations: keep them in
+                    # the recorded history so that the evaluation accounting
+                    # stays consistent with the stored populations.
+                    cur_decs[t] = np.vstack([cur_decs[t], veval_decs])
+                    cur_objs[t] = np.vstack([cur_objs[t], vobjs])
+                    cur_cons[t] = np.vstack([cur_cons[t], vcons])
 
                     # Compare mean fitness (raw CV, not boundary-penalized)
                     if vcons.shape[1] > 0:

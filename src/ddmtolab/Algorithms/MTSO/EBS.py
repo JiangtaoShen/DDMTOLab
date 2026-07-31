@@ -5,7 +5,9 @@ This module implements the EBS algorithm for evolutionary many-tasking optimizat
 
 References
 ----------
-    [1] Liaw, R. T., & Ting, C. K. (2019). Evolutionary many-tasking based on biocoenosis through symbiosis: A framework and benchmark problems. In 2019 IEEE Congress on Evolutionary Computation (CEC) (pp. 2266-2273). IEEE.
+    [1] Liaw, R. T., & Ting, C. K. (2017). Evolutionary many-tasking based on biocoenosis through symbiosis: A framework and benchmark problems. In 2017 IEEE Congress on Evolutionary Computation (CEC) (pp. 2266-2273). IEEE. doi:10.1109/CEC.2017.7969579
+    [2] Liaw, R. T., & Ting, C. K. (2020). Evolution of biocoenosis through symbiosis with fitness approximation for many-tasking optimization. Memetic Computing, 12(4), 399-417. doi:10.1007/s12293-020-00317-2
+    [3] Tan, X. (2018). EBSGA.m, reference implementation of [1], in drwuHUST/MTGA. https://github.com/drwuHUST/MTGA/blob/master/EBSGA.m
 
 Notes
 -----
@@ -30,8 +32,34 @@ class EBS:
     - One updated when knowledge transfer occurs
     - One updated when no knowledge transfer occurs
 
-    The information exchange probability is controlled adaptively based on the
-    improvement ratio from self-generated offspring versus offspring from other tasks.
+    The information exchange probability ``gamma_i`` is recomputed every generation
+    from the transfer-rate formula of [2] (attributed there to [1])::
+
+        gamma_i = S_io / (S_is + S_io)
+        S_is = #Surpassing_is / #Evals_is
+        S_io = #Surpassing_io / #Evals_io
+
+    where the ``_is`` counters are credited to the task's own EA and the ``_io``
+    counters to the union of the other tasks' EAs. There is no warm-up phase:
+    generation 1 only initialises the populations, and ``gamma`` is seeded with
+    ``rmp0`` and updated from generation 2 onward, matching the reference
+    implementation [3].
+
+    Known defect (reference-faithful, not a porting bug)
+    ----------------------------------------------------
+    ``gamma_i`` has an absorbing zero state. Transfer is the only way foreign
+    offspring are ever evaluated, so once ``gamma_i`` reaches 0 (or NaN) the
+    ``_io`` counters can never grow again and transfer stays dead for the rest of
+    the run. Two entry conditions exist, both present in [3]:
+
+    - ``#Evals_io == 0`` (the transfer coin has never fired): ``S_io = 0/0 = NaN``,
+      ``gamma_i = NaN``, and ``rand() < NaN`` is False forever.
+    - ``#Evals_io > 0`` but ``#Surpassing_io == 0``: ``S_io = 0`` and
+      ``gamma_i = 0``.
+
+    Seeding with ``rmp0 = 0.3`` makes the first condition unlikely but does not
+    remove it. The optional ``gamma_min`` guard restores ergodicity but is a
+    deviation from the published algorithm and is disabled by default.
 
     Attributes
     ----------
@@ -57,7 +85,7 @@ class EBS:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n=None, max_nfes=None, sigma0=0.3, use_n=True,
-                 gen_init=10, save_data=True, save_path='./Data',
+                 rmp0=0.3, gamma_min=0.0, save_data=True, save_path='./Data',
                  name='EBS', disable_tqdm=True):
         """
         Initialize EBS Algorithm.
@@ -74,9 +102,17 @@ class EBS:
             Initial step size for CMA-ES (default: 0.3)
         use_n : bool, optional
             If True, use provided n; if False, use 4+3*log(D) (default: True)
-        gen_init : int, optional
-            Number of initial generations for alternating CMA-ES before using gamma (default: 10)
-            During this phase, two CMA-ES alternate (one without transfer, one with transfer)
+        rmp0 : float, optional
+            Initial information-exchange probability, used for generation 2
+            before any transfer statistics exist (default: 0.3, the value the
+            reference implementation's driver passes to ``EBSGA.m``)
+        gamma_min : float, optional
+            Lower bound applied to gamma, also used in place of NaN
+            (default: 0.0, i.e. disabled). Any value > 0 is a deliberate
+            DEVIATION from the published algorithm: it removes the absorbing
+            zero state described in the class docstring by guaranteeing that
+            transfer generations keep occurring, at the cost of no longer
+            reproducing the reference behaviour.
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -91,7 +127,8 @@ class EBS:
         self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.sigma0 = sigma0
         self.use_n = use_n
-        self.gen_init = gen_init
+        self.rmp0 = rmp0
+        self.gamma_min = gamma_min
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -139,27 +176,35 @@ class EBS:
         decs = [None] * nt  # In unified space
         objs = [None] * nt
         cons = [None] * nt
-        best_objs = [np.inf] * nt  # Best-so-far objective for each task
+        origins = [None] * nt  # Originating task of each retained individual
         all_decs = [[] for _ in range(nt)]
         all_objs = [[] for _ in range(nt)]
         all_cons = [[] for _ in range(nt)]
 
-        # Initialize information exchange statistics
+        # Information exchange statistics (cumulative over the whole run, never
+        # reset). improvements_* are #Surpassing_is / #Surpassing_io and
+        # evals_* are #Evals_is / #Evals_io in the formula of [2].
         improvements_s = [0] * nt
         evals_s = [0] * nt
         improvements_o = [0] * nt
         evals_o = [0] * nt
-        gamma = [0.0] * nt  # Probability of information exchange (will be computed after init phase)
+        # gamma is seeded with rmp0 and first updated at the end of generation 2,
+        # exactly as EBSGA.m does (RMP = rmp*ones(1,nTasks), rmp = 0.3).
+        gamma = [float(self.rmp0)] * nt
 
-        # Initialize generation counter for each task (for alternating during init phase)
-        gen_count = [0] * nt
-
+        gen = 0
         pbar = tqdm(total=sum(max_nfes_per_task), desc=f"{self.name}", disable=self.disable_tqdm)
 
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+
+            gen += 1
+            # Generation 1 only establishes the initial populations: EBSGA.m
+            # evaluates a random population at gen 1 and starts the transfer
+            # loop at gen 2. Its evaluations still count towards #Evals_is.
+            is_init_gen = (gen == 1)
 
             # Step 1: Determine transfer flags and generate offspring accordingly
             transfer_flags = []
@@ -168,16 +213,9 @@ class EBS:
             for i in active_tasks:
                 p = params[i]
 
-                # Decide whether to perform knowledge transfer
-                if gen_count[i] < self.gen_init:
-                    # During init phase: alternate between no transfer and transfer
-                    # Even generations: no transfer (is_transfer=False)
-                    # Odd generations: transfer (is_transfer=True)
-                    is_transfer = (gen_count[i] % 2 == 1)
-                else:
-                    # After init phase: use gamma probability
-                    is_transfer = np.random.rand() < gamma[i]
-
+                # Per-generation Bernoulli draw on gamma (Algorithm 2, line 9).
+                # A NaN gamma compares False, which is the reference behaviour.
+                is_transfer = (not is_init_gen) and bool(np.random.rand() < gamma[i])
                 transfer_flags.append(is_transfer)
 
                 # Select distribution based on transfer decision
@@ -192,42 +230,45 @@ class EBS:
                 )
                 offspring_list.append(sample_decs)
 
-            # Concatenate all offspring (all in unified space d_max)
-            concat_offspring = np.vstack(offspring_list)
-
             # Step 2: For each task, select candidates based on transfer decision
+            n_act = len(active_tasks)
             candidate_list = []
+            candidate_origins = []
 
             for idx, i in enumerate(active_tasks):
                 p = params[i]
-                is_transfer = transfer_flags[idx]
+                lam_i = p['params_s']['lam']
 
-                if is_transfer:
-                    # Perform knowledge transfer: sample from concatenate offspring
-                    # Randomly select lambda candidates from concatenate offspring
-                    n_candidates = min(p['params_s']['lam'], concat_offspring.shape[0])
-                    candidate_indices = np.random.choice(
-                        concat_offspring.shape[0],
-                        size=n_candidates,
-                        replace=False
-                    )
-                    candidate_decs = concat_offspring[candidate_indices].copy()
-
-                    # If we need more candidates, duplicate some
-                    while candidate_decs.shape[0] < p['params_s']['lam']:
-                        extra_idx = np.random.choice(concat_offspring.shape[0])
-                        candidate_decs = np.vstack([candidate_decs, concat_offspring[extra_idx:extra_idx + 1]])
-
+                if transfer_flags[idx]:
+                    # EBSGA.m lines 83-92: every candidate slot independently
+                    # picks a source task uniformly over ALL tasks (the target
+                    # task included), then takes an offspring of that task
+                    # through a per-task permutation indexed by the slot. Slots
+                    # that pick the same source therefore get distinct members,
+                    # while the number taken from each source is free to vary
+                    # (unlike a without-replacement draw over the flat pool).
+                    slot_src = np.random.randint(0, n_act, size=lam_i)
+                    perms = [np.random.permutation(o.shape[0]) for o in offspring_list]
+                    candidate_decs = np.empty((lam_i, d_max))
+                    for j in range(lam_i):
+                        src = slot_src[j]
+                        # Modulo generalises the reference (which assumes one
+                        # common popSize) to unequal per-task lambda.
+                        candidate_decs[j] = offspring_list[src][perms[src][j % len(perms[src])]]
                     candidate_list.append(candidate_decs)
+                    candidate_origins.append(np.asarray(active_tasks, dtype=int)[slot_src])
                 else:
                     # No knowledge transfer: use self-generated offspring
                     candidate_list.append(offspring_list[idx])
+                    candidate_origins.append(np.full(lam_i, i, dtype=int))
 
             # Step 3: Evaluate, update population and CMA-ES parameters
             for idx, i in enumerate(active_tasks):
                 p = params[i]
                 candidate_decs = candidate_list[idx]  # In unified space
+                cand_origin = candidate_origins[idx]
                 is_transfer = transfer_flags[idx]
+                lam_i = p['params_s']['lam']
 
                 # Convert to real space for evaluation (truncate to real dimension)
                 candidate_decs_real = candidate_decs[:, :dims[i]]
@@ -235,6 +276,13 @@ class EBS:
 
                 # Evaluate candidates (in real space)
                 sample_objs, sample_cons = evaluation_single(problem, candidate_decs_real, i)
+
+                # #Evals_io / #Evals_is: split the batch by the ORIGINATING task
+                # of each candidate, not by the generation's transfer flag
+                # (EBSGA.m line 93 counts length(find(idt ~= idxTask))).
+                n_foreign = int(np.count_nonzero(cand_origin != i))
+                evals_o[i] += n_foreign
+                evals_s[i] += len(cand_origin) - n_foreign
 
                 # Sort by constraint violation first, then by objective
                 cvs = np.sum(np.maximum(0, sample_cons), axis=1)
@@ -244,56 +292,51 @@ class EBS:
                 sorted_decs = candidate_decs[sort_indices]
                 sorted_objs = sample_objs[sort_indices]
                 sorted_cons = sample_cons[sort_indices]
+                sorted_origin = cand_origin[sort_indices]
 
-                # Update evaluation counts
-                if is_transfer:
-                    evals_o[i] += p['params_s']['lam']
+                # Elitist population update (store in unified space): merge the
+                # retained population with the newly evaluated candidates and keep
+                # the best lam (EBSGA.m lines 101-104 and 116-117). The origin tag
+                # travels with the individual, mirroring Chromosome.skill_factor,
+                # so a surviving foreign solution keeps being credited to the task
+                # that produced it.
+                if decs[i] is None:
+                    decs[i], objs[i] = sorted_decs, sorted_objs
+                    cons[i], origins[i] = sorted_cons, sorted_origin
                 else:
-                    evals_s[i] += p['params_s']['lam']
+                    pool_decs = np.vstack([decs[i], sorted_decs])
+                    pool_objs = np.vstack([objs[i], sorted_objs])
+                    pool_cons = np.vstack([cons[i], sorted_cons])
+                    pool_origin = np.concatenate([origins[i], sorted_origin])
+                    pool_cvs = np.sum(np.maximum(0, pool_cons), axis=1)
+                    keep = constrained_sort(pool_objs, pool_cvs)[:lam_i]
+                    decs[i], objs[i] = pool_decs[keep], pool_objs[keep]
+                    cons[i], origins[i] = pool_cons[keep], pool_origin[keep]
 
-                # Check if best-so-far is improved
-                best_candidate_obj = sorted_objs[0, 0]
-                if best_candidate_obj < best_objs[i]:
-                    best_objs[i] = best_candidate_obj
-                    if is_transfer:
-                        improvements_o[i] += 1
-                    else:
+                if not is_init_gen:
+                    # #Surpassing: EBSGA.m lines 106-114 credit exactly one
+                    # counter per task per generation, chosen by the origin of
+                    # the best individual of the merged pool. The test there is
+                    # `<= bestFitness(gen-1)`, which under elitist survival is
+                    # always true because the previous best is in the pool, so
+                    # the credit fires unconditionally.
+                    if origins[i][0] == i:
                         improvements_s[i] += 1
-
-                # Increment generation counter
-                gen_count[i] += 1
-
-                # Update gamma after init phase is complete
-                if gen_count[i] == self.gen_init:
-                    # Compute gamma based on accumulated statistics
-                    if evals_s[i] > 0 and evals_o[i] > 0:
-                        R_s = improvements_s[i] / evals_s[i]
-                        R_o = improvements_o[i] / evals_o[i]
-                        if (R_s + R_o) > 0:
-                            gamma[i] = R_o / (R_s + R_o)
-                        else:
-                            gamma[i] = 0.0  # Default if no improvements
                     else:
-                        gamma[i] = 0.0  # Default
-                elif gen_count[i] > self.gen_init:
-                    # Continue updating gamma based on accumulated statistics
-                    if evals_s[i] > 0 and evals_o[i] > 0:
-                        R_s = improvements_s[i] / evals_s[i]
-                        R_o = improvements_o[i] / evals_o[i]
-                        if (R_s + R_o) > 0:
-                            gamma[i] = R_o / (R_s + R_o)
+                        improvements_o[i] += 1
 
-                # Update current population (store in unified space)
-                decs[i] = sorted_decs
-                objs[i] = sorted_objs
-                cons[i] = sorted_cons
+                    # Update the probability of information exchange
+                    # (EBSGA.m lines 126-129), from generation 2 onward.
+                    gamma[i] = _transfer_rate(
+                        improvements_s[i], evals_s[i],
+                        improvements_o[i], evals_o[i], self.gamma_min)
 
-                nfes_per_task[i] += p['params_s']['lam']
-                pbar.update(p['params_s']['lam'])
+                nfes_per_task[i] += lam_i
+                pbar.update(lam_i)
 
                 # Convert to real space for history (truncate to real dimension)
-                decs_real = sorted_decs[:, :dims[i]]
-                append_history(all_decs[i], decs_real, all_objs[i], sorted_objs, all_cons[i], sorted_cons)
+                decs_real = decs[i][:, :dims[i]]
+                append_history(all_decs[i], decs_real, all_objs[i], objs[i], all_cons[i], cons[i])
 
                 # Update the appropriate CMA-ES distribution
                 if is_transfer:
@@ -314,4 +357,45 @@ class EBS:
         )
 
         return results
+
+
+def _transfer_rate(improve_s, evals_s, improve_o, evals_o, gamma_min=0.0):
+    """
+    Information-exchange probability of EBS.
+
+    Implements ``gamma_i = S_io / (S_is + S_io)`` with
+    ``S_ix = #Surpassing_ix / #Evals_ix`` (Liaw & Ting 2020, attributed to the
+    CEC 2017 EBS paper; identical to ``RMP = RO/(RO+RS)`` in EBSGA.m lines
+    127-129).
+
+    No smoothing, prior or clipping is applied: the reference divides straight
+    through, so an unexercised branch yields ``0/0 = NaN`` and a branch with no
+    surpasses yields 0. Both propagate to ``gamma`` and both are absorbing,
+    because ``rand() < NaN`` and ``rand() < 0`` are always False and transfer is
+    the only source of foreign evaluations. This is a defect of the published
+    algorithm, reproduced here deliberately.
+
+    Parameters
+    ----------
+    improve_s, evals_s : int
+        #Surpassing_is and #Evals_is (the task's own EA).
+    improve_o, evals_o : int
+        #Surpassing_io and #Evals_io (the union of the other tasks' EAs).
+    gamma_min : float, optional
+        If > 0, a lower bound that also replaces NaN. DEVIATION from the
+        reference, disabled by default (see EBS.__init__).
+
+    Returns
+    -------
+    float
+        gamma in [0, 1], or NaN when a branch has never been exercised.
+    """
+    with np.errstate(divide='ignore', invalid='ignore'):
+        R_o = np.float64(improve_o) / np.float64(evals_o)
+        R_s = np.float64(improve_s) / np.float64(evals_s)
+        gamma = float(R_o / (R_o + R_s))
+
+    if gamma_min > 0.0 and (np.isnan(gamma) or gamma < gamma_min):
+        gamma = float(gamma_min)
+    return gamma
 

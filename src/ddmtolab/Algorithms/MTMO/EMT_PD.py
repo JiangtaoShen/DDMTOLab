@@ -12,12 +12,84 @@ Notes
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2026.01.13
-Version: 1.0
+Version: 1.1
 """
 import time
-import numpy as np
 from tqdm import tqdm
+from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort, platemo_tournament_selection
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
+
+
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
+    [0, 1] here: the MATLAB reference clips once at the end of ``Generation``,
+    after polynomial mutation has acted on the raw crossover output.
+
+    Parameters
+    ----------
+    par_dec1 : np.ndarray
+        First parent decision vector, shape (d,)
+    par_dec2 : np.ndarray
+        Second parent decision vector, shape (d,)
+    mu : float
+        Distribution index for the crossover
+
+    Returns
+    -------
+    off_dec1 : np.ndarray
+        First offspring decision vector, shape (d,)
+    off_dec2 : np.ndarray
+        Second offspring decision vector, shape (d,)
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
+
+    Operates on the possibly out-of-bounds input and does NOT clip; the caller
+    clips once afterwards, matching the MATLAB reference.
+
+    Parameters
+    ----------
+    dec : np.ndarray
+        Decision vector to mutate, shape (d,)
+    mu : float
+        Distribution index for the mutation
+
+    Returns
+    -------
+    dec : np.ndarray
+        Mutated decision vector, shape (d,)
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    with np.errstate(over='ignore', invalid='ignore'):
+        for j in range(d):
+            if np.random.rand() < prob_m:
+                u = np.random.rand()
+                if u <= 0.5:
+                    delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+                else:
+                    delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+                dec[j] += delta
+    return dec
 
 
 class EMT_PD:
@@ -77,9 +149,9 @@ class EMT_PD:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'EMTPD_test')
+            Name for the experiment (default: 'EMT-PD')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -109,348 +181,213 @@ class EMT_PD:
         n = self.n
         nt = problem.n_tasks
         dims = problem.dims
-        max_dim = max(dims)
         max_nfes_per_task = par_list(self.max_nfes, nt)
+        max_nfes = self.max_nfes * nt
 
-        # Initialize population in unified space (max dimension)
-        # Each task's population is padded to max_dim
-        decs = []
-        for t in range(nt):
-            dec_t = np.random.rand(n, max_dim)
-            decs.append(dec_t)
+        # Population lives in the unified [0, 1] space of dimension max(dims); the
+        # genes beyond a task's own dimension are initialized at random and keep
+        # evolving, exactly as in the MATLAB reference (Dec = rand(1, max(D))).
+        decs = space_transfer(problem, initialization(problem, n), type='uni', padding='random')
 
-        # Evaluate in native space
-        objs = []
-        cons = []
+        objs, cons = [], []
         for t in range(nt):
-            dec_native = decs[t][:, :dims[t]]
-            obj_t, con_t = evaluation_single(problem, dec_native, t)
+            obj_t, con_t = evaluation_single(problem, decs[t][:, :dims[t]], t)
             objs.append(obj_t)
             cons.append(con_t)
+        nfes = n * nt
 
-        nfes_per_task = [n] * nt
-        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
-
-        # Initialize MFFactor (skill factor) for each individual
-        mf_factors = []
+        # Sort each task's population by non-dominated rank then crowding distance
         for t in range(nt):
-            mf_factors.append(np.full(n, t, dtype=int))
+            rank_t, _, _ = nsga2_sort(objs[t], cons[t])
+            order = np.argsort(rank_t)
+            decs[t], objs[t], cons[t] = decs[t][order], objs[t][order], cons[t][order]
 
-        # Initial NSGA-II sorting
-        ranks = []
-        for t in range(nt):
-            rank_t, _, _ = self._nsga2_sort(objs[t], cons[t])
-            ranks.append(rank_t)
-            # Sort population by rank
-            sorted_indices = np.argsort(rank_t)
-            decs[t] = decs[t][sorted_indices]
-            objs[t] = objs[t][sorted_indices]
-            cons[t] = cons[t][sorted_indices] if cons[t] is not None else None
-            mf_factors[t] = mf_factors[t][sorted_indices]
+        all_decs, all_objs, all_cons = init_history(
+            [decs[t][:, :dims[t]] for t in range(nt)], objs, cons)
 
-        # Progress bar
-        total_nfes = sum(max_nfes_per_task)
-        pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task), desc=f"{self.name}", disable=self.disable_tqdm)
+        pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}", disable=self.disable_tqdm)
 
-        gen = 0
-        # Main optimization loop
-        while sum(nfes_per_task) < total_nfes:
+        # Skill factor of the concatenated population: task-ordered blocks of size n
+        pop_sfs = np.repeat(np.arange(nt), n)
+        # Tournament fitness is the position inside the own (sorted) sub-population
+        pool_fitness = np.tile(np.arange(n), nt)
+
+        # MTO-Platform increments Algo.Gen inside notTerminated before the loop
+        # body runs, so the first executed generation already sees Gen == 2
+        gen = 1
+        while nfes < max_nfes:
             gen += 1
 
             if gen % self.G != 0:
-                # === Standard Generation (MOMFEA-style) ===
-                # Merge all populations
-                all_pop_decs = np.vstack(decs)
-                all_mf_factors = np.concatenate(mf_factors)
-
-                # Tournament selection across all tasks
-                all_ranks = np.concatenate([np.arange(n) for _ in range(nt)])  # Use position as rank
-                mating_pool = tournament_selection(2, n * nt, all_ranks)
-
-                # Generate offspring
-                off_decs, off_mf_factors = self._generation(
-                    all_pop_decs[mating_pool], all_mf_factors[mating_pool], max_dim
-                )
+                # Generation
+                mating_pool = platemo_tournament_selection(2, n * nt, pool_fitness)
+                par_decs = np.vstack(decs)[mating_pool, :]
+                par_sfs = pop_sfs[mating_pool]
+                off_decs, off_sfs = self._generation(par_decs, par_sfs)
             else:
-                # === Distribution-based Transfer ===
-                off_decs, off_mf_factors = self._transfer(decs, n, nt, max_dim)
+                # Transfer
+                off_decs, off_sfs = self._transfer(decs, n, nt)
 
-            # Evaluate offspring for each task
             for t in range(nt):
-                # Get offspring belonging to task t
-                task_mask = off_mf_factors == t
-                off_decs_t = off_decs[task_mask]
-
-                if len(off_decs_t) == 0:
+                # Evaluation
+                mask = off_sfs == t
+                if not np.any(mask):
                     continue
+                off_decs_t = off_decs[mask, :]
+                off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t[:, :dims[t]], t)
+                nfes += off_decs_t.shape[0]
+                pbar.update(off_decs_t.shape[0])
 
-                # Evaluate in native space
-                off_decs_native = off_decs_t[:, :dims[t]]
-                off_objs_t, off_cons_t = evaluation_single(problem, off_decs_native, t)
-                nfes_per_task[t] += len(off_decs_t)
-                pbar.update(len(off_decs_t))
+                # Selection: NSGA-II sorting on the merged parent + offspring pool
+                merged_decs, merged_objs, merged_cons = vstack_groups(
+                    (decs[t], off_decs_t), (objs[t], off_objs_t), (cons[t], off_cons_t))
+                rank_t, _, _ = nsga2_sort(merged_objs, merged_cons)
+                index = np.argsort(rank_t)[:n]
+                decs[t], objs[t], cons[t] = select_by_index(index, merged_decs, merged_objs, merged_cons)
 
-                # Merge with current population
-                decs[t] = np.vstack([decs[t], off_decs_t])
-                objs[t] = np.vstack([objs[t], off_objs_t])
-                cons[t] = np.vstack([cons[t], off_cons_t]) if cons[t] is not None else off_cons_t
-                mf_factors[t] = np.concatenate([mf_factors[t], np.full(len(off_decs_t), t, dtype=int)])
-
-                # NSGA-II selection
-                rank_t, _, _ = self._nsga2_sort(objs[t], cons[t])
-                sorted_indices = np.argsort(rank_t)[:n]
-
-                decs[t] = decs[t][sorted_indices]
-                objs[t] = objs[t][sorted_indices]
-                cons[t] = cons[t][sorted_indices] if cons[t] is not None else None
-                mf_factors[t] = mf_factors[t][sorted_indices]
-
-            # Convert back to native space for history
-            decs_native = []
-            for t in range(nt):
-                decs_native.append(decs[t][:, :dims[t]])
-
-            append_history(all_decs, decs_native, all_objs, objs, all_cons, cons)
+            append_history(all_decs, [decs[t][:, :dims[t]] for t in range(nt)],
+                           all_objs, objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
 
-        # Convert final decs to native space
-        final_decs = []
-        for t in range(nt):
-            final_decs.append(decs[t][:, :dims[t]])
-
-        # Build and save results
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+        # Save results
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results
 
-    def _generation(self, parent_decs, parent_mf_factors, max_dim):
+    def _generation(self, par_decs, par_sfs):
         """
-        Generate offspring using MOMFEA-style assortative mating.
+        Multifactorial offspring generation (MTO-Platform ``EMT_PD.Generation``).
+
+        Parents are paired deterministically as (i, i + floor(L/2)); the mating
+        pool order is already randomized by tournament selection. Assortative
+        mating applies SBX + polynomial mutation when both parents share a skill
+        factor or when a random draw falls below ``rmp``, and polynomial mutation
+        alone otherwise. Each child imitates the skill factor of one of the two
+        parents drawn independently at random.
 
         Parameters
         ----------
-        parent_decs : np.ndarray
-            Parent decision variables of shape (pop_size, max_dim)
-        parent_mf_factors : np.ndarray
-            Parent skill factors of shape (pop_size,)
-        max_dim : int
-            Maximum dimension
+        par_decs : np.ndarray
+            Mating pool decision variables in unified space, shape (L, d_uni)
+        par_sfs : np.ndarray
+            Mating pool skill factors, shape (L,)
 
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables
-        off_mf_factors : np.ndarray
-            Offspring skill factors
+            Offspring decision variables, shape (2 * ceil(L / 2), d_uni)
+        off_sfs : np.ndarray
+            Offspring skill factors, shape (2 * ceil(L / 2),)
         """
-        pop_size = len(parent_decs)
-        off_decs = np.zeros((pop_size, max_dim))
-        off_mf_factors = np.zeros(pop_size, dtype=int)
-
-        # Shuffle for random pairing
-        shuffled_indices = np.random.permutation(pop_size)
+        length, d = par_decs.shape
+        half = length // 2
+        n_pairs = int(np.ceil(length / 2))
+        off_decs = np.empty((2 * n_pairs, d))
+        off_sfs = np.empty(2 * n_pairs, dtype=int)
 
         count = 0
-        for i in range(0, pop_size - 1, 2):
-            p1_idx = shuffled_indices[i]
-            p2_idx = shuffled_indices[i + 1]
-
-            p1_dec = parent_decs[p1_idx]
-            p2_dec = parent_decs[p2_idx]
-            sf1 = parent_mf_factors[p1_idx]
-            sf2 = parent_mf_factors[p2_idx]
+        for i in range(n_pairs):
+            p1, p2 = i, i + half
+            sf1, sf2 = int(par_sfs[p1]), int(par_sfs[p2])
 
             if sf1 == sf2 or np.random.rand() < self.rmp:
                 # Crossover
-                off_dec1, off_dec2 = crossover(p1_dec, p2_dec, mu=self.muc)
+                off_dec1, off_dec2 = _sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
                 # Mutation
-                off_dec1 = mutation(off_dec1, mu=self.mum)
-                off_dec2 = mutation(off_dec2, mu=self.mum)
-                # Random skill factor assignment
-                off_sf1 = np.random.choice([sf1, sf2])
-                off_sf2 = sf1 if off_sf1 == sf2 else sf2
+                off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
+                off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                # Imitation: each child picks one of the two parents independently
+                pair = (sf1, sf2)
+                off_sfs[count] = pair[np.random.randint(2)]
+                off_sfs[count + 1] = pair[np.random.randint(2)]
             else:
-                # Only mutation (no crossover)
-                off_dec1 = mutation(p1_dec.copy(), mu=self.mum)
-                off_dec2 = mutation(p2_dec.copy(), mu=self.mum)
-                off_sf1 = sf1
-                off_sf2 = sf2
+                # Mutation only
+                off_dec1 = _poly_mutation_unclipped(par_decs[p1, :], self.mum)
+                off_dec2 = _poly_mutation_unclipped(par_decs[p2, :], self.mum)
+                # Imitation
+                off_sfs[count] = sf1
+                off_sfs[count + 1] = sf2
 
-            # Boundary handling
-            off_dec1 = np.clip(off_dec1, 0, 1)
-            off_dec2 = np.clip(off_dec2, 0, 1)
-
-            off_decs[count] = off_dec1
-            off_decs[count + 1] = off_dec2
-            off_mf_factors[count] = off_sf1
-            off_mf_factors[count + 1] = off_sf2
+            off_decs[count, :] = np.clip(off_dec1, 0, 1)
+            off_decs[count + 1, :] = np.clip(off_dec2, 0, 1)
             count += 2
 
-        # Handle odd population size
-        if pop_size % 2 == 1:
-            last_idx = shuffled_indices[-1]
-            off_decs[count] = mutation(parent_decs[last_idx].copy(), mu=self.mum)
-            off_decs[count] = np.clip(off_decs[count], 0, 1)
-            off_mf_factors[count] = parent_mf_factors[last_idx]
+        return off_decs, off_sfs
 
-        return off_decs, off_mf_factors
-
-    def _transfer(self, decs, n, nt, max_dim):
+    def _transfer(self, decs, n, nt):
         """
-        Perform distribution-based knowledge transfer.
+        Population distribution based knowledge transfer (MTO-Platform ``EMT_PD.Transfer``).
 
-        This method uses covariance matrices to align population distributions
-        between tasks and generate transferred solutions.
+        For every task the elite front of its own population and of a randomly
+        chosen partner task are modelled by their sample covariance matrices.
+        The precision-weighted mean of the two Gaussians is min-max normalized
+        and its distance to the own mean defines a per-variable blend weight
+        used to recombine one solution from each task.
 
         Parameters
         ----------
         decs : list of np.ndarray
-            Decision variables for all tasks
+            Sorted population of each task in unified space, shape (n, d_uni)
         n : int
             Population size per task
         nt : int
             Number of tasks
-        max_dim : int
-            Maximum dimension
 
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables
-        off_mf_factors : np.ndarray
-            Offspring skill factors
+            Offspring decision variables, shape (n * nt, d_uni)
+        off_sfs : np.ndarray
+            Offspring skill factors, shape (n * nt,)
         """
+        d = decs[0].shape[1]
         model_size = min(n, 40)
-        off_decs_list = []
-        off_mf_factors_list = []
+        off_decs = np.empty((n * nt, d))
+        off_sfs = np.empty(n * nt, dtype=int)
 
+        count = 0
         for t in range(nt):
-            # P: top model_size solutions from task t (transposed: max_dim x model_size)
-            P = decs[t][:model_size].T
-
-            # Select a random source task
+            p = decs[t][:model_size, :].T
             task_pool = [k for k in range(nt) if k != t]
             k = task_pool[np.random.randint(len(task_pool))]
+            q = decs[k][:model_size, :].T
 
-            # Q: top model_size solutions from task k
-            Q = decs[k][:model_size].T
+            # Sample covariance matrices over the unified decision variables
+            a_t = np.cov(p)
+            a_k = np.cov(q)
+            avg_p = np.mean(p, axis=1)
+            avg_q = np.mean(q, axis=1)
 
-            # Compute covariance matrices A_t and A_k
-            A_t = np.zeros((max_dim, max_dim))
-            A_k = np.zeros((max_dim, max_dim))
+            with np.errstate(over='ignore', divide='ignore', invalid='ignore'):
+                try:
+                    # MATLAB inv() of a rank deficient covariance returns Inf and
+                    # the resulting NaN decision variables are resampled below
+                    inv_a_t = np.linalg.inv(a_t)
+                    inv_a_k = np.linalg.inv(a_k)
+                    a = np.linalg.inv(inv_a_t + inv_a_k)
+                    avg_n = a @ (inv_a_t @ avg_p + inv_a_k @ avg_q)
+                except np.linalg.LinAlgError:
+                    avg_n = np.full(d, np.nan)
 
-            for dim1 in range(max_dim):
-                a = P[dim1, :]
-                c = Q[dim1, :]
-                for dim2 in range(max_dim):
-                    b = P[dim2, :]
-                    d = Q[dim2, :]
+                avg_n = (avg_n - np.min(avg_n)) / (np.max(avg_n) - np.min(avg_n))
+                w1 = avg_p - avg_n
 
-                    # Covariance between dimensions
-                    cov_ab = np.cov(a, b)
-                    A_t[dim1, dim2] = cov_ab[0, 1] if cov_ab.shape == (2, 2) else 0
-
-                    cov_cd = np.cov(c, d)
-                    A_k[dim1, dim2] = cov_cd[0, 1] if cov_cd.shape == (2, 2) else 0
-
-            # Compute combined distribution parameters
-            # A = inv(inv(A_t) + inv(A_k))
-            # avg_n = A * (inv(A_t) * avg_P + inv(A_k) * avg_Q)
-            avg_P = np.mean(P, axis=1)
-            avg_Q = np.mean(Q, axis=1)
-
-            # Add regularization to avoid singular matrices
-            reg = 1e-6 * np.eye(max_dim)
-            A_t_reg = A_t + reg
-            A_k_reg = A_k + reg
-
-            try:
-                inv_A_t = np.linalg.inv(A_t_reg)
-                inv_A_k = np.linalg.inv(A_k_reg)
-                A = np.linalg.inv(inv_A_t + inv_A_k)
-                avg_n = A @ (inv_A_t @ avg_P + inv_A_k @ avg_Q)
-            except np.linalg.LinAlgError:
-                # Fallback to simple average if matrix inversion fails
-                avg_n = (avg_P + avg_Q) / 2
-
-            # Normalize avg_n to [0, 1]
-            max_n = np.max(avg_n)
-            min_n = np.min(avg_n)
-            if max_n - min_n > 1e-10:
-                avg_n = (avg_n - min_n) / (max_n - min_n)
-            else:
-                avg_n = np.full(max_dim, 0.5)
-
-            # Compute weight vector
-            w1 = avg_P - avg_n
-
-            # Generate offspring
-            for i in range(n):
+            for _ in range(n):
                 a_idx = np.random.randint(model_size)
                 b_idx = np.random.randint(model_size)
-
-                # Weighted combination
-                off_dec = w1 * P[:, a_idx] + (1 - w1) * Q[:, b_idx]
-
-                # Mutation
-                off_dec = mutation(off_dec, mu=self.mum)
-
-                # Boundary handling
+                with np.errstate(over='ignore', invalid='ignore'):
+                    off_dec = w1 * p[:, a_idx] + (1 - w1) * q[:, b_idx]
+                off_dec = _poly_mutation_unclipped(off_dec, self.mum)
                 off_dec = np.clip(off_dec, 0, 1)
-
-                # Handle NaN values
                 nan_mask = np.isnan(off_dec)
                 if np.any(nan_mask):
-                    off_dec[nan_mask] = np.random.rand(np.sum(nan_mask))
+                    off_dec[nan_mask] = np.random.rand(int(np.sum(nan_mask)))
+                off_decs[count, :] = off_dec
+                off_sfs[count] = t
+                count += 1
 
-                off_decs_list.append(off_dec)
-                off_mf_factors_list.append(t)
-
-        off_decs = np.array(off_decs_list)
-        off_mf_factors = np.array(off_mf_factors_list, dtype=int)
-
-        return off_decs, off_mf_factors
-
-    def _nsga2_sort(self, objs, cons=None):
-        """
-        Sort solutions based on NSGA-II criteria.
-
-        Parameters
-        ----------
-        objs : np.ndarray
-            Objective values of shape (pop_size, n_obj)
-        cons : np.ndarray, optional
-            Constraint values of shape (pop_size, n_con)
-
-        Returns
-        -------
-        rank : np.ndarray
-            Ranking of each solution
-        front_no : np.ndarray
-            Front number of each solution
-        crowd_dis : np.ndarray
-            Crowding distance of each solution
-        """
-        pop_size = objs.shape[0]
-
-        # Non-dominated sorting
-        if cons is not None and cons.size > 0:
-            front_no, _ = nd_sort(objs, cons, pop_size)
-        else:
-            front_no, _ = nd_sort(objs, pop_size)
-
-        # Crowding distance
-        crowd_dis = crowding_distance(objs, front_no)
-
-        # Sort by front number (ascending), then by crowding distance (descending)
-        sorted_indices = np.lexsort((-crowd_dis, front_no))
-
-        # Create rank array
-        rank = np.empty(pop_size, dtype=int)
-        rank[sorted_indices] = np.arange(pop_size)
-
-        return rank, front_no, crowd_dis
+        return off_decs, off_sfs

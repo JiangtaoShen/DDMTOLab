@@ -130,30 +130,26 @@ class MTES_KG:
         # Per-task CMA-ES state initialization
         cma_params = []
         for t in range(nt):
-            cma_params.append(cmaes_init_params(n_dim, lam=lam, sigma0=self.sigma0))
+            params = cmaes_init_params(n_dim, lam=lam, sigma0=self.sigma0)
+            # MTES_KG.m:66 starts from the mean of lambda uniform samples
+            # (near the centre of the unified space), not from a single
+            # rand(1, n) draw as the shared CMA-ES helper does.
+            params['m_dec'] = np.mean(np.random.rand(lam, n_dim), axis=0)
+            cma_params.append(params)
 
         # MTES_KG-specific per-task variables
         m_step = [0.0] * nt
         tau = [self.tau0] * nt
         num_ex_s = [[] for _ in range(nt)]
         suc_ex_s = [[] for _ in range(nt)]
-        nfes_per_task_eig = [0] * nt
 
-        # Generate initial samples and evaluate for history initialization
-        init_decs = []
-        init_objs = []
-        init_cons = []
-        for t in range(nt):
-            samples_t = cmaes_sample(cma_params[t]['m_dec'], cma_params[t]['sigma'],
-                                     cma_params[t]['B'], cma_params[t]['D'], lam, clip=False)
-            eval_decs = np.clip(samples_t[:, :dims[t]], 0, 1)
-            objs_t, cons_t = evaluation_single(problem, eval_decs, t)
-            init_decs.append(eval_decs)
-            init_objs.append(objs_t)
-            init_cons.append(cons_t)
-
-        nfes = lam * nt
-        all_decs, all_objs, all_cons = init_history(init_decs, init_objs, init_cons)
+        # MATLAB performs no separate initialization evaluation: the first
+        # loop body already samples, evaluates and updates the distributions.
+        nfes = 0
+        nfes_per_task = [0] * nt
+        all_decs = [[] for _ in range(nt)]
+        all_objs = [[] for _ in range(nt)]
+        all_cons = [[] for _ in range(nt)]
 
         # Storage for previous generation data (needed for SaS)
         old_samples = [None] * nt
@@ -238,10 +234,12 @@ class MTES_KG:
                 clipped = np.clip(all_sample_decs, -0.05, 1.05)
                 bound_cv = np.sum((all_sample_decs - clipped) ** 2, axis=1)
 
-                # Evaluate (trim to task dimensions, clip to [0,1])
-                eval_decs = np.clip(all_sample_decs[:, :dims[t]], 0, 1)
+                # Evaluate the raw (unclipped) decisions, exactly as MATLAB
+                # does; out-of-range samples are only penalised via bound_cv
+                eval_decs = all_sample_decs[:, :dims[t]]
                 objs_t, cons_t = evaluation_single(problem, eval_decs, t)
                 nfes += total_samples
+                nfes_per_task[t] += total_samples
                 pbar.update(total_samples)
 
                 # Compute constraint violation
@@ -278,27 +276,34 @@ class MTES_KG:
                 old_rank[t] = rank_t.copy()
 
                 # ===== CMA-ES parameter update =====
-                nfes_per_task_eig[t] += total_samples
+                # MTES_KG.m:154 uses ceil((FE - lambda*(t-1)) / (lambda*T)) + 1
+                # as the generation counter driving hsig; with the shared helper
+                # (which divides nfes by lambda) that is exactly (Gen + 1)*lambda.
                 restarted = cmaes_update(cma_params[t], all_sample_decs[rank_t],
-                                         nfes_per_task_eig[t])
+                                         (gen + 1) * lam)
                 if restarted:
                     cma_params[t]['ps'] = np.zeros(n_dim)
                     cma_params[t]['pc'] = np.zeros(n_dim)
                     cma_params[t]['sigma'] = min(max(2 * cma_params[t]['sigma'], 0.01), 0.3)
 
-                # Store population for history (top lam individuals in native space)
-                top_lam_idx = rank_t[:lam]
-                cur_decs[t] = np.clip(all_sample_decs[top_lam_idx, :dims[t]], 0, 1)
-                cur_objs[t] = objs_t[top_lam_idx]
+                # Store every evaluated sample (best first) so that the recorded
+                # history stays consistent with the consumed evaluations
+                cur_decs[t] = all_sample_decs[rank_t][:, :dims[t]]
+                cur_objs[t] = objs_t[rank_t]
                 if cons_t is not None and cons_t.size > 0:
-                    cur_cons[t] = cons_t[top_lam_idx]
+                    cur_cons[t] = cons_t[rank_t]
                 else:
-                    cur_cons[t] = np.zeros((lam, 0))
+                    cur_cons[t] = np.zeros((total_samples, 0))
 
             append_history(all_decs, cur_decs, all_objs, cur_objs, all_cons, cur_cons)
 
         pbar.close()
         runtime = time.time() - start_time
+
+        # Samples are stored best-first, so trimming the surplus tail keeps the
+        # elite of the final generation intact
+        all_decs, all_objs, nfes_per_task, all_cons = trim_excess_evaluations(
+            all_decs, all_objs, nt, max_nfes_per_task, nfes_per_task, all_cons)
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,

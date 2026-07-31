@@ -120,15 +120,21 @@ class MTEA_DCK:
             objs.append(objs_t)
             cons.append(cons_t)
         nfes_per_task = [n_per_task[t] for t in range(nt)]
+        nfes = sum(nfes_per_task)
 
-        # Compute SPEA2 fitness and initialize per-individual parameters
+        # SPEA2 environmental selection on the initial population (a no-op on the
+        # membership, but it fixes the fitness values and the population order)
         fitness = []
         vel = []
         F_param = []
         CR_param = []
         TRD_param = []
         for t in range(nt):
-            fitness.append(spea2_fitness(objs[t], cons[t]))
+            idx, fit = self._spea2_select(objs[t], cons[t], n_per_task[t])
+            decs[t] = decs[t][idx]
+            objs[t] = objs[t][idx]
+            cons[t] = cons[t][idx]
+            fitness.append(fit)
             vel.append(np.zeros((n_per_task[t], d_max)))
             F_param.append(np.random.rand(n_per_task[t]))
             CR_param.append(np.random.rand(n_per_task[t]))
@@ -140,10 +146,11 @@ class MTEA_DCK:
         all_cons = [[c.copy()] for c in cons]
 
         total_nfes = sum(max_nfes_per_task)
-        pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task),
+        pbar = tqdm(total=total_nfes, initial=nfes,
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < total_nfes:
+        # Main loop: one shared evaluation budget across all tasks, as in MToP
+        while nfes < total_nfes:
             # Winner/Loser tournament for each task
             winners = []
             losers = []
@@ -166,12 +173,7 @@ class MTEA_DCK:
                 uni_upper.append(np.max(decs[t][win_idx], axis=0))
                 uni_lower.append(np.min(decs[t][win_idx], axis=0))
 
-            factor = sum(nfes_per_task) / total_nfes
-
             for t in range(nt):
-                if nfes_per_task[t] >= max_nfes_per_task[t]:
-                    continue
-
                 N_t = n_per_task[t]
                 union_idx = np.concatenate([winners[t], losers[t]])
 
@@ -185,8 +187,13 @@ class MTEA_DCK:
                 # Evaluate DE offspring
                 off_de_objs, off_de_cons = evaluation_single(
                     problem, off_de_decs[:, :dims[t]], t)
+                nfes_per_task[t] += len(off_de_objs)
+                nfes += len(off_de_objs)
+                pbar.update(len(off_de_objs))
 
-                # CSO generation with convergent KT (from losers)
+                # CSO generation with convergent KT (from losers). MToP reads the
+                # evaluation counter here, i.e. after the DE offspring are spent.
+                factor = nfes / total_nfes
                 off_cso = self._generation_cso(
                     decs, vel, F_param, CR_param, TRD_param,
                     winners, losers, t, nt, factor)
@@ -195,10 +202,9 @@ class MTEA_DCK:
                 # Evaluate CSO offspring
                 off_cso_objs, off_cso_cons = evaluation_single(
                     problem, off_cso_decs[:, :dims[t]], t)
-
-                n_new = len(off_de_objs) + len(off_cso_objs)
-                nfes_per_task[t] += n_new
-                pbar.update(n_new)
+                nfes_per_task[t] += len(off_cso_objs)
+                nfes += len(off_cso_objs)
+                pbar.update(len(off_cso_objs))
 
                 # Merge all populations
                 merged_decs = np.vstack([decs[t], off_de_decs, off_cso_decs])
@@ -209,8 +215,10 @@ class MTEA_DCK:
                 merged_CR = np.concatenate([CR_param[t], off_de_CR, off_cso_CR])
                 merged_TRD = np.concatenate([TRD_param[t], off_de_TRD, off_cso_TRD])
 
-                # SPEA2 environmental selection
-                idx = self._spea2_select(merged_objs, merged_cons, N_t)
+                # SPEA2 environmental selection. The fitness that drives the next
+                # winner/loser pairing is the one computed on the merged
+                # population, not a value recomputed on the survivors.
+                idx, fit = self._spea2_select(merged_objs, merged_cons, N_t)
                 decs[t] = merged_decs[idx]
                 objs[t] = merged_objs[idx]
                 cons[t] = merged_cons[idx]
@@ -218,12 +226,11 @@ class MTEA_DCK:
                 F_param[t] = merged_F[idx]
                 CR_param[t] = merged_CR[idx]
                 TRD_param[t] = merged_TRD[idx]
-                fitness[t] = spea2_fitness(objs[t], cons[t])
+                fitness[t] = fit
 
-                # Append native-space history
-                append_history(all_decs[t], decs[t][:, :dims[t]],
-                               all_objs[t], objs[t],
-                               all_cons[t], cons[t])
+            # Record the maintained populations of every task once per generation
+            append_history(all_decs, [decs[t][:, :dims[t]] for t in range(nt)],
+                           all_objs, objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
@@ -236,7 +243,8 @@ class MTEA_DCK:
 
         return results
 
-    def _spea2_select(self, objs, cons, N):
+    @staticmethod
+    def _spea2_select(objs, cons, N):
         """
         SPEA2 environmental selection.
 
@@ -251,19 +259,24 @@ class MTEA_DCK:
 
         Returns
         -------
-        np.ndarray
-            Indices of selected individuals
+        idx : np.ndarray
+            Indices of the selected individuals, ordered by ascending fitness
+        fit : np.ndarray
+            Fitness of the selected individuals, computed on the full input
+            population (never recomputed on the survivors)
         """
         fit = spea2_fitness(objs, cons)
         next_mask = fit < 1
-        n_nd = np.sum(next_mask)
+        n_nd = int(np.sum(next_mask))
         if n_nd <= N:
-            rank = np.argsort(fit)
-            return rank[:N]
+            idx = np.argsort(fit, kind='stable')[:N]
         else:
             nd_indices = np.where(next_mask)[0]
-            selected = spea2_truncation(objs[next_mask], N)
-            return nd_indices[selected]
+            selected = spea2_truncation(objs[nd_indices], N)
+            idx = nd_indices[selected]
+        # Sort the surviving population by fitness (MToP Selection_SPEA2)
+        idx = idx[np.argsort(fit[idx], kind='stable')]
+        return idx, fit[idx]
 
     def _generation_de(self, decs, vel, F_param, CR_param, TRD_param,
                        winners, losers, union_idx, t, nt,
@@ -498,7 +511,11 @@ class MTEA_DCK:
     @staticmethod
     def _de_crossover(mutant, parent, cr):
         """
-        Binomial crossover for 2xD matrix (Dec and V together).
+        Binomial crossover for a 2xD matrix (Dec and V together).
+
+        A single 1xD crossover mask is drawn and applied to both rows, so the
+        position and the velocity of an offspring always inherit the same set of
+        dimensions from the mutant (MToP ``DE_Crossover`` operates column-wise).
 
         Parameters
         ----------
@@ -514,13 +531,11 @@ class MTEA_DCK:
         np.ndarray
             Crossed-over vectors, shape (2, D)
         """
-        n_rows, d = mutant.shape
-        result = parent.copy()
-        mask = np.random.rand(n_rows, d) < cr
-        for r in range(n_rows):
-            j_rand = np.random.randint(d)
-            mask[r, j_rand] = True
-        result[mask] = mutant[mask]
+        d = mutant.shape[1]
+        result = mutant.copy()
+        replace = np.random.rand(d) > cr
+        replace[np.random.randint(d)] = False
+        result[:, replace] = parent[:, replace]
         return result
 
     @staticmethod

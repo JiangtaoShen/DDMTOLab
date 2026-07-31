@@ -19,6 +19,77 @@ import time
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper, offspring are NOT clipped to
+    [0, 1] here: the MATLAB reference clips only once at the end of
+    Generation_GA, after mutation has acted on the raw crossover output.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with prob 1/D per gene.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT
+    clip; the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
+def _ga_generation_matlab(parents, muc, mum):
+    """
+    Offspring generation matching MTO-Platform ``EMEA.Generation_GA`` exactly.
+
+    A random permutation is split in halves and parent i is paired with
+    parent i + floor(N/2) for i = 1..ceil(N/2); each pair yields two
+    children (SBX then polynomial mutation) and the single clip to [0, 1]
+    happens only after mutation. For odd N this produces N + 1 offspring
+    (EMEA does not truncate the offspring list), exactly as in MATLAB.
+    """
+    n, d = parents.shape
+    order = np.random.permutation(n)
+    half = n // 2
+    n_pairs = int(np.ceil(n / 2))
+    offdecs = np.empty((2 * n_pairs, d))
+    count = 0
+    for i in range(n_pairs):
+        p1 = parents[order[i], :]
+        p2 = parents[order[i + half], :]
+        c1, c2 = _sbx_crossover_unclipped(p1, p2, muc)
+        c1 = _poly_mutation_unclipped(c1, mum)
+        c2 = _poly_mutation_unclipped(c2, mum)
+        offdecs[count] = np.clip(c1, 0, 1)
+        offdecs[count + 1] = np.clip(c2, 0, 1)
+        count += 2
+    return offdecs
+
+
 class EMEA:
     """
     Evolutionary Multitasking via Explicit Autoencoding for multi-task optimization.
@@ -115,9 +186,19 @@ class EMEA:
         objs, cons = evaluation(problem, decs)
         nfes_per_task = n_per_task.copy()
 
-        # Store initial populations for domain adaptation
-        initial_decs = [d.copy() for d in decs]
-        gen = 1
+        # Store the initial populations used to learn the autoencoding mapping.
+        # MToP sorts each initial population by (CV, Obj) before caching it so
+        # that the i-th row of two tasks are rank-matched, which is what makes
+        # the mDA a meaningful domain mapping.
+        initial_decs = []
+        for i in range(nt):
+            cvs_i = np.sum(np.maximum(0, cons[i]), axis=1)
+            rank_i = constrained_sort(objs[i], cvs_i)
+            initial_decs.append(decs[i][rank_i, :dims[i]].copy())
+
+        # MToP increments Algo.Gen once before entering the loop body, so the
+        # first generation the reference executes already has Gen == 2.
+        gen = 2
 
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
@@ -132,24 +213,26 @@ class EMEA:
 
             for i in active_tasks:
                 # Generate offspring: alternate between GA and DE operators
+                # (MToP: op_idx = mod(t - 1, numel(operator)) + 1 with 'GA/DE')
                 if i % 2 == 0:
-                    off_decs = ga_generation(decs[i], self.muc, self.mum)
+                    off_decs = _ga_generation_matlab(decs[i], self.muc, self.mum)
                 else:
                     off_decs = de_generation(decs[i], self.F, self.CR)
 
                 # Knowledge transfer via mDA at specified intervals
                 if self.SNum > 0 and gen % self.TGap == 0:
-                    inject_num = int(round(self.SNum / (nt - 1)))
+                    # MATLAB round() breaks ties away from zero
+                    inject_num = int(np.floor(self.SNum / (nt - 1) + 0.5))
                     inject_decs = np.zeros((0, dims[i]))
 
-                    # Collect best solutions from other tasks
-                    for k in active_tasks:
+                    # Collect best solutions from every other task
+                    for k in range(nt):
                         if k == i:
                             continue
                         cvs_k = np.sum(np.maximum(0, cons[k]), axis=1)
                         his_rank = constrained_sort(objs[k], cvs_k)
                         his_decs = decs[k][his_rank, :]
-                        his_best_decs = his_decs[:inject_num, :dims[k]].squeeze()
+                        his_best_decs = his_decs[:inject_num, :dims[k]]
 
                         # Transform via marginalized denoising autoencoder
                         inject_decs_k = mDA(initial_decs[i], initial_decs[k], his_best_decs)
@@ -170,8 +253,8 @@ class EMEA:
                 index = selection_elit(objs[i], n_per_task[i], cons[i])
                 objs[i], decs[i], cons[i] = select_by_index(index, objs[i], decs[i], cons[i])
 
-                nfes_per_task[i] += n_per_task[i]
-                pbar.update(n_per_task[i])
+                nfes_per_task[i] += off_decs.shape[0]
+                pbar.update(off_decs.shape[0])
 
                 append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
 
@@ -213,8 +296,19 @@ def mDA(curr_decs, his_decs, his_best_decs):
     W = P @ (Q + λI)^(-1)
     where P = xx @ noise^T, Q = noise @ noise^T, and λ is the regularization parameter.
     """
+    curr_decs = np.atleast_2d(curr_decs)
+    his_decs = np.atleast_2d(his_decs)
+    his_best_decs = np.atleast_2d(his_best_decs)
+
     curr_len = curr_decs.shape[1]
     his_len = his_decs.shape[1]
+
+    # MToP assumes both populations hold the same number of individuals;
+    # DDMTOLab allows unequal per-task population sizes, so pair the leading
+    # rows (both populations are rank-sorted) up to the common length.
+    n_common = min(curr_decs.shape[0], his_decs.shape[0])
+    curr_decs = curr_decs[:n_common, :]
+    his_decs = his_decs[:n_common, :]
 
     # Align dimensions by zero-padding the shorter one
     max_dim = max(curr_len, his_len)
@@ -230,13 +324,18 @@ def mDA(curr_decs, his_decs, his_best_decs):
     xxb = np.vstack([xx, np.ones((1, n))])
     noise_xb = np.vstack([noise, np.ones((1, n))])
 
-    # Compute transformation matrix using ridge regression
+    # Compute transformation matrix using ridge regression: W = P / (Q + reg)
     Q = noise_xb @ noise_xb.T
     P = xxb @ noise_xb.T
     lambda_reg = 1e-5
     reg = lambda_reg * np.eye(d + 1)
     reg[-1, -1] = 0
-    W = P @ np.linalg.inv(Q + reg)
+    A = Q + reg
+    try:
+        # mrdivide: W * A = P  <=>  A' * W' = P'
+        W = np.linalg.solve(A.T, P.T).T
+    except np.linalg.LinAlgError:
+        W = np.linalg.lstsq(A.T, P.T, rcond=None)[0].T
 
     # Remove bias term from transformation matrix
     W = W[:-1, :-1]

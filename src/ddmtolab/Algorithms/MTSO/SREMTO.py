@@ -20,6 +20,28 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper, the offspring are NOT clipped to
+    [0, 1] here: SREMTO applies its differential mutation to the raw crossover
+    output and clips only once, at the end of Generation.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
 class SREMTO:
     """
     Self-Regulated Evolutionary Multitask Optimization.
@@ -112,7 +134,8 @@ class SREMTO:
         problem = self.problem
         nt = problem.n_tasks
         dims = problem.dims
-        d_max = max(dims)
+        ncons = problem.n_cons
+        c_max = max(ncons)
         n = self.n
         max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
@@ -125,55 +148,52 @@ class SREMTO:
         a2 = (-self.th) / (n * (nt - 1))
         b2 = (n * nt * self.th) / (n * (nt - 1))
 
-        # Initialize unified population (all tasks share same individuals)
-        # Each individual has: dec, mf_obj (obj for each task), mf_cv, mf_rank, ability
-        pop_size = n * nt  # Total population size
-        pop_decs = np.random.rand(pop_size, d_max)
+        # Initialize unified population (all tasks share the same individuals). Each
+        # individual carries: dec, mf_obj / mf_cv per task, mf_rank per task, ability.
+        pop_size = n * nt
+        pop_decs = np.vstack(space_transfer(problem=problem, decs=initialization(problem, n),
+                                            type='uni', padding='random'))
 
-        # Initialize multi-factorial objectives and constraints
-        pop_mf_objs = np.full((pop_size, nt), np.inf)
-        pop_mf_cvs = np.full((pop_size, nt), np.inf)
-        pop_mf_ranks = np.zeros((pop_size, nt), dtype=int)
-        pop_abilities = np.zeros((pop_size, nt))
-
-        # Evaluate initial population on all tasks
-        nfes = 0
-        for i in range(pop_size):
-            for t in range(nt):
-                dec_t = pop_decs[i, :dims[t]].reshape(1, -1)
-                obj_t, con_t = evaluation_single(problem, dec_t, t)
-                pop_mf_objs[i, t] = obj_t[0, 0]
-                cv_t = np.sum(np.maximum(0, con_t[0])) if con_t is not None and con_t.size > 0 else 0
-                pop_mf_cvs[i, t] = cv_t
-                nfes += 1
-
-        # Calculate initial rankings for each task
-        for t in range(nt):
-            pop_mf_ranks[:, t] = self._calculate_ranks(pop_mf_objs[:, t], pop_mf_cvs[:, t])
-
-        # Calculate initial ability vectors
-        pop_abilities = self._calculate_abilities(pop_mf_ranks, a1, b1, a2, b2, n)
-
-        # Track best solutions for each task
+        # Track the best solution found so far for each task (feasibility first); it
+        # drives the differential mutation and is refreshed on every evaluation
         best_decs = [None] * nt
         best_objs = [np.inf] * nt
-        for t in range(nt):
-            best_idx = np.argmin(pop_mf_objs[:, t])
-            best_decs[t] = pop_decs[best_idx].copy()
-            best_objs[t] = pop_mf_objs[best_idx, t]
+        best_cvs = [np.inf] * nt
 
-        # Initialize history storage
-        all_decs = [[] for _ in range(nt)]
-        all_objs = [[] for _ in range(nt)]
-        all_cons = [[] for _ in range(nt)]
+        def evaluate_on_task(sub_decs, t):
+            """Evaluate a block of unified decisions on task t."""
+            objs_t, cons_t = evaluation_single(problem, sub_decs[:, :dims[t]], t, unified=True)
+            cons_t = cons_t[:, :c_max] if c_max > 0 else np.zeros((sub_decs.shape[0], 0))
+            cvs_t = np.sum(np.maximum(0, cons_t), axis=1)
+            return objs_t[:, 0], cvs_t, cons_t
 
-        # Store initial population per task
+        def update_best(sub_decs, sub_objs, sub_cvs, t):
+            """Feasibility-first incumbent update for task t (MToP ``Algo.Best``)."""
+            idx = constrained_sort(sub_objs, sub_cvs)[0]
+            if (sub_cvs[idx], sub_objs[idx]) <= (best_cvs[t], best_objs[t]):
+                best_decs[t] = sub_decs[idx].copy()
+                best_objs[t] = sub_objs[idx]
+                best_cvs[t] = sub_cvs[idx]
+
+        # Evaluate the initial population on every task (multifactorial initialization)
+        pop_mf_objs = np.full((pop_size, nt), np.inf)
+        pop_mf_cvs = np.full((pop_size, nt), np.inf)
+        pop_mf_cons = np.zeros((pop_size, nt, c_max))
         for t in range(nt):
-            task_indices = np.where(pop_mf_ranks[:, t] <= n)[0]
-            if len(task_indices) > 0:
-                all_decs[t].append(pop_decs[task_indices, :dims[t]].copy())
-                all_objs[t].append(pop_mf_objs[task_indices, t].reshape(-1, 1).copy())
-                all_cons[t].append(pop_mf_cvs[task_indices, t].reshape(-1, 1).copy())
+            objs_t, cvs_t, cons_t = evaluate_on_task(pop_decs, t)
+            pop_mf_objs[:, t] = objs_t
+            pop_mf_cvs[:, t] = cvs_t
+            pop_mf_cons[:, t, :] = cons_t
+            update_best(pop_decs, objs_t, cvs_t, t)
+        nfes = pop_size * nt
+
+        # Calculate initial factorial ranks and ability vectors
+        pop_mf_ranks = self._rank_pool(pop_mf_objs, pop_mf_cvs)
+        pop_abilities = self._calculate_abilities(pop_mf_ranks, a1, b1, a2, b2, n)
+
+        # Initialize history storage with the top-n subpopulation of each task
+        all_decs, all_objs, all_cons = init_history(
+            *self._task_views(pop_decs, pop_mf_objs, pop_mf_cons, pop_mf_ranks, dims, ncons, nt, n))
 
         # Progress bar
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}", disable=self.disable_tqdm)
@@ -183,100 +203,74 @@ class SREMTO:
             int_pop_decs = pop_decs.copy()
             int_pop_mf_objs = pop_mf_objs.copy()
             int_pop_mf_cvs = pop_mf_cvs.copy()
+            int_pop_mf_cons = pop_mf_cons.copy()
             int_pop_abilities = pop_abilities.copy()
 
             # Generate offspring for each task
             for t in range(nt):
-                # Select parents: individuals with rank <= n for task t
+                # Select parents: the subpopulation of task t, i.e. rank <= n
                 parent_indices = np.where(pop_mf_ranks[:, t] <= n)[0]
                 if len(parent_indices) < 2:
                     continue
 
-                parent_decs = pop_decs[parent_indices]
-                parent_abilities = pop_abilities[parent_indices]
-
                 # Generate offspring
                 off_decs, off_abilities = self._generation(
-                    parent_decs, parent_abilities, best_decs[t], d_max
+                    pop_decs[parent_indices], pop_abilities[parent_indices], best_decs[t]
                 )
 
-                # Evaluate offspring on tasks based on ability
-                off_mf_objs = np.full((len(off_decs), nt), np.inf)
-                off_mf_cvs = np.full((len(off_decs), nt), np.inf)
+                n_off = off_decs.shape[0]
+                off_mf_objs = np.full((n_off, nt), np.inf)
+                off_mf_cvs = np.full((n_off, nt), np.inf)
+                off_mf_cons = np.zeros((n_off, nt, c_max))
 
-                for i in range(len(off_decs)):
+                # Decide which offspring is assessed on which task. Task t is always
+                # assessed; any other task k only with probability Ability(k). The
+                # random draws follow the reference's (individual, task) order.
+                eval_mask = np.zeros((n_off, nt), dtype=bool)
+                for i in range(n_off):
                     for k in range(nt):
-                        # Evaluate on task k if: k == t (always) or random < ability[k]
                         if k == t or np.random.rand() < off_abilities[i, k]:
-                            dec_k = off_decs[i, :dims[k]].reshape(1, -1)
-                            obj_k, con_k = evaluation_single(problem, dec_k, k)
-                            off_mf_objs[i, k] = obj_k[0, 0]
-                            cv_k = np.sum(np.maximum(0, con_k[0])) if con_k is not None and con_k.size > 0 else 0
-                            off_mf_cvs[i, k] = cv_k
-                            nfes += 1
-                            pbar.update(1)
+                            eval_mask[i, k] = True
 
-                            if nfes >= max_nfes:
-                                break
-                    if nfes >= max_nfes:
-                        break
+                for k in range(nt):
+                    rows = np.where(eval_mask[:, k])[0]
+                    if rows.size == 0:
+                        continue
+                    objs_k, cvs_k, cons_k = evaluate_on_task(off_decs[rows], k)
+                    off_mf_objs[rows, k] = objs_k
+                    off_mf_cvs[rows, k] = cvs_k
+                    off_mf_cons[rows, k, :] = cons_k
+                    nfes += rows.size
+                    pbar.update(rows.size)
+                    update_best(off_decs[rows], objs_k, cvs_k, k)
 
                 # Merge offspring with intermediate population
                 int_pop_decs = np.vstack([int_pop_decs, off_decs])
                 int_pop_mf_objs = np.vstack([int_pop_mf_objs, off_mf_objs])
                 int_pop_mf_cvs = np.vstack([int_pop_mf_cvs, off_mf_cvs])
+                int_pop_mf_cons = np.vstack([int_pop_mf_cons, off_mf_cons])
                 int_pop_abilities = np.vstack([int_pop_abilities, off_abilities])
 
-                if nfes >= max_nfes:
-                    break
+            # Selection: rank the whole intermediate pool on every task
+            int_pop_mf_ranks = self._rank_pool(int_pop_mf_objs, int_pop_mf_cvs)
 
-            # Selection: calculate ranks and select top-n per task
-            int_pop_mf_ranks = np.zeros((len(int_pop_decs), nt), dtype=int)
-            for t in range(nt):
-                int_pop_mf_ranks[:, t] = self._calculate_ranks(
-                    int_pop_mf_objs[:, t], int_pop_mf_cvs[:, t]
-                )
+            # Keep every individual that is in the top-n of at least one task
+            selected_indices = np.unique(np.concatenate(
+                [np.where(int_pop_mf_ranks[:, t] <= n)[0] for t in range(nt)]))
 
-            # Select individuals that are in top-n for at least one task
-            selected_indices = set()
-            for t in range(nt):
-                top_n_indices = np.where(int_pop_mf_ranks[:, t] <= n)[0]
-                selected_indices.update(top_n_indices)
-            selected_indices = np.array(list(selected_indices))
+            pop_decs = int_pop_decs[selected_indices]
+            pop_mf_objs = int_pop_mf_objs[selected_indices]
+            pop_mf_cvs = int_pop_mf_cvs[selected_indices]
+            pop_mf_cons = int_pop_mf_cons[selected_indices]
+            # The survivors keep the ranks they earned in the intermediate pool; they
+            # are NOT re-ranked among themselves, otherwise every ability would shift
+            pop_mf_ranks = int_pop_mf_ranks[selected_indices]
+            pop_abilities = self._calculate_abilities(pop_mf_ranks, a1, b1, a2, b2, n)
 
-            if len(selected_indices) > 0:
-                pop_decs = int_pop_decs[selected_indices]
-                pop_mf_objs = int_pop_mf_objs[selected_indices]
-                pop_mf_cvs = int_pop_mf_cvs[selected_indices]
-                pop_abilities = int_pop_abilities[selected_indices]
-
-                # Recalculate ranks for selected population
-                pop_mf_ranks = np.zeros((len(pop_decs), nt), dtype=int)
-                for t in range(nt):
-                    pop_mf_ranks[:, t] = self._calculate_ranks(
-                        pop_mf_objs[:, t], pop_mf_cvs[:, t]
-                    )
-
-                # Update abilities
-                pop_abilities = self._calculate_abilities(pop_mf_ranks, a1, b1, a2, b2, n)
-
-                # Update best solutions
-                for t in range(nt):
-                    valid_mask = pop_mf_objs[:, t] < np.inf
-                    if np.any(valid_mask):
-                        valid_indices = np.where(valid_mask)[0]
-                        best_valid_idx = valid_indices[np.argmin(pop_mf_objs[valid_indices, t])]
-                        if pop_mf_objs[best_valid_idx, t] < best_objs[t]:
-                            best_decs[t] = pop_decs[best_valid_idx].copy()
-                            best_objs[t] = pop_mf_objs[best_valid_idx, t]
-
-                # Store history per task
-                for t in range(nt):
-                    task_indices = np.where(pop_mf_ranks[:, t] <= n)[0]
-                    if len(task_indices) > 0:
-                        all_decs[t].append(pop_decs[task_indices, :dims[t]].copy())
-                        all_objs[t].append(pop_mf_objs[task_indices, t].reshape(-1, 1).copy())
-                        all_cons[t].append(pop_mf_cvs[task_indices, t].reshape(-1, 1).copy())
+            # Store history per task
+            task_decs, task_objs, task_cons = self._task_views(
+                pop_decs, pop_mf_objs, pop_mf_cons, pop_mf_ranks, dims, ncons, nt, n)
+            append_history(all_decs, task_decs, all_objs, task_objs, all_cons, task_cons)
 
         pbar.close()
         runtime = time.time() - start_time
@@ -289,28 +283,66 @@ class SREMTO:
 
         return results
 
-    def _calculate_ranks(self, objs, cvs):
+    @staticmethod
+    def _rank_pool(mf_objs, mf_cvs):
         """
-        Calculate ranks based on constraint violation first, then objective value.
+        Rank every member of a pool on every task (constraint violation first).
 
         Parameters
         ----------
-        objs : np.ndarray
-            Objective values, shape (n,)
-        cvs : np.ndarray
-            Constraint violations, shape (n,)
+        mf_objs : np.ndarray
+            Multifactorial objective values, shape (pool_size, nt)
+        mf_cvs : np.ndarray
+            Multifactorial constraint violations, shape (pool_size, nt)
 
         Returns
         -------
         ranks : np.ndarray
-            Ranks (1-based), shape (n,)
+            1-based factorial ranks, shape (pool_size, nt)
         """
-        n = len(objs)
-        # Sort by CV first, then by objective
-        indices = constrained_sort(objs, cvs)
-        ranks = np.zeros(n, dtype=int)
-        ranks[indices] = np.arange(1, n + 1)
+        pool_size, nt = mf_objs.shape
+        ranks = np.zeros((pool_size, nt), dtype=int)
+        for t in range(nt):
+            order = constrained_sort(mf_objs[:, t], mf_cvs[:, t])
+            ranks[order, t] = np.arange(1, pool_size + 1)
         return ranks
+
+    @staticmethod
+    def _task_views(pop_decs, mf_objs, mf_cons, mf_ranks, dims, ncons, nt, n):
+        """
+        Extract the top-n subpopulation of every task in its native search space.
+
+        Parameters
+        ----------
+        pop_decs : np.ndarray
+            Unified decision variables, shape (pop_size, d_max)
+        mf_objs : np.ndarray
+            Multifactorial objective values, shape (pop_size, nt)
+        mf_cons : np.ndarray
+            Multifactorial constraint values, shape (pop_size, nt, c_max)
+        mf_ranks : np.ndarray
+            1-based factorial ranks, shape (pop_size, nt)
+        dims : list[int]
+            Decision-space dimension of every task
+        ncons : list[int]
+            Number of constraints of every task
+        nt : int
+            Number of tasks
+        n : int
+            Subpopulation size per task
+
+        Returns
+        -------
+        task_decs, task_objs, task_cons : list[np.ndarray]
+            Per-task decision, objective and constraint matrices
+        """
+        task_decs, task_objs, task_cons = [], [], []
+        for t in range(nt):
+            idx = np.where(mf_ranks[:, t] <= n)[0]
+            task_decs.append(pop_decs[idx][:, :dims[t]].copy())
+            task_objs.append(mf_objs[idx, t].reshape(-1, 1).copy())
+            task_cons.append(mf_cons[idx, t, :ncons[t]].copy())
+        return task_decs, task_objs, task_cons
 
     def _calculate_abilities(self, mf_ranks, a1, b1, a2, b2, n):
         """
@@ -332,24 +364,13 @@ class SREMTO:
         abilities : np.ndarray
             Ability vectors, shape (pop_size, nt)
         """
-        pop_size, nt = mf_ranks.shape
-        abilities = np.zeros((pop_size, nt))
+        # Line 1 for the top-n of a task, line 2 for everybody else. The two segments
+        # meet at rank n (value TH) and line 2 reaches zero at rank n * nt; ranks past
+        # that point would go negative, which the clip turns into "never assessed".
+        abilities = np.where(mf_ranks <= n, a1 * mf_ranks + b1, a2 * mf_ranks + b2)
+        return np.clip(abilities, 0, 1)
 
-        for t in range(nt):
-            for i in range(pop_size):
-                rank = mf_ranks[i, t]
-                if rank <= n:
-                    # Line 1: high ability for top-ranked individuals
-                    abilities[i, t] = a1 * rank + b1
-                else:
-                    # Line 2: lower ability for lower-ranked individuals
-                    abilities[i, t] = a2 * rank + b2
-
-        # Clip abilities to [0, 1]
-        abilities = np.clip(abilities, 0, 1)
-        return abilities
-
-    def _generation(self, parent_decs, parent_abilities, best_dec, d_max):
+    def _generation(self, parent_decs, parent_abilities, best_dec):
         """
         Generate offspring using SBX crossover and differential mutation.
 
@@ -360,40 +381,43 @@ class SREMTO:
         parent_abilities : np.ndarray
             Parent ability vectors, shape (n_parents, nt)
         best_dec : np.ndarray
-            Best solution for the current task, shape (d_max,)
-        d_max : int
-            Maximum dimension
+            Best solution found so far for the current task, shape (d_max,)
 
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables, shape (n_parents, d_max)
+            Offspring decision variables, shape (2 * ceil(n_parents / 2), d_max)
         off_abilities : np.ndarray
-            Offspring ability vectors (inherited from parents), shape (n_parents, nt)
+            Offspring ability vectors (inherited from parents), same row count
         """
-        n_parents = len(parent_decs)
+        n_parents, d_max = parent_decs.shape
         nt = parent_abilities.shape[1]
+        half = n_parents // 2
+        n_pairs = int(np.ceil(n_parents / 2))
 
-        off_decs = np.zeros((n_parents, d_max))
-        off_abilities = np.zeros((n_parents, nt))
+        off_decs = np.zeros((2 * n_pairs, d_max))
+        off_abilities = np.zeros((2 * n_pairs, nt))
 
-        # Shuffle indices for pairing
+        # Shuffle indices for pairing: the reference pairs order[i] with
+        # order[i + floor(N / 2)] for i = 1..ceil(N / 2)
         ind_order = np.random.permutation(n_parents)
 
         count = 0
-        for i in range(n_parents // 2):
+        for i in range(n_pairs):
             p1 = ind_order[i]
-            p2 = ind_order[i + n_parents // 2]
+            p2 = ind_order[i + half]
 
             if np.random.rand() < self.p_alpha:
                 # Crossover
-                off_dec1, off_dec2 = crossover(parent_decs[p1], parent_decs[p2], mu=self.muc)
+                off_dec1, off_dec2 = _sbx_crossover_unclipped(parent_decs[p1], parent_decs[p2], self.muc)
 
-                # Differential mutation
+                # Differential mutation towards the task incumbent; the reference draws
+                # an independent scaling factor for each of the two children
                 if np.random.rand() < self.p_beta:
-                    r = np.random.rand()
-                    off_dec1 = off_dec1 + r * (best_dec - off_dec1 + parent_decs[p1] - parent_decs[p2])
-                    off_dec2 = off_dec2 + r * (best_dec - off_dec2 + parent_decs[p2] - parent_decs[p1])
+                    off_dec1 = off_dec1 + np.random.rand() * (
+                        best_dec - off_dec1 + parent_decs[p1] - parent_decs[p2])
+                    off_dec2 = off_dec2 + np.random.rand() * (
+                        best_dec - off_dec2 + parent_decs[p2] - parent_decs[p1])
             else:
                 # Mutation only
                 off_dec1 = mutation(parent_decs[p1].copy(), mu=self.mum)
@@ -403,18 +427,10 @@ class SREMTO:
             off_abilities[count] = parent_abilities[p1].copy()
             off_abilities[count + 1] = parent_abilities[p2].copy()
 
-            # Boundary handling
+            # Boundary handling (single repair, after crossover and differential mutation)
             off_decs[count] = np.clip(off_dec1, 0, 1)
             off_decs[count + 1] = np.clip(off_dec2, 0, 1)
 
             count += 2
 
-        # Handle odd number of parents
-        if n_parents % 2 == 1:
-            last_idx = ind_order[-1]
-            off_decs[count] = mutation(parent_decs[last_idx].copy(), mu=self.mum)
-            off_decs[count] = np.clip(off_decs[count], 0, 1)
-            off_abilities[count] = parent_abilities[last_idx].copy()
-            count += 1
-
-        return off_decs[:count], off_abilities[:count]
+        return off_decs, off_abilities

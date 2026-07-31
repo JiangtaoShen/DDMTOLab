@@ -164,7 +164,11 @@ class MTDE_ADKT:
             mDec[t] = np.mean(pop_decs[t], axis=0)
 
         reduce_flag = False
-        gen = 1
+        # MToP increments Algo.Gen inside notTerminated *before* the loop body
+        # runs, so the first executed generation is Gen = 2. Matching the
+        # counter keeps the mod(Gen, TGap) / mod(Gen, Gap) schedules and the
+        # r_suc window slices identical to the reference.
+        gen = 2
 
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
@@ -380,8 +384,10 @@ class MTDE_ADKT:
                             [archives[t], replaced_decs])
                     else:
                         archives[t] = replaced_decs.copy()
-                    if len(archives[t]) > n:
-                        perm = np.random.permutation(len(archives[t]))[:n]
+                    # MATLAB caps the archive at the *current* population size
+                    # (length(population{t})), which halves after reduction.
+                    if len(archives[t]) > n_t:
+                        perm = np.random.permutation(len(archives[t]))[:n_t]
                         archives[t] = archives[t][perm]
 
                 # === Selection: replace winners ===
@@ -390,6 +396,8 @@ class MTDE_ADKT:
                 pop_cons[t][replace_all] = off_cons[replace_all]
 
             # === RMP adaptation ===
+            # r_suc*[t] holds the MATLAB array with a leading 1 at index 0, so
+            # MATLAB's r_suc{t}((Gen-Gap+1):Gen) is r_suc[t][gen-Gap:gen] here.
             for t in range(nt):
                 if gen % self.Gap == 0 and gen >= self.Gap:
                     r1_avg = np.mean(r_suc1[t][gen - self.Gap:gen])
@@ -478,19 +486,26 @@ def _matrix_inv_sqrt(A):
 
 
 def _tournament(parent_objs, parent_cons, off_objs, off_cons, maxC):
-    """1-to-1 tournament selection: offspring replaces parent if better."""
+    """
+    One-to-one selection matching MTO-Platform ``Selection_Tournament``
+    (epsilon = 0): the parent is replaced only if
+
+    - both are infeasible and the offspring has a strictly lower CV, or
+    - both are feasible and the offspring has a strictly lower objective.
+
+    A feasible offspring therefore never displaces an infeasible parent, and
+    two infeasible individuals with equal CV keep the parent.
+    """
     n_ind = len(parent_objs)
-    replace = np.zeros(n_ind, dtype=bool)
     p_cv = np.sum(np.maximum(0, parent_cons), axis=1) \
         if maxC > 0 else np.zeros(n_ind)
     o_cv = np.sum(np.maximum(0, off_cons), axis=1) \
         if maxC > 0 else np.zeros(n_ind)
-    for i in range(n_ind):
-        if o_cv[i] < p_cv[i]:
-            replace[i] = True
-        elif o_cv[i] == p_cv[i] and off_objs[i, 0] < parent_objs[i, 0]:
-            replace[i] = True
-    return replace
+
+    replace_cv = (p_cv > o_cv) & (p_cv > 0) & (o_cv > 0)
+    equal_cv = (p_cv <= 0) & (o_cv <= 0)
+    replace_f = parent_objs[:, 0] > off_objs[:, 0]
+    return (equal_cv & replace_f) | replace_cv
 
 
 def _generation_transfer(parent_decs, transpop_decs, F, CR,

@@ -104,7 +104,7 @@ def P1_T1_PF(N, M=3) -> np.ndarray:
         Array of shape (N, M) representing the PF points.
     """
     W, _ = uniform_point(N, M)
-    norms = np.sqrt(np.sum(W ** 2, axis=1, keepDs=True))
+    norms = np.sqrt(np.sum(W ** 2, axis=1, keepdims=True))
     return W / norms
 
 

@@ -1032,15 +1032,17 @@ Tuple[List[np.ndarray], List[np.ndarray], List[np.ndarray]]]:
                         # Task has no constraints: create matrix with c_max columns filled with zeros
                         new_cons[i] = np.zeros((n_samples, c_max))
                     else:
-                        # Task has constraints: pad if necessary
+                        # Task has constraints: pad if necessary.
+                        # Padded columns stand for constraints this task does not
+                        # have, so they must contribute zero violation. `padding`
+                        # is a decision-variable strategy and is deliberately not
+                        # applied here: 'mid'/'random' would give every padded
+                        # column a positive value, and since CV = sum(max(0, con))
+                        # that fabricates infeasibility for the task with fewer
+                        # constraints.
                         dif = c_max - current_ncons
                         if dif > 0:
-                            if padding == 'random':
-                                pad_values = np.random.rand(n_samples, dif)
-                            elif padding == 'mid':
-                                pad_values = np.full((n_samples, dif), 0.5)
-                            else:  # padding == 'zero'
-                                pad_values = np.zeros((n_samples, dif))
+                            pad_values = np.zeros((n_samples, dif))
                             new_cons[i] = np.hstack([new_cons[i], pad_values])
             else:
                 # No task has constraints: ensure all constraint matrices are empty with same shape
@@ -1249,7 +1251,11 @@ def tournament_selection(
         One or more arrays of fitness values, compared lexicographically
         (first array is the primary key). Lower values are considered better.
     rng : np.random.Generator, optional
-        NumPy random number generator. If None, a new default RNG is created.
+        NumPy random number generator. If None, the legacy global stream
+        (``np.random.*``) is used, so that ``np.random.seed`` reproduces the
+        selection. Do NOT fall back to ``np.random.default_rng()``: an
+        unseeded Generator draws from OS entropy and silently makes every
+        run that relies on this helper irreproducible.
 
     Returns
     -------
@@ -1263,12 +1269,16 @@ def tournament_selection(
         fitnesss.append(a)
     pop_size = fitnesss[0].shape[0]
 
-    if rng is None:
-        rng = np.random.default_rng()
+    # Draw from the caller's generator when given, otherwise from the legacy
+    # global stream that the rest of the platform (and np.random.seed) uses.
+    def _integers(low, high, size):
+        if rng is None:
+            return np.random.randint(low, high, size=size)
+        return rng.integers(low, high, size=size)
 
     if K <= 1:
         # Purely random selection with replacement
-        selected = rng.integers(0, pop_size, size=N, dtype=int)
+        selected = _integers(0, pop_size, N).astype(int)
     else:
         keys = tuple(fitnesss[::-1])
         order = np.lexsort(keys)
@@ -1276,7 +1286,7 @@ def tournament_selection(
         ranks[order] = np.arange(pop_size)
 
         # Sample K contestants for each of N tournaments (with replacement)
-        parents = rng.integers(0, pop_size, size=(K, N))
+        parents = _integers(0, pop_size, (K, N))
         parent_ranks = ranks[parents]
         winners_pos = np.argmin(parent_ranks, axis=0)
         selected = parents[winners_pos, np.arange(N)]

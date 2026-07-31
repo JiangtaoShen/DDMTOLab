@@ -145,31 +145,32 @@ class MTEA_HKTS:
         maxD = pop_decs[0].shape[1]
         maxC = pop_cons[0].shape[1]
 
-        # Sort each task by objective
-        for t in range(nt):
-            si = np.argsort(pop_objs[t][:, 0])
-            pop_decs[t] = pop_decs[t][si]
-            pop_objs[t] = pop_objs[t][si]
-            pop_cons[t] = pop_cons[t][si]
+        # MATLAB sorts the initial population only for multi-objective tasks
+        # (MTEA_HKTS.m:70-75); for single-objective it stays unsorted.
 
         # Transfer probability table (diagonal = 0)
         scale = np.full((nt, nt), self.pTransfer)
         table = np.full((nt, nt), 0.5)
         np.fill_diagonal(table, 0.0)
 
-        # Archive: 3N individuals per task (decs + objs)
+        # Archive: 3N individuals per task (decs + objs + cons)
         arch_decs = []
         arch_objs = []
+        arch_cons = []
         for t in range(nt):
             idx = np.random.randint(n, size=3 * n)
             arch_decs.append(pop_decs[t][idx].copy())
             arch_objs.append(pop_objs[t][idx].copy())
+            arch_cons.append(pop_cons[t][idx].copy())
 
+        # MATLAB's Algo.Gen equals 2 during the first loop body because
+        # notTerminated() already counted the initialization generation.
         gen = 1
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
         while nfes < max_nfes:
+            gen += 1
             for t in range(nt):
                 n_t = len(pop_decs[t])
 
@@ -199,19 +200,19 @@ class MTEA_HKTS:
                 # --- Population preparation ---
                 transpop_decs = None
                 if sign == 1 or sign == 2:
-                    nTransfer = max(round(scale[t, m_pt] * n_t), 1)
-                    nTransfer = min(nTransfer, n_t)
+                    nTransfer = min(_mround(scale[t, m_pt] * n_t), n_t)
                     temp_decs = pop_decs[t][::-1].copy()  # worst first
-                    trans = _m_transfer(
-                        pop_decs[m_pt], pop_decs[t],
-                        dims[m_pt], dims[t], nTransfer, order, option)
-                    temp_decs[:nTransfer] = trans
+                    if nTransfer > 0:
+                        temp_decs[:nTransfer] = _m_transfer(
+                            pop_decs[m_pt], pop_decs[t],
+                            dims[m_pt], dims[t], nTransfer, order, option)
                 else:  # sign == 0
-                    nTransfer = max(round(0.1 * n_t), 1)
+                    nTransfer = min(_mround(0.1 * n_t), n_t)
                     temp_decs = pop_decs[t].copy()
-                    transpop_decs = _m_transfer(
-                        pop_decs[m_pt], pop_decs[t],
-                        dims[m_pt], dims[t], nTransfer, order, option)
+                    if nTransfer > 0:
+                        transpop_decs = _m_transfer(
+                            pop_decs[m_pt], pop_decs[t],
+                            dims[m_pt], dims[t], nTransfer, order, option)
 
                 # --- Generation ---
                 op = 'GA' if t % 2 == 0 else 'DE'
@@ -261,24 +262,38 @@ class MTEA_HKTS:
                 pop_objs[t] = m_objs[si[:n_t]]
                 pop_cons[t] = m_cons[si[:n_t]]
 
-                # --- Update archive ---
+                # --- Update archive (MATLAB updatearchive + Selection_Tournament) ---
                 seg = gen % 3
                 s_idx = seg * n_t
-                for i in range(n_t):
-                    if pop_objs[t][i, 0] < arch_objs[t][s_idx + i, 0]:
-                        arch_decs[t][s_idx + i] = pop_decs[t][i]
-                        arch_objs[t][s_idx + i] = pop_objs[t][i]
+                a_slice = np.arange(s_idx, s_idx + n_t)
+                a_cv = np.sum(np.maximum(0, arch_cons[t][a_slice]), axis=1)
+                p_cv = np.sum(np.maximum(0, pop_cons[t]), axis=1)
+                replace_cv = (a_cv > p_cv) & (a_cv > 0) & (p_cv > 0)
+                equal_cv = (a_cv <= 0) & (p_cv <= 0)
+                replace_f = arch_objs[t][a_slice, 0] > pop_objs[t][:, 0]
+                replace = (equal_cv & replace_f) | replace_cv
+                if np.any(replace):
+                    tgt = a_slice[replace]
+                    arch_decs[t][tgt] = pop_decs[t][replace]
+                    arch_objs[t][tgt] = pop_objs[t][replace]
+                    arch_cons[t][tgt] = pop_cons[t][replace]
 
                 # --- Transfer quality tracking ---
+                # MATLAB: [~, ia] = intersect(pop.Decs, X.Decs, 'rows'); sum(ia)
+                # intersect returns the (lowest) indices of the unique common rows.
                 rev_pop = pop_decs[t][::-1]  # worst first
                 quality = transpop_decs if sign == 0 else off_decs
 
                 ia_sum = 0
-                for r_idx in range(n_t):
-                    for q_idx in range(len(quality)):
-                        if np.array_equal(rev_pop[r_idx], quality[q_idx]):
+                if quality is not None and len(quality) > 0:
+                    q_set = {np.ascontiguousarray(row).tobytes()
+                             for row in quality}
+                    seen = set()
+                    for r_idx in range(n_t):
+                        key = np.ascontiguousarray(rev_pop[r_idx]).tobytes()
+                        if key in q_set and key not in seen:
+                            seen.add(key)
                             ia_sum += (r_idx + 1)
-                            break
 
                 norm = n_t / 2.0 * (n_t + 1)
                 ratio = ia_sum / norm if norm > 0 else 0
@@ -309,7 +324,6 @@ class MTEA_HKTS:
                 problem, decs=pop_decs, cons=pop_cons, type='real')
             append_history(all_decs, real_decs, all_objs, pop_objs,
                            all_cons, real_cons)
-            gen += 1
 
         pbar.close()
         runtime = time.time() - start_time
@@ -326,6 +340,11 @@ class MTEA_HKTS:
 # Helper functions
 # ============================================================
 
+def _mround(value):
+    """MATLAB ``round``: half away from zero (numpy/Python round half to even)."""
+    return int(np.floor(np.abs(value) + 0.5)) * (1 if value >= 0 else -1)
+
+
 def _select_task(table_row):
     """Roulette wheel selection based on transfer probability row."""
     s = np.sum(table_row)
@@ -335,105 +354,134 @@ def _select_task(table_row):
     return np.random.choice(len(table_row), p=probs)
 
 
+def _reshape_stats(decs, dims):
+    """
+    MATLAB ``reshape([pop.Dec], dims, [])`` statistics.
+
+    ``[pop.Dec]`` concatenates the (maxD-wide) decision rows into a single
+    stream, which is then reshaped column-major into ``dims`` rows.  When
+    ``dims == maxD`` this reduces to the ordinary per-column statistics;
+    for unequal task dimensions MATLAB deliberately (if accidentally) mixes
+    variables across individuals, which is reproduced here.
+    """
+    stream = np.ascontiguousarray(decs).reshape(-1)
+    if dims > 0 and stream.size % dims == 0:
+        mat = stream.reshape(dims, -1, order='F')
+    else:  # not reshapeable (MATLAB would error) - fall back to columns
+        mat = decs[:, :dims].T
+    return mat.max(axis=1), mat.min(axis=1), mat.mean(axis=1)
+
+
 def _var_order(prev_decs, this_decs, prev_dims, this_dims, option):
     """
-    KLD-based decision variable ordering between two populations.
+    KLD-based decision variable ordering between two populations (varOrder2.m).
 
     Maps each target dimension to the source dimension with minimum KLD.
+
+    Notes
+    -----
+    ``varOrder2.m`` line 44 rescales ``temp1(j)`` with a *single* subscript on
+    the (N x maxD) deviation matrix, so MATLAB rescales the j-th element in
+    column-major order rather than the j-th column.  That linear indexing is
+    reproduced here for behavioural equivalence: in practice the source
+    variances entering the KLD are the raw (unscaled) column variances, while
+    the first column-major elements accumulate the range ratios across the
+    target-dimension loop.
     """
     if option == 0:
         return np.random.randint(prev_dims, size=this_dims)
 
-    m_prev = np.mean(prev_decs[:, :prev_dims], axis=0)
-    m_this = np.mean(this_decs[:, :this_dims], axis=0)
+    n_prev = prev_decs.shape[0]
+    n_this = this_decs.shape[0]
 
-    prev_max = np.max(prev_decs[:, :prev_dims], axis=0)
-    prev_min = np.min(prev_decs[:, :prev_dims], axis=0)
-    this_max = np.max(this_decs[:, :this_dims], axis=0)
-    this_min = np.min(this_decs[:, :this_dims], axis=0)
-    prev_range = np.maximum(prev_max - prev_min, 1e-15)
-    this_range = np.maximum(this_max - this_min, 1e-15)
+    prev_max = np.max(prev_decs, axis=0)
+    prev_min = np.min(prev_decs, axis=0)
+    this_max = np.max(this_decs, axis=0)
+    this_min = np.min(this_decs, axis=0)
+    prev_range = prev_max - prev_min
+    this_range = this_max - this_min
 
-    var_prev = np.var(prev_decs[:, :prev_dims], axis=0, ddof=1)
-    var_this = np.var(this_decs[:, :this_dims], axis=0, ddof=1)
-    var_prev = np.maximum(var_prev, 1e-15)
-    var_this = np.maximum(var_this, 1e-15)
+    m_prev = np.mean(prev_decs, axis=0)
+    m_this = np.mean(this_decs, axis=0)
+
+    temp1 = np.asfortranarray((prev_decs - m_prev) ** 2)
+    temp2 = (this_decs - m_this) ** 2
+    sum2 = np.sum(temp2, axis=0) / max(n_this - 1, 1)
+
+    # Column-major (linear-index) view onto temp1, matching MATLAB temp1(j)
+    flat = temp1.T.reshape(-1)
+    k = min(prev_dims, flat.size)
 
     order = np.zeros(this_dims, dtype=int)
-    for i in range(this_dims):
-        # Scale source variance by range ratio
-        scaled_var = var_prev * (this_range[i] / prev_range) ** 2
-        scaled_var = np.maximum(scaled_var, 1e-15)
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        for i in range(this_dims):
+            upd = prev_range[:k] != this_range[i]
+            if np.any(upd):
+                ratio = this_range[i] / prev_range[:k]
+                flat[:k][upd] *= ratio[upd] ** 2
+            sum1 = np.sum(temp1[:, :prev_dims], axis=0) / max(n_prev - 1, 1)
 
-        # KLD(source_j || target_i)
-        KLD = (np.log2(np.sqrt(scaled_var) / np.sqrt(var_this[i])) +
-               (var_this[i] + (m_prev - m_this[i]) ** 2) / (2 * scaled_var)
-               - 0.5)
+            kld = (np.log2(np.sqrt(sum1) / np.sqrt(sum2[i])) +
+                   (sum2[i] + (m_prev[:prev_dims] - m_this[i]) ** 2) /
+                   (2 * sum1) - 0.5)
+            kld = np.where(np.isnan(kld), np.inf, kld)
 
-        if option == 2 and i < prev_dims:
-            KLD[i] = np.max(KLD) + 1  # exclude same-index match
+            if option == 2 and i < prev_dims:
+                kld[i] = np.max(kld) + 1  # exclude same-index match
 
-        order[i] = np.argmin(KLD)
+            order[i] = int(np.argmin(kld))
     return order
 
 
 def _m_transfer(prev_decs, this_decs, prev_dims, this_dims,
                 n_transfer, order, option):
     """
-    Transfer and transform decision variables from source to target.
+    Transfer and transform decision variables from source to target
+    (m_transfer1.m).
 
     Scales variables by range ratio and shifts by mean difference
     when source/target distributions don't overlap sufficiently.
     """
-    prev_max = np.max(prev_decs[:, :prev_dims], axis=0).copy()
-    prev_min = np.min(prev_decs[:, :prev_dims], axis=0).copy()
-    this_max = np.max(this_decs[:, :this_dims], axis=0)
-    this_min = np.min(this_decs[:, :this_dims], axis=0)
-    prev_range = np.maximum(
-        np.max(prev_decs[:, :prev_dims], axis=0) -
-        np.min(prev_decs[:, :prev_dims], axis=0), 1e-15)
-    this_range = np.maximum(this_max - this_min, 1e-15)
-    m_prev = np.mean(prev_decs[:, :prev_dims], axis=0)
-    m_this = np.mean(this_decs[:, :this_dims], axis=0)
+    prev_max, prev_min, m_prev = _reshape_stats(prev_decs, prev_dims)
+    this_max, this_min, m_this = _reshape_stats(this_decs, this_dims)
+    prev_max = prev_max.copy()
+    prev_min = prev_min.copy()
+    prev_range = prev_max - prev_min
+    this_range = this_max - this_min
 
-    # Scale prev bounds (in-place, cumulative per MATLAB code)
-    if option != 0:
-        for i in range(this_dims):
-            j = order[i]
-            sc = this_range[i] / prev_range[j]
-            prev_max[j] = (prev_max[j] - m_prev[j]) * sc + m_prev[j]
-            prev_min[j] = (prev_min[j] - m_prev[j]) * sc + m_prev[j]
-
-    n_transfer = min(n_transfer, len(prev_decs))
+    n_transfer = int(min(n_transfer, len(prev_decs)))
     new_decs = this_decs[:n_transfer].copy()
+    if n_transfer == 0 or this_dims == 0:
+        return new_decs
 
-    for nn in range(n_transfer):
-        for i in range(this_dims):
-            j = order[i]
-            if option != 0 and prev_range[j] > 1e-15:
-                new_decs[nn, i] = ((prev_decs[nn, j] - m_prev[j]) *
-                                   (this_range[i] / prev_range[j]) +
-                                   m_prev[j])
-            else:
-                new_decs[nn, i] = prev_decs[nn, j]
+    j = np.asarray(order, dtype=int)
 
-            # Check overlap for mean shift
-            need_shift = True
-            if option != 0:
-                if (prev_min[j] <= this_max[i] and
-                        prev_max[j] >= this_max[i] and
-                        m_prev[j] <= this_max[i]):
-                    need_shift = False
-                if (prev_max[j] >= this_min[i] and
-                        prev_min[j] <= this_min[i] and
-                        m_prev[j] >= this_min[i]):
-                    need_shift = False
+    with np.errstate(divide='ignore', invalid='ignore', over='ignore'):
+        if option != 0:
+            # Cumulative in-place rescaling of the source bounds (order matters
+            # when several target dims map onto the same source dim)
+            for i in range(this_dims):
+                jj = j[i]
+                sc = this_range[i] / prev_range[jj]
+                prev_max[jj] = (prev_max[jj] - m_prev[jj]) * sc + m_prev[jj]
+                prev_min[jj] = (prev_min[jj] - m_prev[jj]) * sc + m_prev[jj]
 
-            if need_shift:
-                new_decs[nn, i] += m_this[i] - m_prev[j]
+            vals = ((prev_decs[:n_transfer][:, j] - m_prev[j]) *
+                    (this_range[:this_dims] / prev_range[j]) + m_prev[j])
+            keep = (((prev_min[j] <= this_max[:this_dims]) &
+                     (prev_max[j] >= this_max[:this_dims]) &
+                     (m_prev[j] <= this_max[:this_dims])) |
+                    ((prev_max[j] >= this_min[:this_dims]) &
+                     (prev_min[j] <= this_min[:this_dims]) &
+                     (m_prev[j] >= this_min[:this_dims])))
+        else:
+            vals = prev_decs[:n_transfer][:, j].astype(float).copy()
+            keep = np.zeros(this_dims, dtype=bool)
 
-            new_decs[nn, i] = np.clip(new_decs[nn, i], 0, 1)
+        shift = ~keep
+        vals[:, shift] += (m_this[:this_dims] - m_prev[j])[shift]
 
+    new_decs[:, :this_dims] = np.clip(np.nan_to_num(vals, nan=0.0), 0, 1)
     return new_decs
 
 
@@ -441,7 +489,8 @@ def _gen_ga(pop_decs, mu, mum):
     """Standard GA generation: SBX crossover + polynomial mutation."""
     n_pop, D = pop_decs.shape
     perm = np.random.permutation(n_pop)
-    n_pairs = n_pop // 2
+    # MATLAB: for i = 1:ceil(N/2) with p2 = indorder(i + fix(N/2))
+    n_pairs = -(-n_pop // 2)
     off = np.zeros((n_pairs * 2, D))
 
     for i in range(n_pairs):

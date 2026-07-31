@@ -22,6 +22,49 @@ from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Algorithms.MTSO.MFEA import mfea_selection
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper, the offspring are NOT clipped to
+    [0, 1] here: MFEA-II applies polynomial mutation and the variable swap on
+    the raw crossover output and clips only once, at the end of Generation.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
 class MFEA_II:
     """
     Multifactorial Evolutionary Algorithm With Online Transfer Parameter Estimation
@@ -49,7 +92,7 @@ class MFEA_II:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, muc=2.0, mum=5.0, swap=0.5, save_data=True, save_path='./Data',
                  name='MFEA-II', disable_tqdm=True):
         """
         Initialize MFEA-II.
@@ -62,6 +105,13 @@ class MFEA_II:
             Population size per task (default: 100)
         max_nfes : int, optional
             Maximum number of function evaluations per task (default: 10000)
+        muc : float, optional
+            Distribution index for SBX crossover (default: 2.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (default: 5.0)
+        swap : float, optional
+            Variable swap probability threshold; a gene is swapped between the two
+            children when ``rand() >= swap`` (default: 0.5)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -74,6 +124,9 @@ class MFEA_II:
         self.problem = problem
         self.n = n if n is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
+        self.muc = muc
+        self.mum = mum
+        self.swap = swap
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -102,8 +155,12 @@ class MFEA_II:
         nfes = n * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Transform populations to unified search space for knowledge transfer
-        pop_decs, pop_cons = space_transfer(problem=problem, decs=decs, cons=cons, type='uni')
+        # Transform populations to unified search space for knowledge transfer. The
+        # reference initialises the whole unified vector with rand(1, max(D)), so the
+        # padded dimensions must be uniform random (not zeros). Constraints are padded
+        # separately with zeros so that padding never fabricates a violation.
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
+        _, pop_cons = space_transfer(problem=problem, decs=decs, cons=cons, type='uni', padding='zero')
         pop_objs = objs
 
         # Skill factor indicates which task each individual belongs to
@@ -119,54 +176,81 @@ class MFEA_II:
             # Merge populations from all tasks into single arrays
             pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_cons, pop_sfs)
 
-            off_decs = np.zeros_like(pop_decs)
-            off_objs = np.zeros_like(pop_objs)
-            off_cons = np.zeros_like(pop_cons)
-            off_sfs = np.zeros_like(pop_sfs)
+            n_pop, d_max = pop_decs.shape
+            half = n_pop // 2
+            n_pairs = int(np.ceil(n_pop / 2))
 
-            # Randomly pair individuals for assortative mating
-            shuffled_index = np.random.permutation(pop_decs.shape[0])
+            off_decs = np.zeros((2 * n_pairs, d_max))
+            off_objs = np.zeros((2 * n_pairs, pop_objs.shape[1]))
+            off_cons = np.zeros((2 * n_pairs, pop_cons.shape[1]))
+            off_sfs = np.zeros((2 * n_pairs, 1), dtype=int)
 
-            for i in range(0, len(shuffled_index), 2):
-                p1 = shuffled_index[i]
-                p2 = shuffled_index[i + 1]
+            # Randomly pair individuals for assortative mating: the reference pairs
+            # order[i] with order[i + floor(N / 2)] for i = 1..ceil(N / 2)
+            ind_order = np.random.permutation(n_pop)
+
+            count = 0
+            for i in range(n_pairs):
+                p1 = ind_order[i]
+                p2 = ind_order[i + half]
                 sf1 = pop_sfs[p1].item()
                 sf2 = pop_sfs[p2].item()
+                parent_sfs = (sf1, sf2)
                 rmp_value = rmpMatrix[sf1, sf2]
 
-                # Cross-task transfer: crossover if same task or rmp condition met
+                # Cross-task transfer: crossover if same task or the learned rmp fires
                 if sf1 == sf2 or np.random.rand() < rmp_value:
-                    off_dec1, off_dec2 = crossover(pop_decs[p1, :], pop_decs[p2, :], mu=2)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = np.random.choice([sf1, sf2])
-                    off_sfs[i + 1] = sf1 if off_sfs[i] == sf2 else sf2
+                    off_dec1, off_dec2 = _sbx_crossover_unclipped(pop_decs[p1, :], pop_decs[p2, :], self.muc)
+                    off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
+                    off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                    # Variable swap (uniform crossover) between the two children
+                    swap_mask = np.random.rand(d_max) >= self.swap
+                    tmp = off_dec2[swap_mask].copy()
+                    off_dec2[swap_mask] = off_dec1[swap_mask]
+                    off_dec1[swap_mask] = tmp
+                    # Vertical cultural transmission: each child independently imitates
+                    # the skill factor of one uniformly chosen parent
+                    off_sfs[count] = parent_sfs[np.random.randint(2)]
+                    off_sfs[count + 1] = parent_sfs[np.random.randint(2)]
+                    children = (off_dec1, off_dec2)
                 else:
-                    # No transfer: randomly pick individuals from same task for crossover
-                    for x, p in enumerate([p1, p2]):
+                    # No transfer: each parent mates with another random individual
+                    # drawn from its own task
+                    children = []
+                    for x, p in enumerate((p1, p2)):
                         sf = pop_sfs[p].item()
-                        # Find all individuals with the same skill factor
+                        # Find all individuals with the same skill factor, excluding p
                         same_sf_indices = np.where(pop_sfs.flatten() == sf)[0]
-                        # Remove current individual from candidates
                         same_sf_indices = same_sf_indices[same_sf_indices != p]
-                        # Randomly select another individual from the same task
-                        idx = np.random.choice(same_sf_indices)
+                        idx = np.random.choice(same_sf_indices) if same_sf_indices.size > 0 else p
 
-                        # Crossover with the selected individual
-                        off_dec_curr, _ = crossover(pop_decs[p, :], pop_decs[idx, :], mu=2)
-                        off_dec_curr = mutation(off_dec_curr, mu=5)
-                        off_decs[i + x, :] = off_dec_curr
+                        off_dec_curr, off_dec_temp = _sbx_crossover_unclipped(
+                            pop_decs[p, :], pop_decs[idx, :], self.muc)
+                        off_dec_curr = _poly_mutation_unclipped(off_dec_curr, self.mum)
+                        off_dec_temp = _poly_mutation_unclipped(off_dec_temp, self.mum)
+                        # One-way variable swap: the discarded sibling donates its genes
+                        swap_mask = np.random.rand(d_max) >= self.swap
+                        off_dec_curr[swap_mask] = off_dec_temp[swap_mask]
+                        children.append(off_dec_curr)
                         # Inherit skill factor from parent
-                        off_sfs[i + x] = sf
+                        off_sfs[count + x] = sf
 
-                # Trim to task dimensionality and evaluate offspring
-                task_idx1 = off_sfs[i].item()
-                task_idx2 = off_sfs[i + 1].item()
+                # Single boundary repair, after crossover / mutation / swap
+                off_decs[count, :] = np.clip(children[0], 0, 1)
+                off_decs[count + 1, :] = np.clip(children[1], 0, 1)
+                count += 2
 
-                off_dec1_trimmed = off_decs[i, :dims[task_idx1]]
-                off_dec2_trimmed = off_decs[i + 1, :dims[task_idx2]]
-                off_objs[i, :], off_cons[i, :] = evaluation_single(problem, off_dec1_trimmed, task_idx1)
-                off_objs[i + 1, :], off_cons[i + 1, :] = evaluation_single(problem, off_dec2_trimmed, task_idx2)
+            # Evaluate every offspring on the task named by its skill factor
+            for t in range(nt):
+                idx_t = np.where(off_sfs.flatten() == t)[0]
+                if idx_t.size == 0:
+                    continue
+                objs_t, cons_t = evaluation_single(problem, off_decs[idx_t][:, :dims[t]], t, unified=True)
+                off_objs[idx_t, :] = objs_t[:, :off_objs.shape[1]]
+                if off_cons.shape[1] > 0:
+                    off_cons[idx_t, :] = cons_t[:, :off_cons.shape[1]]
+                nfes += idx_t.size
+                pbar.update(idx_t.size)
 
             # Merge parents and offspring populations
             pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(
@@ -178,9 +262,6 @@ class MFEA_II:
 
             # Transform back to native search space
             decs, cons = space_transfer(problem=problem, decs=pop_decs, cons=pop_cons, type='real')
-
-            nfes += n * nt
-            pbar.update(n * nt)
 
             append_history(all_decs, decs, all_objs, pop_objs, all_cons, cons)
 
@@ -239,12 +320,8 @@ def learnRMP(subpops, vars):
         # Create random samples with maxDim columns
         randMat = np.random.rand(nrandsamples, maxDim)
 
-        # Pad subpops data to maxDim with ZEROS (to match MATLAB behavior)
-        current_data = subpops[i]['data']
-        padded_data = current_data
-
-        # Combine original data with random samples
-        combined_data = np.vstack([padded_data, randMat])
+        # Combine original data (already in the unified maxDim space) with the noise
+        combined_data = np.vstack([subpops[i]['data'], randMat])
         model['mean'] = np.mean(combined_data, axis=0)
         model['stdev'] = np.std(combined_data, axis=0, ddof=1)
 
@@ -260,39 +337,25 @@ def learnRMP(subpops, vars):
 
             Dim = min(vars[i], vars[j])
 
-            # Compute probabilities for population i
-            for k in range(probmodel[i]['nsamples']):
-                for l in range(Dim):
-                    popdata[0]['probmatrix'][k, 0] *= norm.pdf(
-                        subpops[i]['data'][k, l],
-                        probmodel[i]['mean'][l],
-                        probmodel[i]['stdev'][l]
-                    )
-                    popdata[0]['probmatrix'][k, 1] *= norm.pdf(
-                        subpops[i]['data'][k, l],
-                        probmodel[j]['mean'][l],
-                        probmodel[j]['stdev'][l]
-                    )
+            # Likelihood of each member of subpopulation i under model i and model j
+            # (product of the univariate normal densities over the first Dim genes;
+            # vectorised form of the reference's element-wise double loop)
+            data_i = subpops[i]['data'][:, :Dim]
+            data_j = subpops[j]['data'][:, :Dim]
+            mean_i, std_i = probmodel[i]['mean'][:Dim], probmodel[i]['stdev'][:Dim]
+            mean_j, std_j = probmodel[j]['mean'][:Dim], probmodel[j]['stdev'][:Dim]
 
-            # Compute probabilities for population j
-            for k in range(probmodel[j]['nsamples']):
-                for l in range(Dim):
-                    popdata[1]['probmatrix'][k, 0] *= norm.pdf(
-                        subpops[j]['data'][k, l],
-                        probmodel[i]['mean'][l],
-                        probmodel[i]['stdev'][l]
-                    )
-                    popdata[1]['probmatrix'][k, 1] *= norm.pdf(
-                        subpops[j]['data'][k, l],
-                        probmodel[j]['mean'][l],
-                        probmodel[j]['stdev'][l]
-                    )
+            popdata[0]['probmatrix'][:, 0] = np.prod(norm.pdf(data_i, mean_i, std_i), axis=1)
+            popdata[0]['probmatrix'][:, 1] = np.prod(norm.pdf(data_i, mean_j, std_j), axis=1)
+            popdata[1]['probmatrix'][:, 0] = np.prod(norm.pdf(data_j, mean_i, std_i), axis=1)
+            popdata[1]['probmatrix'][:, 1] = np.prod(norm.pdf(data_j, mean_j, std_j), axis=1)
 
-            # Optimize to find RMP value
+            # Optimize to find RMP value (MATLAB fminbnd, whose default TolX is 1e-4)
             result = minimize_scalar(
                 lambda x: loglik(x, popdata, numtasks),
                 bounds=(0, 1),
-                method='bounded'
+                method='bounded',
+                options={'xatol': 1e-4}
             )
 
             rmp_value = max(0, result.x + np.random.normal(0, 0.01))

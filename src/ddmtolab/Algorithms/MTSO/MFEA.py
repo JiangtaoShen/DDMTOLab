@@ -46,7 +46,7 @@ class MFEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, save_data=True, save_path='./Data',
+    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, muc=2.0, mum=5.0, save_data=True, save_path='./Data',
                  name='MFEA', disable_tqdm=True):
         """
         Initialize Multifactorial Evolutionary Algorithm.
@@ -61,6 +61,10 @@ class MFEA:
             Maximum number of function evaluations per task (default: 10000)
         rmp : float, optional
             Random mating probability for inter-task crossover (default: 0.3)
+        muc : float, optional
+            Distribution index for SBX crossover (default: 2.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (default: 5.0)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -74,6 +78,8 @@ class MFEA:
         self.n = n if n is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.rmp = rmp
+        self.muc = muc
+        self.mum = mum
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
@@ -102,8 +108,12 @@ class MFEA:
         nfes = n * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Transform populations to unified search space for knowledge transfer
-        pop_decs, pop_cons = space_transfer(problem=problem, decs=decs, cons=cons, type='uni', padding='mid')
+        # Transform populations to unified search space for knowledge transfer. The
+        # reference initialises the whole unified vector with rand(1, max(D)), so the
+        # padded dimensions must be uniform random (not a constant). Constraints are
+        # padded separately with zeros so that padding never fabricates a violation.
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
+        _, pop_cons = space_transfer(problem=problem, decs=decs, cons=cons, type='uni', padding='zero')
         pop_objs = objs
 
         # Skill factor indicates which task each individual belongs to
@@ -116,44 +126,56 @@ class MFEA:
             # Merge populations from all tasks into single arrays
             pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(pop_decs, pop_objs, pop_cons, pop_sfs)
 
-            off_decs = np.zeros_like(pop_decs)
-            off_objs = np.zeros_like(pop_objs)
-            off_cons = np.zeros_like(pop_cons)
-            off_sfs = np.zeros_like(pop_sfs)
+            n_pop = pop_decs.shape[0]
+            half = n_pop // 2
+            n_pairs = int(np.ceil(n_pop / 2))
 
-            # Randomly pair individuals for assortative mating
-            shuffled_index = np.random.permutation(pop_decs.shape[0])
+            off_decs = np.zeros((2 * n_pairs, pop_decs.shape[1]))
+            off_objs = np.zeros((2 * n_pairs, pop_objs.shape[1]))
+            off_cons = np.zeros((2 * n_pairs, pop_cons.shape[1]))
+            off_sfs = np.zeros((2 * n_pairs, 1), dtype=int)
 
-            for i in range(0, len(shuffled_index), 2):
-                p1 = shuffled_index[i]
-                p2 = shuffled_index[i + 1]
+            # Randomly pair individuals for assortative mating: the reference pairs
+            # order[i] with order[i + floor(N / 2)] for i = 1..ceil(N / 2)
+            ind_order = np.random.permutation(n_pop)
+
+            count = 0
+            for i in range(n_pairs):
+                p1 = ind_order[i]
+                p2 = ind_order[i + half]
                 sf1 = pop_sfs[p1].item()
                 sf2 = pop_sfs[p2].item()
+                parent_sfs = (sf1, sf2)
 
                 # Cross-task transfer: crossover if same task or rmp condition met
                 if sf1 == sf2 or np.random.rand() < self.rmp:
-                    off_dec1, off_dec2 = crossover(pop_decs[p1, :], pop_decs[p2, :], mu=2)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = np.random.choice([sf1, sf2])
-                    off_sfs[i + 1] = sf1 if off_sfs[i] == sf2 else sf2
+                    off_dec1, off_dec2 = crossover(pop_decs[p1, :], pop_decs[p2, :], mu=self.muc)
+                    # Vertical cultural transmission: each child independently imitates
+                    # the skill factor of one uniformly chosen parent
+                    off_sfs[count] = parent_sfs[np.random.randint(2)]
+                    off_sfs[count + 1] = parent_sfs[np.random.randint(2)]
                 else:
                     # No transfer: mutate within own task
-                    off_dec1 = mutation(pop_decs[p1, :], mu=5)
-                    off_dec2 = mutation(pop_decs[p2, :], mu=5)
-                    off_decs[i, :] = off_dec1
-                    off_decs[i + 1, :] = off_dec2
-                    off_sfs[i] = sf1
-                    off_sfs[i + 1] = sf2
+                    off_dec1 = mutation(pop_decs[p1, :], mu=self.mum)
+                    off_dec2 = mutation(pop_decs[p2, :], mu=self.mum)
+                    off_sfs[count] = sf1
+                    off_sfs[count + 1] = sf2
 
-                # Trim to task dimensionality and evaluate offspring
-                task_idx1 = off_sfs[i].item()
-                task_idx2 = off_sfs[i + 1].item()
+                off_decs[count, :] = off_dec1
+                off_decs[count + 1, :] = off_dec2
+                count += 2
 
-                off_dec1_trimmed = off_decs[i, :dims[task_idx1]]
-                off_dec2_trimmed = off_decs[i + 1, :dims[task_idx2]]
-                off_objs[i, :], off_cons[i, :] = evaluation_single(problem, off_dec1_trimmed, task_idx1)
-                off_objs[i + 1, :], off_cons[i + 1, :] = evaluation_single(problem, off_dec2_trimmed, task_idx2)
+            # Evaluate every offspring on the task named by its skill factor
+            for t in range(nt):
+                idx_t = np.where(off_sfs.flatten() == t)[0]
+                if idx_t.size == 0:
+                    continue
+                objs_t, cons_t = evaluation_single(problem, off_decs[idx_t][:, :dims[t]], t, unified=True)
+                off_objs[idx_t, :] = objs_t[:, :off_objs.shape[1]]
+                if off_cons.shape[1] > 0:
+                    off_cons[idx_t, :] = cons_t[:, :off_cons.shape[1]]
+                nfes += idx_t.size
+                pbar.update(idx_t.size)
 
             # Merge parents and offspring populations
             pop_decs, pop_objs, pop_cons, pop_sfs = vstack_groups(
@@ -165,9 +187,6 @@ class MFEA:
 
             # Transform back to native search space
             decs, cons = space_transfer(problem, decs=pop_decs, cons=pop_cons, type='real')
-
-            nfes += n * nt
-            pbar.update(n * nt)
 
             append_history(all_decs, decs, all_objs, pop_objs, all_cons, cons)
 

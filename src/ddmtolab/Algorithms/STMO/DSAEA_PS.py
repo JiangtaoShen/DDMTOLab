@@ -124,12 +124,14 @@ class DSAEA_PS:
         max_nfes_per_task = par_list(self.max_nfes, nt)
         n_per_task = par_list(self.n, nt)
 
-        # Generate uniformly distributed reference vectors for each task
+        # Generate uniformly distributed reference vectors for each task.
+        # MATLAB: [V0,~] = UniformPoint(Problem.N + 10, Problem.M).  The population
+        # size Problem.N used by the environmental selections is NOT changed by the
+        # (possibly different) number of reference vectors returned here.
         V0 = []
         for i in range(nt):
-            v_i, actual_n = uniform_point(n_per_task[i], n_objs[i])
+            v_i, _ = uniform_point(n_per_task[i] + 10, n_objs[i])
             V0.append(v_i)
-            n_per_task[i] = actual_n
 
         # Generate identity matrix reference vectors (for diversity checking)
         v0 = [np.eye(n_objs[i]) for i in range(nt)]
@@ -146,8 +148,15 @@ class DSAEA_PS:
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < sum(max_nfes_per_task):
-            active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
+        # Stall guard: a task that repeatedly proposes only already-evaluated
+        # points can never advance its budget, so retire it instead of spinning.
+        stall_counts = [0] * nt
+        finished = [False] * nt
+        max_stall = 5
+
+        while True:
+            active_tasks = [i for i in range(nt)
+                            if not finished[i] and nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
 
@@ -197,19 +206,20 @@ class DSAEA_PS:
 
                 # === Predict dominance front numbers via RBF model ===
                 NP = CPopDec.shape[0]
-                FNO = np.zeros(NP)
-                for j in range(NP):
-                    FNO[j] = rbf_predict(dmodel, A1Dec, CPopDec[j:j + 1, :])
+                FNO = rbf_predict(dmodel, A1Dec, CPopDec)
 
                 # Map predicted front numbers to discrete levels using kmeans
-                if max_FN > 1 and NP > max_FN:
+                # MATLAB: [aa,bb] = kmeans(FNO',maxFN); the cluster with the
+                # smallest centre becomes front 1, the next smallest front 2, ...
+                n_clusters = int(min(max_FN, len(np.unique(FNO))))
+                if n_clusters > 1:
                     from sklearn.cluster import KMeans
-                    km = KMeans(n_clusters=max_FN, n_init=10, random_state=0)
+                    km = KMeans(n_clusters=n_clusters, n_init=10, random_state=0)
                     labels = km.fit_predict(FNO.reshape(-1, 1))
                     centers = km.cluster_centers_.flatten()
                     # Assign front number: cluster with smallest center gets front 1, etc.
                     sorted_center_idx = np.argsort(centers)
-                    rank_map = np.zeros(max_FN, dtype=int)
+                    rank_map = np.zeros(n_clusters, dtype=int)
                     for r, idx in enumerate(sorted_center_idx):
                         rank_map[idx] = r + 1
                     FNO_mapped = rank_map[labels].astype(float)
@@ -228,29 +238,36 @@ class DSAEA_PS:
                 else:
                     PopNew = CPopDec[indexF1]
 
-                # Remove duplicates
+                # Remove duplicates (DDMTOLab paradigm: never spend an expensive
+                # evaluation on a point that has already been evaluated)
                 PopNew = remove_duplicates(PopNew, decs[i])
 
-                if PopNew.shape[0] > 0:
-                    # Limit to remaining budget
-                    remaining = max_nfes_per_task[i] - nfes_per_task[i]
-                    if PopNew.shape[0] > remaining:
-                        PopNew = PopNew[:remaining]
+                # Limit to remaining budget
+                remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                if PopNew.shape[0] > remaining:
+                    PopNew = PopNew[:remaining]
 
-                    # Re-evaluate with expensive function
-                    new_objs, _ = evaluation_single(problem, PopNew, i)
+                if PopNew.shape[0] == 0:
+                    stall_counts[i] += 1
+                    if stall_counts[i] >= max_stall:
+                        finished[i] = True
+                    continue
+                stall_counts[i] = 0
 
-                    # Update archive (merge and deduplicate)
-                    arc_decs[i], arc_objs[i] = merge_archive(
-                        arc_decs[i], arc_objs[i], PopNew, new_objs
-                    )
+                # Re-evaluate with expensive function
+                new_objs, _ = evaluation_single(problem, PopNew, i)
 
-                    # Update cumulative dataset
-                    decs[i] = np.vstack([decs[i], PopNew])
-                    objs[i] = np.vstack([objs[i], new_objs])
+                # Update archive A1 (MATLAB UpdataArchive)
+                arc_decs[i], arc_objs[i] = _updata_archive(
+                    arc_decs[i], arc_objs[i], PopNew, new_objs
+                )
 
-                    nfes_per_task[i] += PopNew.shape[0]
-                    pbar.update(PopNew.shape[0])
+                # Update cumulative dataset
+                decs[i] = np.vstack([decs[i], PopNew])
+                objs[i] = np.vstack([objs[i], new_objs])
+
+                nfes_per_task[i] += PopNew.shape[0]
+                pbar.update(PopNew.shape[0])
 
         pbar.close()
         runtime = time.time() - start_time
@@ -262,6 +279,109 @@ class DSAEA_PS:
                                      save_data=self.save_data)
 
         return results
+
+
+# =============================================================================
+# Local ports of PlatEMO helpers (see module docstring for why they are local)
+# =============================================================================
+
+def _operator_ga(parent, proC=1.0, disC=20.0, proM=1.0, disM=20.0):
+    """
+    Faithful port of PlatEMO's ``OperatorGA`` for real encodings.
+
+    The shared ``ga_generation`` helper shuffles the parent matrix before pairing
+    and produces one extra child for an odd population; ``OperatorGA`` pairs the
+    first half with the second half deterministically and drops the last row when
+    the population size is odd.  The parent ordering carries meaning here because
+    the inner MOEAs feed their environmental-selection output straight back in as
+    the next generation's parent matrix.
+
+    Parameters
+    ----------
+    parent : np.ndarray
+        Parent decision variables in normalized [0, 1] space, shape (n, d)
+    proC, disC : float
+        Crossover probability and SBX distribution index
+    proM, disM : float
+        Expected number of mutated variables and PM distribution index
+
+    Returns
+    -------
+    offspring : np.ndarray
+        Offspring decision variables, shape (2 * floor(n / 2), d)
+    """
+    parent = np.asarray(parent, dtype=float)
+    n_all, D = parent.shape
+    half = n_all // 2
+    if half == 0:
+        return np.zeros((0, D))
+    parent1 = parent[:half, :]
+    parent2 = parent[half:2 * half, :]
+    N = half
+
+    # Simulated binary crossover
+    beta = np.zeros((N, D))
+    mu = np.random.rand(N, D)
+    beta[mu <= 0.5] = (2 * mu[mu <= 0.5]) ** (1 / (disC + 1))
+    beta[mu > 0.5] = (2 - 2 * mu[mu > 0.5]) ** (-1 / (disC + 1))
+    beta = beta * (-1.0) ** np.random.randint(0, 2, size=(N, D))
+    beta[np.random.rand(N, D) < 0.5] = 1
+    beta[np.tile(np.random.rand(N, 1) > proC, (1, D))] = 1
+    offspring = np.vstack([
+        (parent1 + parent2) / 2 + beta * (parent1 - parent2) / 2,
+        (parent1 + parent2) / 2 - beta * (parent1 - parent2) / 2,
+    ])
+
+    # Polynomial mutation (decision space is normalized to [0, 1] here)
+    lower = np.zeros((2 * N, D))
+    upper = np.ones((2 * N, D))
+    site = np.random.rand(2 * N, D) < proM / D
+    mu = np.random.rand(2 * N, D)
+    offspring = np.minimum(np.maximum(offspring, lower), upper)
+
+    temp = site & (mu <= 0.5)
+    offspring[temp] = offspring[temp] + (upper[temp] - lower[temp]) * (
+            (2 * mu[temp] + (1 - 2 * mu[temp]) *
+             (1 - (offspring[temp] - lower[temp]) / (upper[temp] - lower[temp])) ** (disM + 1)
+             ) ** (1 / (disM + 1)) - 1)
+
+    temp = site & (mu > 0.5)
+    offspring[temp] = offspring[temp] + (upper[temp] - lower[temp]) * (
+            1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) *
+                 (1 - (upper[temp] - offspring[temp]) / (upper[temp] - lower[temp])) ** (disM + 1)
+                 ) ** (1 / (disM + 1)))
+
+    return offspring
+
+
+def _updata_archive(arc_decs, arc_objs, new_decs, new_objs):
+    """
+    Port of MATLAB ``UpdataArchive``: concatenate, then keep the first occurrence
+    of each unique decision row.
+
+    MATLAB's ``[~,index] = unique(All,'rows'); Total = ALL(index)`` returns the
+    archive in lexicographic order of the decision vectors rather than in
+    evaluation order.  That ordering is observable because the archive seeds the
+    inner MOEA populations and ``_operator_ga`` pairs the first half of the
+    matrix with the second half, so it is reproduced here (the shared
+    ``merge_archive`` re-sorts the indices back into evaluation order).
+
+    Parameters
+    ----------
+    arc_decs, arc_objs : np.ndarray
+        Current archive
+    new_decs, new_objs : np.ndarray
+        Newly evaluated solutions
+
+    Returns
+    -------
+    decs, objs : np.ndarray
+        Updated archive, ordered lexicographically by decision vector
+    """
+    all_decs = np.vstack([arc_decs, new_decs])
+    all_objs = np.vstack([arc_objs, new_objs])
+    _, index = np.unique(all_decs, axis=0, return_index=True)
+    return all_decs[index], all_objs[index]
 
 
 # =============================================================================
@@ -320,42 +440,47 @@ def _nd_sort_csdr(objs, n_sort):
         return np.array([]), 0
 
     # Compute pairwise cosine similarity (matching MATLAB: 1 - pdist2(...,'cosine'))
-    cosine = 1 - cdist(objs, objs, metric='cosine')
+    with np.errstate(invalid='ignore', divide='ignore'):
+        cosine = 1 - cdist(objs, objs, metric='cosine')
     np.fill_diagonal(cosine, 0)
     angle = np.arccos(np.clip(cosine, -1, 1))
 
-    # Compute threshold angle: 50th percentile of minimum angles
-    min_angles = np.sort(np.unique(np.min(angle, axis=1)))
+    # Compute threshold angle: 50th percentile of minimum angles.
+    # MATLAB's min()/max() silently ignore NaN entries (a zero objective row
+    # makes the cosine distance undefined); the forced 0 on the diagonal always
+    # leaves at least one finite entry per row, so nanmin is well defined.
+    min_angles = np.sort(np.unique(np.nanmin(angle, axis=1)))
     idx = min(int(np.ceil(0.5 * N)) - 1, len(min_angles) - 1)
     min_a = min_angles[max(0, idx)]
     min_a = max(min_a, 1e-10)
 
-    # Theta matrix for angle-based dominance
-    theta = np.maximum(1.0, angle / min_a)
+    # Theta matrix for angle-based dominance.  np.fmax reproduces MATLAB's
+    # max(1, NaN) == 1 semantics (np.maximum would propagate the NaN).
+    theta = np.fmax(1.0, angle / min_a)
 
     # NormP: sum of objectives for each solution
     norm_p = np.sum(objs, axis=1)
 
-    # Build dominance matrix
+    # --- Build the dominance matrix, vectorised over the i<j double loop ---
+    # MATLAB IfDominate(a,b,M) counts t = #{a<=b} and q = #{a>b}; the third
+    # branch of its if/elseif chain is unreachable so p is always 0.  Hence
+    #   x == 1  <=>  all(a <= b)   (this includes a == b)
+    #   x == 2  <=>  all(a >  b)   (strict in every objective)
+    # and x==1 sets dominate(i,j) while x==2 sets dominate(j,i).
+    upper = np.triu(np.ones((N, N), dtype=bool), 1)
+    a_leq_b = np.all(objs[:, None, :] <= objs[None, :, :], axis=2)
+    a_gt_b = np.all(objs[:, None, :] > objs[None, :, :], axis=2)
+
     dominate = np.zeros((N, N), dtype=bool)
+    dominate[upper & a_leq_b] = True
+    dominate[(upper & (~a_leq_b) & a_gt_b).T] = True
 
-    for ii in range(N - 1):
-        for jj in range(ii + 1, N):
-            # Check Pareto dominance (matching MATLAB IfDominate)
-            a_leq_b = np.all(objs[ii] <= objs[jj])
-            b_leq_a = np.all(objs[jj] <= objs[ii])
-            are_equal = np.all(objs[ii] == objs[jj])
-
-            if a_leq_b and not are_equal:
-                dominate[ii, jj] = True
-            elif b_leq_a and not are_equal:
-                dominate[jj, ii] = True
-
-            # Check angle-based dominance
-            if norm_p[ii] * theta[ii, jj] < norm_p[jj]:
-                dominate[ii, jj] = True
-            elif norm_p[jj] * theta[jj, ii] < norm_p[ii]:
-                dominate[jj, ii] = True
+    # Angle-based dominance:
+    #   if NormP(i)*Theta(i,j) < NormP(j) -> dominate(i,j)
+    #   elseif NormP(j)*Theta(j,i) < NormP(i) -> dominate(j,i)
+    ang_dom = (norm_p[:, None] * theta) < norm_p[None, :]
+    dominate[upper & ang_dom] = True
+    dominate[(upper & (~ang_dom) & ang_dom.T).T] = True
 
     # Assign front numbers
     front_no = np.full(N, np.inf)
@@ -369,7 +494,15 @@ def _nd_sort_csdr(objs, n_sort):
             (~np.any(dominate, axis=0)) & (front_no == np.inf)
         )[0]
         if len(current) == 0:
-            break
+            # Unreachable for the MATLAB relation (every edge u->v implies
+            # NormP(u) <= NormP(v), with equality only between identical rows
+            # whose single edge runs from the lower to the higher index, so the
+            # graph is acyclic).  Kept as a guard so that a numerical pathology
+            # can never leave front numbers at inf, which would silently shrink
+            # the population in _es_csdr and poison FN + FNO downstream.
+            current = np.where(front_no == np.inf)[0]
+            if len(current) == 0:
+                break
         front_no[current] = max_fno
         dominate[current, :] = False
 
@@ -411,8 +544,8 @@ def _moea_inner(pop_decs, models, wmax, N, M, data_type, strategy='ibea', V=None
         Final predicted objectives
     """
     for w in range(1, wmax + 1):
-        # Generate offspring via GA operators
-        off_decs = ga_generation(pop_decs, muc=20.0, mum=20.0)
+        # Generate offspring via GA operators (PlatEMO OperatorGA defaults)
+        off_decs = _operator_ga(pop_decs)
 
         # Merge parent and offspring
         pop_decs = np.vstack([pop_decs, off_decs])
@@ -518,7 +651,9 @@ def _es_csdr(pop_objs, N):
         # Use crowding distance for the last front
         last_front = np.where(front_no == max_fno)[0]
         cd = crowding_distance(norm_objs, front_no)
-        sorted_last = last_front[np.argsort(-cd[last_front])]
+        # MATLAB's sort(...,'descend') is stable; ties (notably the many inf
+        # boundary distances) must keep their original ordering
+        sorted_last = last_front[np.argsort(-cd[last_front], kind='stable')]
         Next[sorted_last[:remaining_needed]] = True
 
     return np.where(Next)[0]
@@ -568,11 +703,6 @@ def _se_ibea(pop_decs, pop_objs, A1Obj, mu):
     PopObj_f1 = PopObj_norm[FN_pop == 1]
     PopDec_f1 = pop_decs[FN_pop == 1]
 
-    if PopObj_f1.shape[0] == 0:
-        # Fallback: select mu from population by IBEA
-        idx = _es_ibea(PopObj_norm, min(mu, pop_decs.shape[0]))
-        return pop_decs[idx]
-
     # Combine front-1 populations for IBEA fitness computation
     CObj = np.vstack([PopObj_f1, A1Obj_f1])
     n_pop = PopObj_f1.shape[0]
@@ -584,23 +714,24 @@ def _se_ibea(pop_decs, pop_objs, A1Obj, mu):
     kappa = 0.05
     fitness, I, C = ibea_fitness(CObj, kappa=kappa)
 
-    # Remove worst solutions, preferring to remove from pop_f1
-    next_pop = list(range(n_pop))
-    next_a1 = list(range(n_pop, n_pop + n_a1))
-    all_next = next_pop + next_a1
+    # Faithful port of the MATLAB removal loop.  Note that MATLAB rebuilds
+    # ``Next = 1:(n_Pop + n_A1)`` after every deletion, so the candidate set is
+    # always the leading ``n_Pop + n_A1`` entries of the (never re-indexed)
+    # Fitness vector and ``Next(x) == x``.  The survivors are tracked separately
+    # in Next_1 / Next_2, and a position ``x`` below the *current* n_Pop deletes
+    # the x-th surviving population member.
+    next_1 = list(range(n_pop))
+    next_2 = list(range(n_a1))
 
-    while len(next_pop) > mu:
-        fit_values = fitness[all_next]
-        min_idx = np.argmin(fit_values)
-        to_remove_global = all_next[min_idx]
-
-        if C[to_remove_global] > 1e-10:
-            fitness += np.exp(-I[to_remove_global, :] / C[to_remove_global] / kappa)
-
-        if to_remove_global < n_pop:
-            next_pop.remove(to_remove_global)
+    while len(next_1) > mu:
+        total = n_pop + n_a1
+        x = int(np.argmin(fitness[:total]))
+        fitness = fitness + np.exp(-I[x, :] / C[x] / kappa)
+        if x < n_pop:
+            next_1.pop(x)
+            n_pop -= 1
         else:
-            next_a1.remove(to_remove_global)
-        all_next = next_pop + next_a1
+            next_2.pop(x - n_pop)
+            n_a1 -= 1
 
-    return PopDec_f1[next_pop]
+    return PopDec_f1[next_1]

@@ -140,14 +140,19 @@ class EMTO_AI:
             sel = selection_elit(objs=pop_objs[t], n=arc_len, cons=pop_cons[t])
             arc_decs.append(pop_decs[t][sel].copy())
 
-        # Initial rmp = 0 for all tasks (no cross-evaluation data yet, matching
-        # MATLAB behavior where getNums returns 0 when MFObj for other tasks is inf)
-        rmp = np.zeros(nt)
+        # Initial transfer intensity. Initialization_MF evaluates every individual
+        # on every task, so the reference already has a full cross-task objective
+        # matrix here; reproduce it with one extra sweep per foreign task.
+        cross_objs = self._cross_evaluate(problem, pop_decs, pop_objs, nt, dims)
+        nfes += n * nt * (nt - 1)
+        rmp = np.clip(_compute_rmp(cross_objs, pop_objs, nt), 0.0, 1.0)
 
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
-        gen = 1
+        # MToP increments Algo.Gen inside notTerminated before the first loop body,
+        # so the first generation executed by the reference runs with Gen == 2.
+        gen = 2
         while nfes < max_nfes:
             # Merge populations from all tasks
             m_decs, m_objs, m_cons, m_sfs = vstack_groups(
@@ -174,18 +179,23 @@ class EMTO_AI:
                     # x1 from other task's archive
                     x1 = arc_decs[o][np.random.randint(len(arc_decs[o]))]
 
-                    # x2, x3 from same task population
+                    # x2 is drawn from the same task; the reference re-checks x2's
+                    # skill factor when resampling x3, so x3 is only required to
+                    # differ from i and x2 and may come from any task.
                     same_idx = np.where(m_sfs.flatten() == sf_i)[0]
                     same_idx = same_idx[same_idx != i]
-                    if len(same_idx) < 2:
+                    if len(same_idx) == 0:
                         cands = np.arange(pop_size)
-                        cands = cands[cands != i]
-                        chosen = np.random.choice(cands, 2, replace=False)
+                        x2 = int(np.random.choice(cands[cands != i]))
                     else:
-                        chosen = np.random.choice(same_idx, 2, replace=False)
+                        x2 = int(np.random.choice(same_idx))
+
+                    cands = np.arange(pop_size)
+                    cands = cands[(cands != i) & (cands != x2)]
+                    x3 = int(np.random.choice(cands))
 
                     # DE mutation: archive_base + F*(x2 - x3)
-                    mutant = x1 + self.F * (m_decs[chosen[0]] - m_decs[chosen[1]])
+                    mutant = x1 + self.F * (m_decs[x2] - m_decs[x3])
                     trial = _de_binomial_crossover(mutant, m_decs[i], self.CR, maxD)
 
                     off_decs[i] = trial
@@ -266,25 +276,17 @@ class EMTO_AI:
             pop_is_off = [np.zeros(n, dtype=int) for _ in range(nt)]
 
             # --- Update transfer intensity every gap_gen generations ---
-            if gen % self.gap_gen == 0 and nfes + n * nt * (nt - 1) <= max_nfes:
+            if gen % self.gap_gen == 0:
                 # Cross-evaluate: evaluate each task's subpop on every other task
                 # cross_objs[t][o] = task t's subpop objectives when evaluated on task o
-                cross_objs = [[None] * nt for _ in range(nt)]
-                for t in range(nt):
-                    cross_objs[t][t] = pop_objs[t]
-                    for o in range(nt):
-                        if o == t:
-                            continue
-                        t_decs_real = pop_decs[t][:, :dims[o]]
-                        c_objs, _ = evaluation_single(problem, t_decs_real, o)
-                        cross_objs[t][o] = c_objs
-                        nfes += n
-                        pbar.update(n)
+                cross_objs = self._cross_evaluate(
+                    problem, pop_decs, pop_objs, nt, dims)
+                nfes += n * nt * (nt - 1)
+                pbar.update(n * nt * (nt - 1))
 
                 # Compute rmp: for each target task o, measure how competitive
                 # source tasks' individuals are on task o
-                rmp = _compute_rmp(cross_objs, pop_objs, nt)
-                rmp = np.clip(rmp, 0.0, 1.0)
+                rmp = np.clip(_compute_rmp(cross_objs, pop_objs, nt), 0.0, 1.0)
 
             # Record history (transform back to real space)
             real_decs, real_cons = space_transfer(
@@ -303,6 +305,40 @@ class EMTO_AI:
             filename=self.name, save_data=self.save_data)
 
         return results
+
+    @staticmethod
+    def _cross_evaluate(problem, pop_decs, pop_objs, nt, dims):
+        """
+        Evaluate every task's subpopulation on every other task.
+
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        pop_decs : list of np.ndarray
+            Per-task decision variables in the unified space
+        pop_objs : list of np.ndarray
+            Per-task objective values on the task the individuals belong to
+        nt : int
+            Number of tasks
+        dims : list of int
+            Decision variable dimensionality of each task
+
+        Returns
+        -------
+        cross_objs : list of list of np.ndarray
+            ``cross_objs[t][o]`` holds task ``t``'s subpopulation evaluated on
+            task ``o``; the diagonal reuses the already known objectives.
+        """
+        cross_objs = [[None] * nt for _ in range(nt)]
+        for t in range(nt):
+            cross_objs[t][t] = pop_objs[t]
+            for o in range(nt):
+                if o == t:
+                    continue
+                c_objs, _ = evaluation_single(problem, pop_decs[t][:, :dims[o]], o)
+                cross_objs[t][o] = c_objs
+        return cross_objs
 
 
 # ============================================================

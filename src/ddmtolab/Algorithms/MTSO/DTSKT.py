@@ -112,7 +112,7 @@ class DTSKT:
         n = self.n
         max_nfes_per_task = par_list(self.max_nfes, nt)
         total_max_nfes = sum(max_nfes_per_task)
-        elit_n = max(1, round(self.A * n))
+        elit_n = max(1, int(np.floor(self.A * n + 0.5)))
 
         # Initialize population and evaluate
         decs = initialization(problem, n)
@@ -158,12 +158,14 @@ class DTSKT:
                     CO[k, t] = CO[t, k]
             # Diagonal stays 0 (matches MATLAB's 1/inf initialization)
 
+            # MToP checks termination only at the top of the generation loop, so
+            # every task is always processed to completion; the overshoot is
+            # removed from the recorded history by trim_excess_evaluations.
             for t in range(nt):
-                if total_nfes >= total_max_nfes:
-                    break
-
                 # --- Evaluate M{t} ---
-                M_dec = np.clip(M[t].reshape(1, -1), 0, 1)
+                # MATLAB evaluates the distribution mean unclipped (M can leave
+                # [0, 1] through the 4-point correction below).
+                M_dec = M[t].reshape(1, -1)
                 OO_obj, OO_con = evaluation_single(problem, M_dec, t)
                 nfes_per_task[t] += 1
                 total_nfes += 1
@@ -192,12 +194,14 @@ class DTSKT:
                 else:
                     # Multi-source transfer
                     PATH = np.zeros(d)
-                    CO2 = np.argsort(CO[k, :])[::-1]
-                    TOP_idx = list(CO2[:self.topn])
+                    CO2 = np.argsort(-CO[k, :], kind='stable')
+                    TOP_idx = [int(i) for i in CO2[:self.topn]]
                     if t in TOP_idx:
                         TOP_idx.remove(t)
-                    if k not in TOP_idx:
-                        TOP_idx.append(k)
+                    # MATLAB appends k unconditionally, so k is counted twice
+                    # (and therefore double-weighted) when it is already a
+                    # top-TOPN neighbour of itself.
+                    TOP_idx.append(int(k))
 
                     # Compute weights from CO(t, :)
                     w = np.array([CO[t, ti] for ti in TOP_idx])
@@ -226,12 +230,7 @@ class DTSKT:
                 n_cons_t = cons[t].shape[1]
                 offspring_cons = np.zeros((n, n_cons_t))
 
-                gen_count = 0
                 for i in range(n - 2):
-                    if total_nfes >= total_max_nfes:
-                        gen_count = i
-                        break
-
                     if flag == 0:
                         # Generate from distribution
                         if np.random.rand() < self.rmp:
@@ -267,17 +266,15 @@ class DTSKT:
                         flag = 0
 
                     offspring_decs[i] = np.clip(offspring_decs[i], 0, 1)
-                    gen_count = i + 1
 
                 # Add best individual and OO as last two
-                if gen_count <= n - 2:
-                    gen_count = n - 2
                 offspring_decs[n - 2] = decs[t][rank[t][0]]  # best from current pop
                 offspring_decs[n - 1] = M_dec[0]              # OO point
 
-                # Evaluate non-evaluated offspring (mirrors + best + OO)
+                # Evaluate non-evaluated offspring (mirrors + best + OO).
+                # MATLAB re-evaluates the elite copy and OO here as well.
                 non_eval_indices = [i for i in range(n) if not offspring_evaluated[i]]
-                if non_eval_indices and total_nfes < total_max_nfes:
+                if non_eval_indices:
                     ne_decs = offspring_decs[non_eval_indices]
                     ne_objs, ne_cons = evaluation_single(problem, ne_decs, t)
                     for j, ni in enumerate(non_eval_indices):
@@ -302,26 +299,26 @@ class DTSKT:
                 M[t] = np.average(elite_decs, axis=0, weights=log_weights)
                 D_M = M[t] - M_O
 
-                if total_nfes + 4 <= total_max_nfes:
-                    O_decs = np.clip(np.array([
-                        M[t] + 2 * D_M,   # O1: overshoot
-                        M[t],             # O2: current
-                        M_O,              # O3: old
-                        M[t] - 0.5 * D_M  # O4: between
-                    ]), 0, 1)
-                    O_objs, _ = evaluation_single(problem, O_decs, t)
-                    nfes_per_task[t] += 4
-                    total_nfes += 4
-                    pbar.update(4)
+                # MATLAB evaluates the four probe points unclipped
+                O_decs = np.array([
+                    M[t] + 2 * D_M,   # O1: overshoot
+                    M[t],             # O2: current
+                    M_O,              # O3: old
+                    M[t] - 0.5 * D_M  # O4: between
+                ])
+                O_objs, _ = evaluation_single(problem, O_decs, t)
+                nfes_per_task[t] += 4
+                total_nfes += 4
+                pbar.update(4)
 
-                    # Adjust M based on objective trend
-                    if O_objs[0, 0] < O_objs[1, 0] and O_objs[1, 0] < O_objs[2, 0]:
-                        # Improving trend: use overshoot
-                        M[t] = O_decs[0]
-                    elif O_objs[1, 0] > max(O_objs[2, 0], O_objs[3, 0]):
-                        # M went wrong: fallback
-                        M[t] = O_decs[3]
-                    # else: keep M[t] as is
+                # Adjust M based on objective trend
+                if O_objs[0, 0] < O_objs[1, 0] and O_objs[1, 0] < O_objs[2, 0]:
+                    # Improving trend: use overshoot
+                    M[t] = O_decs[0]
+                elif O_objs[1, 0] > max(O_objs[2, 0], O_objs[3, 0]):
+                    # M went wrong: fallback
+                    M[t] = O_decs[3]
+                # else: keep M[t] as is
 
                 # --- Update S, path, M_old ---
                 elite_decs = decs[t][rank[t][:elit_n]]

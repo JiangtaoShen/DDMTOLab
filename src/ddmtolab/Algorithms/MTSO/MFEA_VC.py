@@ -138,19 +138,20 @@ class MFEA_VC:
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
-        gen = 1
+        # MToP increments Algo.Gen inside notTerminated before the first loop body,
+        # so the first generation executed by the reference runs with Gen == 2 and
+        # the VAE branch is therefore active for generations 2..25.
+        gen = 2
         while nfes < max_nfes:
             # --- VAE generation (first vae_gens generations, 2-task only) ---
             vae_decs = None
             if gen <= self.vae_gens and nt == 2:
                 vae_decs = _generate_vae_individuals(
-                    pop_decs, pop_objs, pop_sfs, nt, self.lam)
+                    pop_decs, pop_objs, nt, self.lam)
 
             # Merge populations
             m_decs, m_objs, m_cons, m_sfs = vstack_groups(
                 pop_decs, pop_objs, pop_cons, pop_sfs)
-
-            maxD = m_decs.shape[1]
 
             # --- Generation ---
             off_decs = np.zeros_like(m_decs)
@@ -171,18 +172,15 @@ class MFEA_VC:
                 if sf1 == sf2 or np.random.rand() < self.rmp:
                     # --- Transfer: crossover ---
                     if vae_decs is not None and len(vae_decs) > 0:
-                        # VAE-guided crossover: crossover with VAE individual
-                        vi = np.random.randint(len(vae_decs))
-                        vae_dec = vae_decs[vi]
+                        # One shared VAE partner per pair; the reference calls
+                        # GA_Crossover twice and keeps only the first child of each
+                        # call, so the second call overwrites the second offspring.
+                        vae_dec = vae_decs[np.random.randint(len(vae_decs))]
 
                         off_decs[idx1], _ = crossover(
                             m_decs[p1], vae_dec, mu=self.muc)
                         off_decs[idx2], _ = crossover(
                             m_decs[p2], vae_dec, mu=self.muc)
-
-                        # Trim to proper length (in unified space, already maxD)
-                        off_decs[idx1] = off_decs[idx1][:maxD]
-                        off_decs[idx2] = off_decs[idx2][:maxD]
                     else:
                         # Standard SBX crossover
                         off_decs[idx1], off_decs[idx2] = crossover(
@@ -253,14 +251,17 @@ class MFEA_VC:
 
 class _SimpleVAE(nn.Module):
     """
-    VAE matching the MATLAB implementation architecture.
+    VAE matching the MyVAE network graph of the MToP reference.
 
-    Encoder: input → FC(H) → ReLU → FC(H) → ReLU → FC(H) → ReLU →
-             FC(H) → Sigmoid → FC_mean(L) → FC_logvar(L)
-    Decoder: FC(H) → ReLU → FC(H) → ReLU → FC(H) → ReLU →
-             FC(H) → Sigmoid → FC(input_size)
+    Encoder: input -> FC(H) -> ReLU -> FC(H) -> ReLU -> FC(H) -> ReLU ->
+             FC(H) -> Sigmoid -> FC_mean(L) -> FC_logvar(L)
+    Reparametrization: z = mu + exp(0.5 * logvar) * eps
+    Decoder: FC(H) -> ReLU -> FC(H) -> ReLU -> FC(H) -> ReLU ->
+             FC(H) -> Sigmoid -> FC(input_size)
 
-    Note: fc_logvar takes fc_mean's output as input (sequential in MATLAB).
+    ``fc_logvar`` consumes ``fc_mean``'s output because MyVAE stacks the two
+    fully connected layers sequentially. A full forward pass therefore already
+    contains one reparametrization draw, exactly like ``predict(net, x)``.
     """
 
     def __init__(self, input_size, hidden_size=256, latent_size=200):
@@ -275,7 +276,7 @@ class _SimpleVAE(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.Sigmoid(),
         )
-        # Sequential: sigmoid → fc_mean → fc_logvar (logvar takes mean as input)
+        # Sequential: sigmoid -> fc_mean -> fc_logvar (logvar takes mean as input)
         self.fc_mean = nn.Linear(hidden_size, latent_size)
         self.fc_logvar = nn.Linear(latent_size, latent_size)
 
@@ -291,49 +292,80 @@ class _SimpleVAE(nn.Module):
             nn.Linear(hidden_size, input_size),
         )
 
+        # The network is never trained (MyVAE runs with istraining = false), so
+        # its weights ARE the transfer operator. Draw them from the NumPy global
+        # stream instead of torch's, so that np.random.seed reproduces a whole
+        # run -- torch keeps an independent RNG that np.random.seed cannot reach.
+        self._init_weights_from_numpy()
+
+    def _init_weights_from_numpy(self):
+        """Re-draw every Linear layer from NumPy using PyTorch's own default law.
+
+        ``nn.Linear`` initialises both weight and bias uniformly on
+        ``[-1/sqrt(fan_in), 1/sqrt(fan_in)]``; reproducing that law here keeps
+        the network statistically identical while making it seedable.
+        """
+        with torch.no_grad():
+            for module in self.modules():
+                if isinstance(module, nn.Linear):
+                    bound = 1.0 / np.sqrt(module.in_features)
+                    w = np.random.uniform(-bound, bound, size=tuple(module.weight.shape))
+                    module.weight.copy_(torch.as_tensor(w, dtype=module.weight.dtype))
+                    if module.bias is not None:
+                        b = np.random.uniform(-bound, bound, size=tuple(module.bias.shape))
+                        module.bias.copy_(torch.as_tensor(b, dtype=module.bias.dtype))
+
+    @staticmethod
+    def _reparametrize(mu, logvar):
+        """z = mu + exp(0.5 * logvar) * eps, guarded against exp() overflow."""
+        # Drawn from NumPy for the same seeding reason as the weights above.
+        eps = torch.as_tensor(np.random.randn(*tuple(mu.shape)), dtype=mu.dtype)
+        return mu + torch.exp(0.5 * torch.clamp(logvar, max=30.0)) * eps
+
+    def forward(self, x):
+        """Full network pass: encoder -> reparametrization -> decoder."""
+        h = self.encoder_body(x)
+        z_mean = self.fc_mean(h)
+        z_logvar = self.fc_logvar(z_mean)
+        return self.decoder(self._reparametrize(z_mean, z_logvar))
+
     @torch.no_grad()
     def generate(self, x, lam=0.8):
         """
-        Encode, reparameterize, and decode.
+        Reproduce MyVAE.generate: encode(X1, X2) then decode(z * lambda).
+
+        ``encode`` runs the whole network, splits the *batch* in half and treats
+        the first half as the mean and the second half as the log-variance;
+        ``decode`` then runs the whole network again on the scaled result.
 
         Parameters
         ----------
         x : torch.Tensor
-            Combined data from both tasks, shape (n1+n2, input_size).
+            Combined data from both tasks, shape (n1 + n2, input_size).
             First n1 rows = task 1, last n2 rows = task 2.
         lam : float
-            Lambda scaling factor for latent space.
+            Lambda scaling factor applied before the second forward pass.
 
         Returns
         -------
         output : np.ndarray
-            Decoded output, shape (n_generated, input_size)
+            Decoded output, shape (n1, input_size) for equal halves.
         """
-        h = self.encoder_body(x)
-        z_mean_all = self.fc_mean(h)
-        z_logvar_all = self.fc_logvar(z_mean_all)
+        out = self.forward(x)
 
-        n_total = x.shape[0]
-        n_half = n_total // 2
+        n_half = x.shape[0] // 2
+        z_mean = out[:n_half]
+        z_logvar = out[n_half:2 * n_half]
+        z = self._reparametrize(z_mean, z_logvar)
 
-        # Task 1's encoded output → mean, Task 2's → logvar
-        z_mean = z_mean_all[:n_half]
-        z_logvar = z_logvar_all[n_half:]
-
-        # Reparameterization
-        eps = torch.randn_like(z_mean)
-        z = z_mean + torch.exp(0.5 * z_logvar) * eps
-
-        # Decode with lambda scaling
-        output = self.decoder(z * lam)
-        return output.numpy()
+        return self.forward(z * lam).numpy()
 
 
-def _generate_vae_individuals(pop_decs, pop_objs, pop_sfs, nt, lam):
+def _generate_vae_individuals(pop_decs, pop_objs, nt, lam):
     """
     Generate VAE-guided individuals for knowledge transfer.
 
-    Prepares population data, passes through untrained VAE, and extracts
+    Prepares population data, passes through the untrained VAE, and extracts
     decision variables for use as crossover partners.
 
     Parameters
@@ -342,77 +374,73 @@ def _generate_vae_individuals(pop_decs, pop_objs, pop_sfs, nt, lam):
         Population decision variables per task (unified space)
     pop_objs : list of np.ndarray
         Population objective values per task
-    pop_sfs : list of np.ndarray
-        Skill factors per task
     nt : int
-        Number of tasks (must be 2)
+        Number of tasks (the reference only handles nt == 2)
     lam : float
-        Lambda scaling for VAE latent space
+        Lambda scaling applied between the two forward passes
 
     Returns
     -------
-    vae_decs : list of np.ndarray
-        VAE-generated decision vectors for crossover
+    vae_decs : np.ndarray
+        VAE-generated decision vectors for crossover, shape (n_new, maxD)
+
+    Notes
+    -----
+    The reference builds each column as ``[Dec * 10000; MFObj; TaskLabel * 10000]``
+    where ``MFObj`` holds one entry per task. From the second generation onwards
+    the reference leaves the non-skill entries at ``inf``, which propagates NaN
+    through the network and yields unusable offspring; here the individual's own
+    objective is used as a finite stand-in for those entries.
     """
     if nt != 2:
-        return []
+        return np.zeros((0, pop_decs[0].shape[1]))
 
     maxD = pop_decs[0].shape[1]
-    desired_cols = 100
+    desired_rows = 100
+    n_train = desired_rows // 2
 
-    # Build data matrices: [Dec * 10000; MFObj; TaskLabel * 10000]
+    # Build data matrices: [Dec * 10000, MFObj (one column per task), Label * 10000]
     data_tasks = []
     for t in range(nt):
         n_t = pop_decs[t].shape[0]
-        dec_scaled = pop_decs[t] * 10000.0  # (n_t, maxD)
-        obj_vals = pop_objs[t]  # (n_t, n_objs)
+        dec_scaled = pop_decs[t] * 10000.0
+        mf_objs = np.repeat(pop_objs[t][:, :1], nt, axis=1)
         task_label = np.full((n_t, 1), (t + 1) * 10000.0)
-        # data per individual: [Dec*10000, MFObj, TaskLabel*10000]
-        data_t = np.hstack([dec_scaled, obj_vals, task_label])  # (n_t, maxD+n_objs+1)
-        data_tasks.append(data_t)
+        data_tasks.append(np.hstack([dec_scaled, mf_objs, task_label]))
 
-    # Pad or truncate to desired_cols per task
     for t in range(nt):
         n_t = data_tasks[t].shape[0]
-        if n_t > desired_cols:
-            data_tasks[t] = data_tasks[t][:desired_cols]
-        elif n_t < desired_cols:
-            extra_idx = np.random.randint(0, n_t, size=desired_cols - n_t)
+        if n_t > desired_rows:
+            data_tasks[t] = data_tasks[t][:desired_rows]
+        elif n_t < desired_rows:
+            # datasample() draws with replacement
+            extra_idx = np.random.randint(0, n_t, size=desired_rows - n_t)
             data_tasks[t] = np.vstack([data_tasks[t], data_tasks[t][extra_idx]])
 
-    # 50/50 train split (train = test in MATLAB code)
-    n_train = desired_cols // 2
-    for t in range(nt):
-        perm = np.random.permutation(desired_cols)
-        data_tasks[t] = data_tasks[t][perm[:n_train]]  # (50, features)
+        # randperm(numX1) only permutes the first floor(0.5 * 100) = 50 columns
+        perm = np.random.permutation(n_train)
+        data_tasks[t] = data_tasks[t][perm]
 
-    # Remove TaskLabel column for encoder input
-    X1 = data_tasks[0][:, :-1]  # (50, maxD + n_objs)
-    X2 = data_tasks[1][:, :-1]  # (50, maxD + n_objs)
-    input_size = X1.shape[1]
+    # encode() drops the trailing TaskLabel row before running the network
+    x_combined = np.vstack([data_tasks[0][:, :-1],
+                            data_tasks[1][:, :-1]]).astype(np.float32)
+    input_size = x_combined.shape[1]
 
-    # Combine for encoding
-    x_combined = np.vstack([X1, X2]).astype(np.float32)  # (100, input_size)
-
-    # Build VAE with random weights (no training, matching MATLAB istraining=false)
+    # Random weights, never trained (the reference keeps istraining = false)
     vae = _SimpleVAE(input_size, hidden_size=256, latent_size=200)
     vae.eval()
 
-    # Generate
-    x_tensor = torch.from_numpy(x_combined)
-    output = vae.generate(x_tensor, lam=lam)  # (50, input_size)
+    output = vae.generate(torch.from_numpy(x_combined), lam=lam)
 
-    # Split into task 1 and task 2
-    n_gen = output.shape[0]
-    n_half = n_gen // 2
-    new_x1 = output[:n_half]   # (25, input_size)
-    new_x2 = output[n_half:]   # (25, input_size)
+    # The reference splits the output into two task halves and re-attaches the
+    # label row; only the leading maxD entries are ever read back as Dec.
+    vae_decs = np.asarray(output[:, :maxD], dtype=np.float64)
 
-    # Extract Dec values (first maxD columns)
-    vae_decs = []
-    for row in new_x1:
-        vae_decs.append(row[:maxD].copy())
-    for row in new_x2:
-        vae_decs.append(row[:maxD].copy())
+    # An untrained network fed 1e4-scaled inputs can saturate to non-finite
+    # values; the reference would propagate them into unusable offspring.
+    bad = ~np.isfinite(vae_decs)
+    if np.any(bad):
+        vae_decs = vae_decs.copy()
+        vae_decs[bad] = np.random.rand(int(np.count_nonzero(bad)))
 
     return vae_decs

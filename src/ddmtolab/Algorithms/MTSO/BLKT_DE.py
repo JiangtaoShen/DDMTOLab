@@ -210,16 +210,17 @@ class BLKT_DE:
                 off_decs_t = np.clip(combined_off[perm], 0, 1)
 
                 # Evaluate offspring
-                off_objs_t = np.full_like(objs[t], np.inf)
-                off_cons_t = np.zeros_like(cons[t])
-                for i in range(n):
-                    off_objs_t[i:i + 1], off_cons_t[i:i + 1] = \
-                        evaluation_single(problem, off_decs_t[i], t)
+                off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t, t)
                 nfes += n
                 pbar.update(n)
 
-                # Track best before selection
-                best_before = np.min(objs[t])
+                # Track best before selection. MToP's succ_flag is the Flag
+                # returned by Algo.Evaluation, i.e. whether the newly evaluated
+                # offspring beat the incumbent best under min_FP (feasibility
+                # first, then objective). Because Selection_Elit is elitist and
+                # uses the same order, that is exactly "the population best
+                # improved" measured lexicographically on (CV, Obj).
+                best_before = _best_key(objs[t], cons[t])
 
                 # Elitist selection (parents + offspring)
                 merged_decs = np.vstack([decs[t], off_decs_t])
@@ -231,7 +232,7 @@ class BLKT_DE:
                 cons[t] = merged_cons[sel]
 
                 # Check improvement
-                if np.min(objs[t]) < best_before:
+                if _best_key(objs[t], cons[t]) < best_before:
                     succ_flags[t] = True
 
             # Record history
@@ -243,11 +244,11 @@ class BLKT_DE:
                 divD = np.random.randint(1, maxD + 1)
                 divK = np.random.randint(minK, maxK + 1)
             elif any(not f for f in succ_flags):
-                # Some tasks stagnated: slight perturbation (±1)
-                divD = min(maxD, max(1, np.random.randint(
-                    max(1, divD - 1), min(maxD, divD + 1) + 1)))
-                divK = min(maxK, max(minK, np.random.randint(
-                    max(minK, divK - 1), min(maxK, divK + 1) + 1)))
+                # Some tasks stagnated: slight perturbation (+-1).
+                # MATLAB draws uniformly from {x-1, x, x+1} and *then* clamps,
+                # so the clamped endpoint keeps the extra probability mass.
+                divD = min(maxD, max(1, np.random.randint(divD - 1, divD + 2)))
+                divK = min(maxK, max(minK, np.random.randint(divK - 1, divK + 2)))
 
         pbar.close()
         runtime = time.time() - start_time
@@ -259,3 +260,15 @@ class BLKT_DE:
             filename=self.name, save_data=self.save_data)
 
         return results
+
+
+def _best_key(objs, cons):
+    """
+    Lexicographic (CV, Obj) key of the best individual, matching MToP's
+    ``min_FP`` / ``sortrows([CVs, Objs], [1, 2])`` ordering.
+    """
+    n = objs.shape[0]
+    cv = np.sum(np.maximum(0, cons), axis=1) if cons is not None \
+        and cons.shape[1] > 0 else np.zeros(n)
+    b = np.lexsort((objs[:, 0], cv))[0]
+    return float(cv[b]), float(objs[b, 0])

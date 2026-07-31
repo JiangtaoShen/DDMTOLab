@@ -1,10 +1,10 @@
 """
-Surrogate-Assisted Evolutionary Algorithm with Direction-Based Local Learning (SAEA-DBLL)
+Surrogate-Assisted Evolutionary Algorithm with Decomposition-Based Local Learning (SAEA-DBLL)
 
 This module implements SAEA-DBLL for computationally expensive multi/many-objective optimization.
-It uses RBF surrogate models with a direction-based local learning strategy, where sub-reference
-vectors define neighborhoods for competitive swarm optimization, combined with adaptive vector
-selection and APD-based environmental selection.
+It uses RBF surrogate models with a decomposition-based local learning strategy, where a subset of
+reference vectors defines neighborhoods for competitive swarm optimization, combined with adaptive
+vector selection and APD-based environmental selection.
 
 References
 ----------
@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 
 class SAEA_DBLL:
     """
-    Surrogate-Assisted Evolutionary Algorithm with Direction-Based Local Learning
+    Surrogate-Assisted Evolutionary Algorithm with Decomposition-Based Local Learning
     for expensive multi/many-objective optimization.
 
     Uses RBF surrogates with neighborhood-aware competitive swarm optimization and
@@ -58,7 +58,7 @@ class SAEA_DBLL:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n=50, alpha=2.0,
+    def __init__(self, problem, n_initial=None, max_nfes=None, n=None, alpha=2.0,
                  wmax=20, mu=5, T=3, K=2,
                  save_data=True, save_path='./Data', name='SAEA-DBLL', disable_tqdm=True):
         """
@@ -73,7 +73,8 @@ class SAEA_DBLL:
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
         n : int or List[int], optional
-            Number of reference vectors per task (default: 50)
+            Requested number of reference vectors per task
+            (default: 55 when the task has 10 objectives, otherwise 50)
         alpha : float, optional
             Exponent for theta progression (default: 2.0)
         wmax : int, optional
@@ -128,12 +129,20 @@ class SAEA_DBLL:
         else:
             n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
-        n_per_task = par_list(self.n, nt)
+
+        # Requested number of reference vectors (MATLAB: NV = 55 if M == 10 else 50).
+        # NV stays at the *requested* value in MATLAB because UniformPoint is called
+        # with a single output argument, so the actual vector count never overwrites it.
+        if self.n is None:
+            nv_request = [55 if n_objs[i] == 10 else 50 for i in range(nt)]
+        else:
+            nv_request = par_list(self.n, nt)
 
         # Generate uniform reference vectors
         V0_list = []
+        n_per_task = [0] * nt
         for i in range(nt):
-            v_i, actual_n = uniform_point(n_per_task[i], n_objs[i])
+            v_i, actual_n = uniform_point(nv_request[i], n_objs[i])
             V0_list.append(v_i)
             n_per_task[i] = actual_n
 
@@ -150,9 +159,11 @@ class SAEA_DBLL:
         V_list = [v.copy() for v in V0_list]
         Ve_list = []
         for i in range(nt):
-            NV = n_per_task[i]
-            n_sub = max(1, int(np.ceil(NV / self.K)))
-            perm = np.random.permutation(NV)[:n_sub]
+            # MATLAB: Ve = V(randperm(size(V,1),ceil(NV/K)),:) with NV = requested count
+            n_avail = V_list[i].shape[0]
+            n_sub = max(1, int(np.ceil(nv_request[i] / self.K)))
+            n_sub = min(n_sub, n_avail)
+            perm = np.random.permutation(n_avail)[:n_sub]
             Ve_list.append(V_list[i][perm].copy())
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
@@ -162,6 +173,7 @@ class SAEA_DBLL:
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_pass = sum(nfes_per_task)
 
             for i in active_tasks:
                 M = n_objs[i]
@@ -201,7 +213,7 @@ class SAEA_DBLL:
                 Ns = []
 
                 for w in range(self.wmax):
-                    # Reproduction: direction-based local learning
+                    # Reproduction: decomposition-based local learning
                     OffDec, OffVel = _reproduction_operator(
                         PopObj, PopDec, PopVel, B, Ve, theta, M
                     )
@@ -233,11 +245,15 @@ class SAEA_DBLL:
                 # Sample selection (infill)
                 PopNew = _sample_selection(PopDec, PopObj, V, self.mu, theta)
 
-                # Remove duplicates
                 if PopNew is not None and PopNew.shape[0] > 0:
+                    # Remove duplicates against all previously evaluated solutions.
+                    # SAEADBLL.m evaluates PopNew verbatim and only folds duplicates
+                    # out afterwards in UpdataArchive, spending evaluations on points
+                    # whose objective values are already known; every expensive
+                    # algorithm in DDMTOLab filters first instead, so a duplicate
+                    # never consumes part of the budget.
                     PopNew = remove_duplicates(PopNew, decs[i])
 
-                if PopNew is not None and PopNew.shape[0] > 0:
                     # Limit to remaining budget
                     remaining = max_nfes_per_task[i] - nfes_per_task[i]
                     if PopNew.shape[0] > remaining:
@@ -246,7 +262,7 @@ class SAEA_DBLL:
                     # Re-evaluate with expensive function
                     new_objs, _ = evaluation_single(problem, PopNew, i)
 
-                    # Update archive
+                    # Update archive A1 (MATLAB UpdataArchive: unique decision rows)
                     arc_decs[i], arc_objs[i] = merge_archive(
                         arc_decs[i], arc_objs[i], PopNew, new_objs
                     )
@@ -257,6 +273,10 @@ class SAEA_DBLL:
 
                     nfes_per_task[i] += PopNew.shape[0]
                     pbar.update(PopNew.shape[0])
+
+            if sum(nfes_per_task) == nfes_before_pass:
+                # No task could produce a new sample in a full pass; stop
+                break
 
         pbar.close()
         runtime = time.time() - start_time
@@ -321,12 +341,12 @@ def _environmental_selection(pop_obj, V, theta):
 
 
 # =============================================================================
-# Reproduction Operator (Direction-Based Local Learning)
+# Reproduction Operator (Decomposition-Based Local Learning)
 # =============================================================================
 
 def _reproduction_operator(pop_obj, pop_dec, pop_vel, B, Ve, theta, M):
     """
-    Direction-based local learning reproduction operator.
+    Decomposition-based local learning reproduction operator.
 
     Winners are selected via APD environmental selection using sub-vectors Ve.
     Losers learn from neighborhood winners via CSO-style velocity update,
@@ -361,20 +381,13 @@ def _reproduction_operator(pop_obj, pop_dec, pop_vel, B, Ve, theta, M):
     # Environmental selection on sub-vectors to determine winners
     winner_idx, winner_v_idx = _env_selection_with_vectors(pop_obj, Ve, theta)
 
-    if len(winner_idx) == 0:
-        # Fallback: return GA offspring
-        off_dec = ga_generation(pop_dec, muc=20.0, mum=20.0)
-        off_vel = np.zeros_like(off_dec)
-        return off_dec, off_vel
-
     loser_idx = np.setdiff1d(np.arange(N), winner_idx)
     NL = len(loser_idx)
 
     if NL == 0:
-        # All are winners; return winners with mutation
-        off_dec = pop_dec.copy()
-        off_vel = pop_vel.copy()
-        off_dec = _polynomial_mutation(off_dec)
+        # All solutions are winners: OffDec = WinnerDec, OffVel = WinnerVel (MATLAB)
+        off_dec = _polynomial_mutation(pop_dec[winner_idx].copy())
+        off_vel = pop_vel[winner_idx].copy()
         return off_dec, off_vel
 
     loser_dec = pop_dec[loser_idx]
@@ -559,7 +572,7 @@ def _vector_adaption(V0, pop_obj, k):
 
     # For each cluster, select the vector closest to the cluster center
     Vindex = []
-    for c in range(k):
+    for c in np.unique(labels):
         current = np.where(labels == c)[0]
         if len(current) == 1:
             Vindex.append(current[0])
@@ -653,7 +666,8 @@ def _sample_selection(pop_dec, pop_obj, V, mu, theta):
         gamma = np.min(np.arccos(np.clip(cosine, -1, 1)), axis=1)
         gamma = np.maximum(gamma, 1e-6)
     else:
-        gamma = np.array([1.0])
+        # MATLAB: cosine matrix is [0] after zeroing the diagonal -> acos(0) = pi/2
+        gamma = np.array([np.pi / 2])
 
     # Associate each solution to nearest active vector
     angle = np.arccos(np.clip(1 - cdist(pop_obj_t, Va, metric='cosine'), -1, 1))

@@ -38,6 +38,13 @@ class MFEA_DGD:
     ----------
     algorithm_information : dict
         Dictionary containing algorithm capabilities and requirements
+
+    Notes
+    -----
+    One generation costs ``4 * n * n_tasks + 2`` evaluations: two probes per parent
+    per pair for the finite-difference gradient (``2 * n * n_tasks``), the main
+    offspring (``n * n_tasks``), and the surviving probe buffer that the reference
+    implementation re-evaluates together with the offspring (``n * n_tasks + 2``).
     """
 
     algorithm_information = {
@@ -124,12 +131,12 @@ class MFEA_DGD:
         pop_objs = objs
         pop_sfs = [np.full((n, 1), fill_value=i) for i in range(nt)]
 
-        L = 0.0  # smoothed gradient norm
-
         pbar = tqdm(total=max_nfes, initial=nfes, desc=f"{self.name}",
                     disable=self.disable_tqdm)
 
-        gen = 1
+        # MToP increments Algo.Gen inside notTerminated before the first loop body,
+        # so the first generation executed by the reference runs with Gen == 2.
+        gen = 2
         while nfes < max_nfes:
             # Random sigma from {10^-1, ..., 10^-5}
             sigma = 10.0 ** (-np.random.randint(1, 6))
@@ -146,52 +153,62 @@ class MFEA_DGD:
                 pop_decs, pop_objs, pop_cons, pop_sfs)
 
             maxD = m_decs.shape[1]
-            maxC = m_cons.shape[1]  # unified constraint dimension
+            n_obj = m_objs.shape[1]
+            n_con = m_cons.shape[1]
             n_pairs = pop_size // 2
 
-            # Preallocate main offspring and probe arrays
+            # Preallocate main offspring
             main_off_decs = np.zeros((pop_size, maxD))
             main_off_sfs = np.zeros((pop_size, 1), dtype=int)
 
-            probe_decs_list = []
-            probe_objs_list = []
-            probe_cons_list = []
-            probe_sfs_list = []
+            # MToP's `offspring2` buffer. Pair i writes slots (2i, 2i+1, 2i+2, 2i+3)
+            # while the loop counter advances by 2, so every pair overwrites the two
+            # trailing slots of its predecessor. Exactly 2*n_pairs + 2 probes survive.
+            probe_decs = np.zeros((2 * n_pairs + 2, maxD))
+            probe_sfs = np.zeros((2 * n_pairs + 2, 1), dtype=int)
 
             shuffled = np.random.permutation(pop_size)
 
-            k = 0.7 + 0.6 * np.random.rand()
+            # MToP re-initialises L at the start of every Generation call
+            L = 0.0
 
             for pair_idx in range(n_pairs):
                 p1 = shuffled[pair_idx]
                 p2 = shuffled[pair_idx + n_pairs]
                 sf1 = m_sfs[p1].item()
                 sf2 = m_sfs[p2].item()
+                base = 2 * pair_idx
 
-                # Random Gaussian direction (matching RandOrthMat(D, 1))
+                # Drawn once per pair in MToP
+                k = 0.7 + 0.6 * np.random.rand()
+
+                # RandOrthMat(D, 1) returns the raw (un-normalised) Gaussian column
                 sd = np.random.randn(maxD)
 
                 # --- Gradient estimation via finite differences ---
                 QWE = np.zeros((2, maxD))
-                parents = [p1, p2]
-                factors = [sf1, sf2]
+                parents = (p1, p2)
+                factors = (sf1, sf2)
+
+                # offspring2(count .. count+3) are copies of p1, p2, p1, p2, so the
+                # skill factors follow the copied individuals even though the decision
+                # vectors are later overwritten by the probes of a single parent.
+                probe_sfs[base + 0] = sf1
+                probe_sfs[base + 1] = sf2
+                probe_sfs[base + 2] = sf1
+                probe_sfs[base + 3] = sf2
 
                 for x in range(2):
                     pidx = parents[x]
                     ft = factors[x]
 
-                    # Positive probe
                     probe_pos = m_decs[pidx] + sd * sigma
-                    # Negative probe
                     probe_neg = m_decs[pidx] - sd * sigma
 
-                    # Evaluate probes on parent's task
-                    probe_pos_trimmed = np.clip(probe_pos[:dims[ft]], 0, 1)
-                    probe_neg_trimmed = np.clip(probe_neg[:dims[ft]], 0, 1)
-                    obj_pos, con_pos = evaluation_single(
-                        problem, probe_pos_trimmed, ft)
-                    obj_neg, con_neg = evaluation_single(
-                        problem, probe_neg_trimmed, ft)
+                    # MToP evaluates the probes without clipping them back to [0, 1];
+                    # clipping would flatten the finite difference at the box boundary.
+                    obj_pos, _ = evaluation_single(problem, probe_pos[:dims[ft]], ft)
+                    obj_neg, _ = evaluation_single(problem, probe_neg[:dims[ft]], ft)
                     nfes += 2
                     pbar.update(2)
 
@@ -199,43 +216,21 @@ class MFEA_DGD:
                     L1 = obj_pos[0, 0] - obj_neg[0, 0]
                     QWE[x, :] = sd * L1 / sigma
 
-                    # Store probes as offspring for selection
-                    # Pad constraints to unified dimension
-                    con_pos_pad = np.zeros(maxC)
-                    con_neg_pad = np.zeros(maxC)
-                    c_pos = con_pos.flatten()
-                    c_neg = con_neg.flatten()
-                    if len(c_pos) > 0:
-                        con_pos_pad[:len(c_pos)] = c_pos
-                    if len(c_neg) > 0:
-                        con_neg_pad[:len(c_neg)] = c_neg
+                    probe_decs[base + 2 * x] = probe_pos
+                    probe_decs[base + 2 * x + 1] = probe_neg
 
-                    # Positive probe
-                    probe_dec_pos_full = m_decs[pidx].copy()
-                    probe_dec_pos_full[:dims[ft]] = probe_pos_trimmed
-                    probe_decs_list.append(probe_dec_pos_full)
-                    probe_objs_list.append(obj_pos.flatten())
-                    probe_cons_list.append(con_pos_pad)
-                    probe_sfs_list.append(ft)
-
-                    # Negative probe
-                    probe_dec_neg_full = m_decs[pidx].copy()
-                    probe_dec_neg_full[:dims[ft]] = probe_neg_trimmed
-                    probe_decs_list.append(probe_dec_neg_full)
-                    probe_objs_list.append(obj_neg.flatten())
-                    probe_cons_list.append(con_neg_pad)
-                    probe_sfs_list.append(ft)
-
-                # Update smoothed gradient norm L
-                qwe_norm = np.linalg.norm(QWE)
+                # Update smoothed gradient norm L.
+                # MATLAB norm() of a matrix is the spectral norm (largest singular
+                # value), not the Frobenius norm.
+                qwe_norm = np.linalg.norm(QWE, 2)
                 if qwe_norm > L:
                     L = (1 - self.gamma) * qwe_norm + self.gamma * L
 
                 # Avoid division by zero
                 L_safe = max(L, 1e-15)
 
-                idx1 = pair_idx * 2
-                idx2 = pair_idx * 2 + 1
+                idx1 = base
+                idx2 = base + 1
 
                 if sf1 == sf2 or np.random.rand() < self.rmp:
                     # --- Transfer: gradient-guided crossover + OBL ---
@@ -250,12 +245,11 @@ class MFEA_DGD:
 
                     main_off_decs[idx1] = off_dec1
 
-                    # OBL: alternate between full OBL and bounds-based
+                    # MToP: `if rand() > mod(Algo.Gen, 2)` selects plain OBL on even
+                    # generations and bound-reflected opposition on odd generations.
                     if gen % 2 == 0:
-                        # Full OBL (even gen → mod(gen,2)=0, rand()>0 always true)
                         main_off_decs[idx2] = 1.0 - off_dec1
                     else:
-                        # Bounds-based opposition (odd gen)
                         main_off_decs[idx2] = (
                             k * (max_dec[factor] + min_dec[factor]) - off_dec1)
 
@@ -270,13 +264,13 @@ class MFEA_DGD:
                     main_off_sfs[idx1] = sf1
                     main_off_sfs[idx2] = sf2
 
-                # Clip to [0, 1]
+                # Clip to [0, 1] (MToP clips `offspring` only, never `offspring2`)
                 main_off_decs[idx1] = np.clip(main_off_decs[idx1], 0, 1)
                 main_off_decs[idx2] = np.clip(main_off_decs[idx2], 0, 1)
 
             # --- Evaluate main offspring ---
-            main_off_objs = np.full((pop_size, m_objs.shape[1]), np.inf)
-            main_off_cons = np.zeros((pop_size, m_cons.shape[1]))
+            main_off_objs = np.full((pop_size, n_obj), np.inf)
+            main_off_cons = np.zeros((pop_size, n_con))
             for idx in range(pop_size):
                 t = main_off_sfs[idx].item()
                 main_off_objs[idx], main_off_cons[idx] = evaluation_single(
@@ -284,24 +278,24 @@ class MFEA_DGD:
             nfes += pop_size
             pbar.update(pop_size)
 
-            # --- Build probe arrays ---
-            n_probes = len(probe_decs_list)
-            probe_decs = np.array(probe_decs_list)
-            probe_objs = np.array(probe_objs_list).reshape(n_probes, -1)
-            probe_cons = np.array(probe_cons_list).reshape(n_probes, -1)
-            probe_sfs = np.array(probe_sfs_list).reshape(n_probes, 1)
+            # --- Re-evaluate the surviving probes on their own skill factor ---
+            # MToP appends offspring2 to the per-task offspring list and evaluates
+            # the whole list again, so each surviving probe costs a second FE.
+            n_probes = probe_decs.shape[0]
+            probe_objs = np.full((n_probes, n_obj), np.inf)
+            probe_cons = np.zeros((n_probes, n_con))
+            for idx in range(n_probes):
+                t = probe_sfs[idx].item()
+                probe_objs[idx], probe_cons[idx] = evaluation_single(
+                    problem, probe_decs[idx, :dims[t]], t)
+            nfes += n_probes
+            pbar.update(n_probes)
 
             # --- Selection: merge parents + main offspring + probes ---
-            all_off_decs = np.vstack([main_off_decs, probe_decs])
-            all_off_objs = np.vstack([main_off_objs, probe_objs])
-            all_off_cons = np.vstack([main_off_cons, probe_cons])
-            all_off_sfs = np.vstack([
-                main_off_sfs, probe_sfs])
-
-            merged_decs = np.vstack([m_decs, all_off_decs])
-            merged_objs = np.vstack([m_objs, all_off_objs])
-            merged_cons = np.vstack([m_cons, all_off_cons])
-            merged_sfs = np.vstack([m_sfs, all_off_sfs])
+            merged_decs = np.vstack([m_decs, main_off_decs, probe_decs])
+            merged_objs = np.vstack([m_objs, main_off_objs, probe_objs])
+            merged_cons = np.vstack([m_cons, main_off_cons, probe_cons])
+            merged_sfs = np.vstack([m_sfs, main_off_sfs, probe_sfs])
 
             pop_decs, pop_objs, pop_cons, pop_sfs = [], [], [], []
             for t in range(nt):

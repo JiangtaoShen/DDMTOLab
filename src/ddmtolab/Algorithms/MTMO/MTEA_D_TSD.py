@@ -147,7 +147,7 @@ class MTEA_D_TSD:
             DT.append(dt)
 
             distances = squareform(pdist(w_t))
-            neighbors = np.argsort(distances, axis=1)[:, :dt]
+            neighbors = np.argsort(distances, axis=1, kind='stable')[:, :dt]
             B.append(neighbors)
 
         # Initialize populations in unified d_max space and evaluate
@@ -161,6 +161,7 @@ class MTEA_D_TSD:
             objs.append(objs_t)
             cons.append(cons_t)
         nfes_per_task = Nt.copy()
+        nfes = sum(Nt)
 
         # Native-space history
         all_decs = [[d[:, :dims[t]].copy()] for t, d in enumerate(decs)]
@@ -180,12 +181,13 @@ class MTEA_D_TSD:
         RD_B = None
 
         total_nfes = sum(max_nfes_per_task)
-        pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task),
+        pbar = tqdm(total=total_nfes, initial=nfes,
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        while sum(nfes_per_task) < total_nfes:
+        # Main loop: one shared evaluation budget across all tasks, as in MToP
+        while nfes < total_nfes:
             # Start transfer after 10% budget consumed
-            if not trans_flag and sum(nfes_per_task) > 0.1 * total_nfes and self.TR0 > 0:
+            if not trans_flag and nfes > 0.1 * total_nfes and self.TR0 > 0:
                 SD_B = []
                 RD_B = []
                 for t in range(nt):
@@ -208,17 +210,17 @@ class MTEA_D_TSD:
             old_decs = [d.copy() for d in decs]
 
             for t in np.random.permutation(nt):
-                if nfes_per_task[t] >= max_nfes_per_task[t]:
-                    continue
-
                 for i in np.random.permutation(Nt[t]):
-                    if nfes_per_task[t] >= max_nfes_per_task[t]:
-                        break
-
                     # Select neighborhood
                     PL = B[t][i][np.random.permutation(DT[t])]
                     PG = np.random.permutation(Nt[t])
                     P = PL if np.random.rand() < self.Delta else PG
+
+                    # MToP builds the offspring by copying the whole individual i,
+                    # so it carries i's search direction and transfer rate along
+                    # to every subproblem it later replaces
+                    off_sd = SD[t][i].copy()
+                    off_tr = TR[t][i]
 
                     flag = False
                     if trans_flag and np.random.rand() < TR[t][i]:
@@ -231,10 +233,12 @@ class MTEA_D_TSD:
                         src_sd = SD[k][j]
                         src_norm = np.linalg.norm(src_sd)
                         tgt_norm = np.linalg.norm(SD[t][i])
-                        if src_norm > 1e-20:
+                        if src_norm > 0.0:
                             sd = src_sd / src_norm * tgt_norm
                         else:
-                            sd = SD[t][i].copy()
+                            # MATLAB would produce NaN here; a null direction keeps
+                            # the offspring equal to its parent instead.
+                            sd = np.zeros(d_max)
 
                         off_dec = decs[t][i] + 2 * np.random.rand() * sd
                         off_dec = np.clip(off_dec, 0, 1)
@@ -247,11 +251,10 @@ class MTEA_D_TSD:
 
                         # DE mutation
                         off_dec = x1 + self.F * (x2 - x3)
-                        # DE crossover (binomial) in d_max space
-                        j_rand = np.random.randint(d_max)
-                        mask = np.random.rand(d_max) < self.CR
-                        mask[j_rand] = True
-                        off_dec = np.where(mask, off_dec, decs[t][i])
+                        # DE binomial crossover in d_max space (MToP DE_Crossover)
+                        replace = np.random.rand(d_max) > self.CR
+                        replace[np.random.randint(d_max)] = False
+                        off_dec = np.where(replace, decs[t][i], off_dec)
                         # PM mutation
                         off_dec = mutation(off_dec, mu=self.MuM)
                         off_dec = np.clip(off_dec, 0, 1)
@@ -260,6 +263,7 @@ class MTEA_D_TSD:
                     off_obj, off_con = evaluation_single(
                         problem, off_dec[:dims[t]].reshape(1, -1), t)
                     nfes_per_task[t] += 1
+                    nfes += 1
                     pbar.update(1)
 
                     # Update ideal point
@@ -277,10 +281,12 @@ class MTEA_D_TSD:
                     replace_mask = ((g_old >= g_new_val) & (CV_pop == CV_off)) | (CV_pop > CV_off)
                     replace_idx = P[replace_mask][:self.NR]
 
-                    for r_idx in replace_idx:
-                        decs[t][r_idx] = off_dec
-                        objs[t][r_idx] = off_obj[0]
-                        cons[t][r_idx] = off_con[0]
+                    if len(replace_idx) > 0:
+                        decs[t][replace_idx] = off_dec
+                        objs[t][replace_idx] = off_obj[0]
+                        cons[t][replace_idx] = off_con[0]
+                        SD[t][replace_idx] = off_sd
+                        TR[t][replace_idx] = off_tr
 
                     # Update TR and SD neighborhoods
                     if flag and len(replace_idx) > 0:
@@ -295,17 +301,16 @@ class MTEA_D_TSD:
                             SD_B[t][i][sd_idx] = [k_new, jj_new]
                             RD_B[t][i][sd_idx] = 1
 
-                # Append native-space history
-                append_history(all_decs[t], decs[t][:, :dims[t]],
-                               all_objs[t], objs[t],
-                               all_cons[t], cons[t])
-
             # Update search directions: SD = CF*SD + (1-CF)*variation
             for t in range(nt):
                 for i in range(Nt[t]):
                     variation = decs[t][i] - old_decs[t][i]
-                    if not np.allclose(variation, 0):
+                    if np.any(variation != 0):
                         SD[t][i] = self.CF * SD[t][i] + (1 - self.CF) * variation
+
+            # Record the maintained populations of every task once per generation
+            append_history(all_decs, [decs[t][:, :dims[t]] for t in range(nt)],
+                           all_objs, objs, all_cons, cons)
 
         pbar.close()
         runtime = time.time() - start_time
@@ -342,28 +347,32 @@ class MTEA_D_TSD:
             Selected source task index
         jj : int
             Selected source individual index
+
+        Notes
+        -----
+        A zero-norm search direction makes the cosine undefined; MATLAB stores a
+        NaN and ``max`` silently skips it, which is reproduced here with
+        ``np.nan`` plus ``nanargmax`` (falling back to the first sample when all
+        candidates are undefined).
         """
-        best_sim = -2.0
-        best_k, best_j = 0, 0
+        index = np.empty((self.SNum, 2), dtype=int)
+        cosine_sim = np.empty(self.SNum)
         self_norm = np.linalg.norm(self_sd)
 
-        for _ in range(self.SNum):
+        for s in range(self.SNum):
             k = np.random.randint(nt)
             j = np.random.randint(Nt[k])
-            src_sd = SD[k][j]
-            src_norm = np.linalg.norm(src_sd)
+            index[s] = (k, j)
+            src_norm = np.linalg.norm(SD[k][j])
+            denom = self_norm * src_norm
+            cosine_sim[s] = np.dot(self_sd, SD[k][j]) / denom if denom > 0.0 else np.nan
 
-            if self_norm > 1e-20 and src_norm > 1e-20:
-                sim = np.dot(self_sd, src_sd) / (self_norm * src_norm)
-            else:
-                sim = -1.0
+        # A perfectly aligned direction is the individual's own; discard it
+        cosine_sim[cosine_sim == 1] = -1.0
 
-            # Exclude exact match (cosine_sim == 1 -> set to -1)
-            if abs(sim - 1.0) < 1e-10:
-                sim = -1.0
+        if np.all(np.isnan(cosine_sim)):
+            idx = 0
+        else:
+            idx = int(np.nanargmax(cosine_sim))
 
-            if sim > best_sim:
-                best_sim = sim
-                best_k, best_j = k, j
-
-        return best_k, best_j
+        return int(index[idx, 0]), int(index[idx, 1])

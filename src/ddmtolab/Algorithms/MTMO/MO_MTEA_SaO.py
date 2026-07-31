@@ -20,14 +20,58 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
+    [0, 1]: the MATLAB reference clips only once at the end of
+    ``Generation_GA``, after mutation has acted on the raw crossover output.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
 class MO_MTEA_SaO:
     """
     Multi-objective Multi-task Evolutionary Algorithm with Self-adaptive Solvers.
 
     This algorithm features:
-    - Two solver strategies: NSGA-II + GA and SPEA2 + DE
+
+    - Two solver strategies: GA + NSGA-II and DE + SPEA2
     - Self-adaptive solver selection based on success/failure history
-    - Knowledge transfer between tasks
+    - Random cross-task knowledge transfer of whole genomes
     - Adaptive population partitioning among solvers
 
     Attributes
@@ -86,9 +130,9 @@ class MO_MTEA_SaO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MOMTEASaO_test')
+            Name for the experiment (default: 'MO-MTEA-SaO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -120,36 +164,50 @@ class MO_MTEA_SaO:
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
+        dims = problem.dims
         n_per_task = par_list(self.n, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
         # Initialize population and evaluate for each task
         decs = initialization(problem, n_per_task)
         objs, cons = evaluation(problem, decs)
-        nfes_per_task = n_per_task.copy()
+        nfes_per_task = list(n_per_task)
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Strategy settings
-        st_num = 2  # Number of strategies (GA+NSGA-II, DE+SPEA2)
+        # MToP evolves one unified genome of length max(D) and truncates to
+        # D(t) only at evaluation time. Keeping the unified space matters here
+        # because a transferred individual is copied verbatim into another
+        # task, so genes beyond the source dimension become active decision
+        # variables of the target task. Padding is U[0, 1] to match MToP's
+        # rand(1, max(D)) initialization.
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
 
-        # Initialize strategy population sizes (equal split)
-        # stn[t] = [size_strategy_1, size_strategy_2]
+        # Strategy settings
+        st_num = 2  # Number of strategies (GA + NSGA-II, DE + SPEA2)
+
+        # Initial strategy population sizes (equal split, remainder to the last)
         stn = []
         for t in range(nt):
-            base_size = n_per_task[t] // st_num
-            sizes = [base_size] * st_num
-            sizes[-1] = n_per_task[t] - sum(sizes[:-1])  # Adjust last strategy size
+            sizes = [n_per_task[t] // st_num] * st_num
+            sizes[-1] = n_per_task[t] - sum(sizes[:-1])
             stn.append(sizes)
 
-        # Success/failure history
-        succ_history = []  # List of (t, st) -> count
-        fail_history = []
+        # Success/failure history. MToP stores a flat matrix that receives T
+        # rows (one per task) every generation and trims it with
+        # succ(end - Memory * T : end, :), i.e. it keeps Memory * T + 1 rows;
+        # the per-task slices are then read back as succ(t:T:end, :). The
+        # structure is ported verbatim so the memory window matches.
+        succ_rows = np.zeros((0, st_num))
+        fail_rows = np.zeros((0, st_num))
 
         # Progress bar
         total_nfes = sum(max_nfes_per_task)
         pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task), desc=f"{self.name}", disable=self.disable_tqdm)
 
-        gen = 0
+        # MToP increments Algo.Gen once before entering the loop body, so the
+        # first generation the reference executes already has Gen == 2.
+        gen = 1
+
         # Main optimization loop
         while sum(nfes_per_task) < total_nfes:
             gen += 1
@@ -160,27 +218,26 @@ class MO_MTEA_SaO:
                 if nfes_per_task[t] >= max_nfes_per_task[t]:
                     continue
 
-                # Calculate median objectives and CV for comparison
-                cvs = np.sum(np.maximum(0, cons[t]), axis=1) if cons[t] is not None else np.zeros(len(objs[t]))
+                # Per-objective medians of the whole task population, taken
+                # before the transferred solutions are injected
+                cvs = np.sum(np.maximum(0, cons[t]), axis=1)
                 median_obj = np.median(objs[t], axis=0)
                 median_cv = np.median(cvs)
 
-                # Prepare parent population (with potential transfer)
-                parent_decs = decs[t].copy()
+                # Parent pool used only to generate offspring
+                parent_decs = pop_decs[t].copy()
 
-                # Knowledge Transfer
+                # Knowledge transfer
                 if (self.t_num > 0 and
-                    (gen - 1) % self.sa_gap + 1 < (self.sa_gap - self.memory) and
-                    gen % self.t_gap == 0):
-                    # Get transfer solutions from other tasks
-                    transfer_decs = self._transfer(decs, t, problem.dims)
-                    if len(transfer_decs) > 0:
-                        # Randomly replace some parents with transferred solutions
-                        replace_indices = np.random.permutation(len(parent_decs))[:len(transfer_decs)]
-                        for i, idx in enumerate(replace_indices):
-                            parent_decs[idx] = transfer_decs[i]
+                        (gen - 1) % self.sa_gap + 1 < (self.sa_gap - self.memory) and
+                        gen % self.t_gap == 0):
+                    transfer_decs = self._transfer(pop_decs, t)
+                    n_transfer = min(transfer_decs.shape[0], parent_decs.shape[0])
+                    if n_transfer > 0:
+                        replace_indices = np.random.permutation(parent_decs.shape[0])[:n_transfer]
+                        parent_decs[replace_indices] = transfer_decs[:n_transfer]
 
-                # Process each strategy
+                # Process each strategy on its own slice of the population
                 start_idx = 0
                 for st in range(st_num):
                     end_idx = start_idx + stn[t][st]
@@ -188,167 +245,149 @@ class MO_MTEA_SaO:
                         start_idx = end_idx
                         continue
 
-                    st_indices = list(range(start_idx, end_idx))
+                    st_indices = np.arange(start_idx, end_idx)
                     st_parent_decs = parent_decs[st_indices]
 
                     if st == 0:
-                        # Strategy 1: GA + NSGA-II
+                        # Strategy 1: GA (SBX + PM) with NSGA-II selection
                         off_decs = self._generation_ga(st_parent_decs)
-                        off_objs, off_cons = evaluation_single(problem, off_decs, t)
-                        nfes_per_task[t] += len(off_decs)
-                        pbar.update(len(off_decs))
+                        off_objs, off_cons = evaluation_single(problem, off_decs[:, :dims[t]], t)
+                        nfes_per_task[t] += off_decs.shape[0]
+                        pbar.update(off_decs.shape[0])
 
-                        # Merge and NSGA-II selection
-                        merged_decs = np.vstack([decs[t][st_indices], off_decs])
+                        merged_decs = np.vstack([pop_decs[t][st_indices], off_decs])
                         merged_objs = np.vstack([objs[t][st_indices], off_objs])
-                        merged_cons = np.vstack([cons[t][st_indices], off_cons]) if cons[t] is not None else off_cons
+                        merged_cons = np.vstack([cons[t][st_indices], off_cons])
 
-                        rank, _, _ = self._nsga2_sort(merged_objs, merged_cons)
-                        selected_indices = np.argsort(rank)[:len(st_indices)]
-
-                        decs[t][st_indices] = merged_decs[selected_indices]
-                        objs[t][st_indices] = merged_objs[selected_indices]
-                        if cons[t] is not None:
-                            cons[t][st_indices] = merged_cons[selected_indices]
-
+                        rank = self._nsga2_rank(merged_objs, merged_cons)
+                        sel = np.argsort(rank, kind='stable')[:len(st_indices)]
                     else:
-                        # Strategy 2: DE + SPEA2
+                        # Strategy 2: DE (DE/rand/1/bin) with SPEA2 selection
                         off_decs = self._generation_de(st_parent_decs)
-                        off_objs, off_cons = evaluation_single(problem, off_decs, t)
-                        nfes_per_task[t] += len(off_decs)
-                        pbar.update(len(off_decs))
+                        off_objs, off_cons = evaluation_single(problem, off_decs[:, :dims[t]], t)
+                        nfes_per_task[t] += off_decs.shape[0]
+                        pbar.update(off_decs.shape[0])
 
-                        # Merge and SPEA2 selection
-                        merged_decs = np.vstack([decs[t][st_indices], off_decs])
+                        merged_decs = np.vstack([pop_decs[t][st_indices], off_decs])
                         merged_objs = np.vstack([objs[t][st_indices], off_objs])
-                        merged_cons = np.vstack([cons[t][st_indices], off_cons]) if cons[t] is not None else off_cons
+                        merged_cons = np.vstack([cons[t][st_indices], off_cons])
 
-                        selected_decs, selected_objs, selected_cons = self._selection_spea2(
-                            merged_decs, merged_objs, merged_cons, len(st_indices)
-                        )
+                        sel = self._selection_spea2(merged_objs, merged_cons, len(st_indices))
 
-                        decs[t][st_indices] = selected_decs
-                        objs[t][st_indices] = selected_objs
-                        if cons[t] is not None:
-                            cons[t][st_indices] = selected_cons
+                    pop_decs[t][st_indices] = merged_decs[sel]
+                    objs[t][st_indices] = merged_objs[sel]
+                    cons[t][st_indices] = merged_cons[sel]
 
-                    # Calculate success/failure
-                    current_cvs = np.sum(np.maximum(0, cons[t][st_indices]), axis=1) if cons[t] is not None else np.zeros(len(st_indices))
+                    # Success / failure credit of this strategy, measured on
+                    # the updated sub-population against the pre-generation
+                    # medians. MToP compares an (n, 1) CV column with an
+                    # (1, M) row produced by any()/all() over the whole
+                    # sub-population, then sums the resulting (n, M) matrix
+                    # with sum(..., 'all'); the broadcast is reproduced here so
+                    # the credit window matches the reference exactly.
+                    current_cvs = np.sum(np.maximum(0, cons[t][st_indices]), axis=1)[:, None]
                     current_objs = objs[t][st_indices]
 
-                    # Success: CV < median_cv OR (CV == median_cv AND any obj < median_obj)
-                    succ_mask = (current_cvs < median_cv) | (
-                        (current_cvs == median_cv) & np.any(current_objs < median_obj, axis=1)
-                    )
-                    succ_iter[t, st] = np.sum(succ_mask)
+                    any_better = np.any(current_objs < median_obj, axis=0)[None, :]
+                    all_worse = np.all(current_objs > median_obj, axis=0)[None, :]
 
-                    # Failure: CV > median_cv OR (CV == median_cv AND all obj > median_obj)
-                    fail_mask = (current_cvs > median_cv) | (
-                        (current_cvs == median_cv) & np.all(current_objs > median_obj, axis=1)
-                    )
-                    fail_iter[t, st] = np.sum(fail_mask)
+                    succ_iter[t, st] = np.sum(
+                        (current_cvs < median_cv) | ((current_cvs == median_cv) & any_better))
+                    fail_iter[t, st] = np.sum(
+                        (current_cvs > median_cv) | ((current_cvs == median_cv) & all_worse))
 
                     start_idx = end_idx
 
-                # Append to history
-                append_history(all_decs[t], decs[t], all_objs[t], objs[t], all_cons[t], cons[t])
+                # Record the maintained population in the task's own space
+                append_history(all_decs[t], pop_decs[t][:, :dims[t]],
+                               all_objs[t], objs[t], all_cons[t], cons[t])
 
-            # Update success/failure history
-            succ_history.append(succ_iter)
-            fail_history.append(fail_iter)
-
-            # Trim history to memory length
-            max_history_len = self.memory * nt
-            if len(succ_history) > max_history_len:
-                succ_history = succ_history[-max_history_len:]
-                fail_history = fail_history[-max_history_len:]
+            # Update success/failure history (T rows per generation)
+            succ_rows = np.vstack([succ_rows, succ_iter])
+            fail_rows = np.vstack([fail_rows, fail_iter])
+            if succ_rows.shape[0] > self.memory * nt:
+                keep = self.memory * nt + 1
+                succ_rows = succ_rows[-keep:, :]
+                fail_rows = fail_rows[-keep:, :]
 
             # Update strategy population sizes
             for t in range(nt):
-                # Aggregate history for task t
-                succ_t = np.zeros(st_num)
-                fail_t = np.zeros(st_num)
-                for i in range(len(succ_history)):
-                    succ_t += succ_history[i][t]
-                    fail_t += fail_history[i][t]
+                succ_t = succ_rows[t::nt, :]
+                fail_t = fail_rows[t::nt, :]
 
-                # Calculate success probability
                 succ_p = np.zeros(st_num)
                 for st in range(st_num):
-                    total = succ_t[st] + fail_t[st]
+                    total = succ_t[:, st].sum() + fail_t[:, st].sum()
                     if total == 0:
                         succ_p[st] = 0.01
                     else:
-                        succ_p[st] = succ_t[st] / total + 0.01
+                        succ_p[st] = succ_t[:, st].sum() / total + 0.01
 
-                # Combine with previous allocation
-                succ_old = np.array(stn[t]) / sum(stn[t])
+                succ_old = np.array(stn[t], dtype=float) / sum(stn[t])
                 succ_p = succ_old / 2 + succ_p
                 succ_p = succ_p / np.sum(succ_p)
 
-                # Update allocation every sa_gap generations
                 if gen % self.sa_gap == 0:
                     new_sizes = (succ_p * n_per_task[t]).astype(int)
                     new_sizes[-1] = n_per_task[t] - np.sum(new_sizes[:-1])
                     stn[t] = list(new_sizes)
 
-                    # Shuffle population
+                    # Shuffle to redistribute individuals among strategies
                     shuffle_indices = np.random.permutation(n_per_task[t])
-                    decs[t] = decs[t][shuffle_indices]
+                    pop_decs[t] = pop_decs[t][shuffle_indices]
                     objs[t] = objs[t][shuffle_indices]
-                    if cons[t] is not None:
-                        cons[t] = cons[t][shuffle_indices]
+                    cons[t] = cons[t][shuffle_indices]
 
         pbar.close()
         runtime = time.time() - start_time
 
-        # Build and save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results
 
-    def _transfer(self, decs, t, dims):
+    def _transfer(self, pop_decs, t):
         """
-        Perform random knowledge transfer from other tasks.
+        Perform random knowledge transfer from the other tasks.
+
+        MToP builds an archive holding the populations of every other task and
+        draws ``TNum`` individuals from it, each time picking a random task and
+        then a random individual; the unified genome is copied verbatim.
 
         Parameters
         ----------
-        decs : list of np.ndarray
-            Decision variables for all tasks
+        pop_decs : list of np.ndarray
+            Unified-space populations of all tasks
         t : int
             Current task index
-        dims : list of int
-            Dimensions for all tasks
 
         Returns
         -------
         transfer_decs : np.ndarray
-            Transferred decision variables
+            Transferred decision variables of shape (t_num, d_max)
         """
-        nt = len(decs)
-        if nt <= 1:
-            return np.array([])
+        dim = pop_decs[t].shape[1]
+        archive = [k for k in range(len(pop_decs)) if k != t]
+        if not archive:
+            return np.zeros((0, dim))
 
-        transfer_decs = []
-        other_tasks = [k for k in range(nt) if k != t]
-
-        for _ in range(self.t_num):
-            # Random task and random individual
-            rand_t = other_tasks[np.random.randint(len(other_tasks))]
-            rand_p = np.random.randint(len(decs[rand_t]))
-            dec = decs[rand_t][rand_p].copy()
-
-            # Align dimensions
-            dec = align_dimensions(dec, dims[t])
-            transfer_decs.append(dec)
-
-        return np.array(transfer_decs)
+        transfer_decs = np.empty((self.t_num, dim))
+        for i in range(self.t_num):
+            rand_t = archive[np.random.randint(len(archive))]
+            rand_p = np.random.randint(pop_decs[rand_t].shape[0])
+            transfer_decs[i] = pop_decs[rand_t][rand_p]
+        return transfer_decs
 
     def _generation_ga(self, parent_decs):
         """
         Generate offspring using GA (SBX crossover + polynomial mutation).
+
+        Matches MToP ``Generation_GA``: a sub-population of at most one
+        individual only receives polynomial mutation; otherwise a random
+        permutation is split in halves, parent i is paired with parent
+        i + floor(N/2) for i = 1..ceil(N/2), the single clip to [0, 1] happens
+        after mutation, and the offspring list is truncated back to N.
 
         Parameters
         ----------
@@ -358,42 +397,33 @@ class MO_MTEA_SaO:
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables
+            Offspring decision variables of shape (pop_size, dim)
         """
-        pop_size = len(parent_decs)
+        pop_size, dim = parent_decs.shape
 
         if pop_size <= 1:
-            # Only mutation
-            off_decs = np.array([mutation(parent_decs[i].copy(), mu=self.ga_mum) for i in range(pop_size)])
-            return np.clip(off_decs, 0, 1)
+            off_decs = np.empty((pop_size, dim))
+            for i in range(pop_size):
+                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+            return off_decs
 
-        dim = parent_decs.shape[1]
-        off_decs = np.zeros((pop_size, dim))
-
-        # Shuffle indices for pairing
-        ind_order = np.random.permutation(pop_size)
+        order = np.random.permutation(pop_size)
+        half = pop_size // 2
+        n_pairs = int(np.ceil(pop_size / 2))
+        off_decs = np.empty((2 * n_pairs, dim))
 
         count = 0
-        for i in range(pop_size // 2):
-            p1 = ind_order[i]
-            p2 = ind_order[i + pop_size // 2]
+        for i in range(n_pairs):
+            p1 = parent_decs[order[i]]
+            p2 = parent_decs[order[i + half]]
 
-            # Crossover
-            off_dec1, off_dec2 = crossover(parent_decs[p1], parent_decs[p2], mu=self.ga_muc)
+            c1, c2 = _sbx_crossover_unclipped(p1, p2, self.ga_muc)
+            c1 = _poly_mutation_unclipped(c1, self.ga_mum)
+            c2 = _poly_mutation_unclipped(c2, self.ga_mum)
 
-            # Mutation
-            off_dec1 = mutation(off_dec1, mu=self.ga_mum)
-            off_dec2 = mutation(off_dec2, mu=self.ga_mum)
-
-            # Boundary handling
-            off_decs[count] = np.clip(off_dec1, 0, 1)
-            off_decs[count + 1] = np.clip(off_dec2, 0, 1)
+            off_decs[count] = np.clip(c1, 0, 1)
+            off_decs[count + 1] = np.clip(c2, 0, 1)
             count += 2
-
-        # Handle odd population size
-        if pop_size % 2 == 1:
-            off_decs[count] = mutation(parent_decs[ind_order[-1]].copy(), mu=self.ga_mum)
-            off_decs[count] = np.clip(off_decs[count], 0, 1)
 
         return off_decs[:pop_size]
 
@@ -401,6 +431,9 @@ class MO_MTEA_SaO:
         """
         Generate offspring using DE (DE/rand/1/bin).
 
+        Matches MToP ``Generation_DE``: sub-populations with fewer than four
+        individuals fall back to polynomial mutation only.
+
         Parameters
         ----------
         parent_decs : np.ndarray
@@ -409,42 +442,39 @@ class MO_MTEA_SaO:
         Returns
         -------
         off_decs : np.ndarray
-            Offspring decision variables
+            Offspring decision variables of shape (pop_size, dim)
         """
-        pop_size = len(parent_decs)
-        dim = parent_decs.shape[1]
+        pop_size, dim = parent_decs.shape
 
         if pop_size < 4:
-            # Fallback to mutation only
-            off_decs = np.array([mutation(parent_decs[i].copy(), mu=self.ga_mum) for i in range(pop_size)])
-            return np.clip(off_decs, 0, 1)
+            off_decs = np.empty((pop_size, dim))
+            for i in range(pop_size):
+                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+            return off_decs
 
-        off_decs = np.zeros((pop_size, dim))
-
+        off_decs = np.empty((pop_size, dim))
         for i in range(pop_size):
-            # Select 3 different individuals (different from i)
-            candidates = list(range(pop_size))
-            candidates.remove(i)
-            selected = np.random.choice(candidates, 3, replace=False)
-            x1, x2, x3 = selected
+            candidates = np.arange(pop_size)
+            candidates = candidates[candidates != i]
+            x1, x2, x3 = np.random.choice(candidates, 3, replace=False)
 
             # DE/rand/1 mutation
-            mutant = parent_decs[x1] + self.de_f * (parent_decs[x2] - parent_decs[x3])
+            trial = parent_decs[x1] + self.de_f * (parent_decs[x2] - parent_decs[x3])
 
-            # DE binomial crossover
-            j_rand = np.random.randint(dim)
-            mask = np.random.rand(dim) < self.de_cr
-            mask[j_rand] = True
-            off_dec = np.where(mask, mutant, parent_decs[i])
+            # DE binomial crossover (MToP DE_Crossover)
+            replace = np.random.rand(dim) > self.de_cr
+            replace[np.random.randint(dim)] = False
+            trial = np.where(replace, parent_decs[i], trial)
 
             # Boundary handling
-            off_decs[i] = np.clip(off_dec, 0, 1)
+            off_decs[i] = np.clip(trial, 0, 1)
 
         return off_decs
 
-    def _nsga2_sort(self, objs, cons=None):
+    @staticmethod
+    def _nsga2_rank(objs, cons=None):
         """
-        Sort solutions based on NSGA-II criteria.
+        NSGA-II sorting rank (MToP ``NSGA2Sort``).
 
         Parameters
         ----------
@@ -456,11 +486,7 @@ class MO_MTEA_SaO:
         Returns
         -------
         rank : np.ndarray
-            Ranking of each solution
-        front_no : np.ndarray
-            Front number of each solution
-        crowd_dis : np.ndarray
-            Crowding distance of each solution
+            rank[i] is the sorted position (0-based) of solution i
         """
         pop_size = objs.shape[0]
 
@@ -470,156 +496,58 @@ class MO_MTEA_SaO:
             front_no, _ = nd_sort(objs, pop_size)
 
         crowd_dis = crowding_distance(objs, front_no)
-        sorted_indices = np.lexsort((-crowd_dis, front_no))
+        order = np.lexsort((-crowd_dis, front_no))
 
         rank = np.empty(pop_size, dtype=int)
-        rank[sorted_indices] = np.arange(pop_size)
+        rank[order] = np.arange(pop_size)
+        return rank
 
-        return rank, front_no, crowd_dis
-
-    def _selection_spea2(self, decs, objs, cons, n):
+    @staticmethod
+    def _selection_spea2(objs, cons, n, epsilon=0.0):
         """
-        SPEA2 environmental selection.
+        SPEA2 environmental selection (MToP ``Selection_SPEA2``).
 
         Parameters
         ----------
-        decs : np.ndarray
-            Decision variables of shape (pop_size, dim)
         objs : np.ndarray
-            Objective values of shape (pop_size, n_obj)
-        cons : np.ndarray
-            Constraint values of shape (pop_size, n_con)
+            Objective values of the merged population, shape (n_pop, n_obj)
+        cons : np.ndarray or None
+            Constraint values of the merged population, shape (n_pop, n_con)
         n : int
             Target population size
+        epsilon : float, optional
+            Epsilon-constraint tolerance (default: 0.0)
 
         Returns
         -------
-        selected_decs : np.ndarray
-            Selected decision variables
-        selected_objs : np.ndarray
-            Selected objective values
-        selected_cons : np.ndarray
-            Selected constraint values
+        index : np.ndarray
+            Indices of the surviving individuals, sorted by ascending fitness
         """
-        pop_size = len(objs)
-        if pop_size == 0 or n == 0:
-            return decs[:0], objs[:0], cons[:0] if cons is not None else None
+        n_pop = objs.shape[0]
+        n = max(0, min(n, n_pop))
+        if n == 0:
+            return np.zeros(0, dtype=int)
 
-        n = min(n, pop_size)
-
-        # Calculate constraint violation
-        if cons is not None and cons.size > 0:
-            cvs = np.sum(np.maximum(0, cons), axis=1)
+        if cons is None or cons.size == 0:
+            cv = np.zeros(n_pop)
         else:
-            cvs = np.zeros(pop_size)
+            cv = np.sum(np.maximum(0, cons), axis=1)
+        cv = np.where(cv < epsilon, 0.0, cv)
 
-        # Calculate SPEA2 fitness
-        fitness = self._cal_spea2_fitness(objs, cvs)
+        fitness = spea2_fitness(objs, cv[:, None])
 
-        # Environmental selection
         next_mask = fitness < 1
-        n_selected = np.sum(next_mask)
+        n_selected = int(np.sum(next_mask))
 
         if n_selected < n:
-            sorted_indices = np.argsort(fitness)
-            next_mask = np.zeros(pop_size, dtype=bool)
-            next_mask[sorted_indices[:n]] = True
+            order = np.argsort(fitness, kind='stable')
+            next_mask = np.zeros(n_pop, dtype=bool)
+            next_mask[order[:n]] = True
         elif n_selected > n:
-            selected_indices = np.where(next_mask)[0]
-            selected_objs_temp = objs[selected_indices]
-            del_indices = self._truncation(selected_objs_temp, n_selected - n)
-            next_mask[selected_indices[del_indices]] = False
+            selected = np.where(next_mask)[0]
+            keep = spea2_truncation(objs[selected], n)
+            next_mask = np.zeros(n_pop, dtype=bool)
+            next_mask[selected[keep]] = True
 
-        # Apply selection and sort by fitness
-        selected_indices = np.where(next_mask)[0]
-        sorted_fitness_indices = np.argsort(fitness[selected_indices])
-        selected_indices = selected_indices[sorted_fitness_indices]
-
-        return decs[selected_indices], objs[selected_indices], cons[selected_indices] if cons is not None else None
-
-    def _cal_spea2_fitness(self, objs, cvs):
-        """
-        Calculate SPEA2 fitness values.
-
-        Parameters
-        ----------
-        objs : np.ndarray
-            Objective values of shape (pop_size, n_obj)
-        cvs : np.ndarray
-            Constraint violations of shape (pop_size,)
-
-        Returns
-        -------
-        fitness : np.ndarray
-            SPEA2 fitness values of shape (pop_size,)
-        """
-        n = len(objs)
-        if n == 0:
-            return np.array([])
-
-        # Detect dominance relations
-        dominate = np.zeros((n, n), dtype=bool)
-        for i in range(n):
-            for j in range(i + 1, n):
-                if cvs[i] < cvs[j]:
-                    dominate[i, j] = True
-                elif cvs[i] > cvs[j]:
-                    dominate[j, i] = True
-                else:
-                    better_i = np.any(objs[i] < objs[j])
-                    worse_i = np.any(objs[i] > objs[j])
-                    if better_i and not worse_i:
-                        dominate[i, j] = True
-                    elif worse_i and not better_i:
-                        dominate[j, i] = True
-
-        # Strength
-        s = np.sum(dominate, axis=1)
-
-        # Raw fitness
-        r = np.zeros(n)
-        for i in range(n):
-            dominating_indices = np.where(dominate[:, i])[0]
-            r[i] = np.sum(s[dominating_indices])
-
-        # Density
-        distance = cdist(objs, objs)
-        np.fill_diagonal(distance, np.inf)
-        distance_sorted = np.sort(distance, axis=1)
-        k_neighbor = int(np.floor(np.sqrt(n)))
-        k_neighbor = max(0, min(k_neighbor, n - 1))
-        d = 1.0 / (distance_sorted[:, k_neighbor] + 2)
-
-        return r + d
-
-    def _truncation(self, objs, k):
-        """
-        Truncation operator for SPEA2.
-
-        Parameters
-        ----------
-        objs : np.ndarray
-            Objective values of shape (pop_size, n_obj)
-        k : int
-            Number of solutions to delete
-
-        Returns
-        -------
-        del_indices : np.ndarray
-            Indices of solutions to delete
-        """
-        n = len(objs)
-        del_mask = np.zeros(n, dtype=bool)
-
-        distance = cdist(objs, objs)
-        np.fill_diagonal(distance, np.inf)
-
-        while np.sum(del_mask) < k:
-            remain_indices = np.where(~del_mask)[0]
-            remain_dist = distance[remain_indices][:, remain_indices]
-            sorted_dist = np.sort(remain_dist, axis=1)
-            sorted_rows_indices = np.lexsort(np.rot90(sorted_dist))
-            del_idx_in_remain = sorted_rows_indices[0]
-            del_mask[remain_indices[del_idx_in_remain]] = True
-
-        return np.where(del_mask)[0]
+        index = np.where(next_mask)[0]
+        return index[np.argsort(fitness[index], kind='stable')]

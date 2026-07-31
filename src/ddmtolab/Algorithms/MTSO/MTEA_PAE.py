@@ -23,6 +23,17 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _lhsdesign(n, d):
+    """Latin hypercube sample of shape (n, d) in [0, 1] (MATLAB lhsdesign)."""
+    edges = np.linspace(0, 1, n + 1)
+    matrix = np.zeros((n, d))
+    for j in range(d):
+        samples = np.random.uniform(edges[:-1], edges[1:])
+        np.random.shuffle(samples)
+        matrix[:, j] = samples
+    return matrix
+
+
 def _kernelmatrix_poly(X, X2):
     """Polynomial kernel matrix K = (X^T @ X2 + 0.1)^5.
 
@@ -230,20 +241,14 @@ class MTEA_PAE:
         # Generation gap between distribution snapshots
         SegGap = max(1, self.max_nfes // (n * self.Seg))
 
-        # Initialize populations in [0,1]^D_t per task
-        decs = initialization(problem, n)
+        # Initialize populations by Latin hypercube sampling in the unified
+        # [0, 1]^maxD space (MATLAB: Decs = lhsdesign(Prob.N, max(Prob.D)))
+        pop_decs = [_lhsdesign(n, maxD) for _ in range(nt)]
+        decs = [pop_decs[t][:, :dims[t]] for t in range(nt)]
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Pad to maxD space (extra dims filled with random)
-        pop_decs = []
-        for t in range(nt):
-            if dims[t] < maxD:
-                pad = np.random.rand(n, maxD - dims[t])
-                pop_decs.append(np.hstack([decs[t], pad]))
-            else:
-                pop_decs.append(decs[t].copy())
         pop_objs = [o.copy() for o in objs]
         pop_cons = [c.copy() for c in cons]
 
@@ -268,7 +273,9 @@ class MTEA_PAE:
         SuccG = n * np.ones((nt, 2))
         SumG = SuccG.copy()
 
-        gen = 0
+        # MATLAB's Algo.Gen is already 2 inside the first loop body, because
+        # notTerminated() counted the (evaluated) initialization generation.
+        gen = 1
         pbar = tqdm(total=max_nfes, initial=nfes, desc=self.name,
                     disable=self.disable_tqdm)
 
@@ -507,13 +514,14 @@ class MTEA_PAE:
                 op[i] = 1
             else:
                 # GA: SBX crossover + polynomial mutation
+                # NOTE: crossover()/mutation() take 1-D decision vectors; a
+                # (1, D) array would make SBX draw a single scalar beta and
+                # polynomial mutation use prob_m = 1/1.
                 p1 = indorder[i]
                 p2 = indorder[i + n // 2]
-                par1 = pop_decs[p1].reshape(1, -1)
-                par2 = pop_decs[p2].reshape(1, -1)
-                child, _ = crossover(par1, par2, self.MuC)
-                child = mutation(child, self.MuM)
-                off_decs[i] = child[0]
+                child, _ = crossover(pop_decs[p1], pop_decs[p2], mu=self.MuC)
+                child = mutation(child, mu=self.MuM)
+                off_decs[i] = child
                 op[i] = 2
 
             off_decs[i] = np.clip(off_decs[i], 0, 1)

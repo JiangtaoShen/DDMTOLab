@@ -22,6 +22,224 @@ from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 
+def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
+    [0, 1]: the MATLAB reference clips only once at the end of ``Generation``,
+    after polynomial mutation has acted on the raw crossover output.
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def _poly_mutation_unclipped(dec, mu):
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    for j in range(d):
+        if np.random.rand() < prob_m:
+            u = np.random.rand()
+            if u <= 0.5:
+                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+            else:
+                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+            dec[j] += delta
+    return dec
+
+
+def _platemo_tournament_selection(K, N, *fitness):
+    """
+    Exact port of PlatEMO / MToP ``TournamentSelection``.
+
+    Candidates are compared lexicographically on the given fitness keys (lower
+    is better) and solutions with identical keys share the same rank, so a
+    tournament between tied candidates is decided uniformly at random rather
+    than by index. Draws from the global NumPy RNG so that ``np.random.seed``
+    reproduces a run (the shared ``tournament_selection`` helper builds its own
+    ``default_rng`` and additionally breaks ties by index).
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
+
+
+def selection_spea2(objs, cons, n, epsilon=0.0):
+    """
+    Environmental selection of SPEA2 (MToP ``Selection_SPEA2``).
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective values of the merged population, shape (n_pop, n_objs)
+    cons : np.ndarray or None
+        Constraint values of the merged population, shape (n_pop, n_cons)
+    n : int
+        Target population size
+    epsilon : float, optional
+        Epsilon-constraint tolerance (default: 0.0)
+
+    Returns
+    -------
+    index : np.ndarray
+        Indices of the surviving individuals, sorted by ascending fitness
+    fitness : np.ndarray
+        SPEA2 fitness of the surviving individuals, ascending
+    """
+    n_pop = objs.shape[0]
+    n = max(0, min(n, n_pop))
+    if n == 0:
+        return np.zeros(0, dtype=int), np.zeros(0)
+
+    if cons is None or cons.size == 0:
+        cv = np.zeros(n_pop)
+    else:
+        cv = np.sum(np.maximum(0, cons), axis=1)
+    cv = np.where(cv < epsilon, 0.0, cv)
+
+    fitness = spea2_fitness(objs, cv[:, None])
+
+    next_mask = fitness < 1
+    n_selected = int(np.sum(next_mask))
+
+    if n_selected < n:
+        order = np.argsort(fitness, kind='stable')
+        next_mask = np.zeros(n_pop, dtype=bool)
+        next_mask[order[:n]] = True
+    elif n_selected > n:
+        selected = np.where(next_mask)[0]
+        keep = spea2_truncation(objs[selected], n)
+        next_mask = np.zeros(n_pop, dtype=bool)
+        next_mask[selected[keep]] = True
+
+    index = np.where(next_mask)[0]
+    order = np.argsort(fitness[index], kind='stable')
+    index = index[order]
+    return index, fitness[index]
+
+
+def nsga2_sort(objs, cons=None):
+    """
+    NSGA-II sorting (MToP ``NSGA2Sort``).
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective value matrix of shape (pop_size, n_obj)
+    cons : np.ndarray, optional
+        Constraint matrix of shape (pop_size, n_con) (default: None)
+
+    Returns
+    -------
+    rank : np.ndarray
+        rank[i] is the sorted position (0-based) of solution i
+    front_no : np.ndarray
+        Non-dominated front number of each solution
+    crowd_dis : np.ndarray
+        Crowding distance of each solution
+    """
+    pop_size = objs.shape[0]
+
+    if cons is not None and cons.size > 0:
+        front_no, _ = nd_sort(objs, cons, pop_size)
+    else:
+        front_no, _ = nd_sort(objs, pop_size)
+
+    crowd_dis = crowding_distance(objs, front_no)
+    order = np.lexsort((-crowd_dis, front_no))
+
+    rank = np.empty(pop_size, dtype=int)
+    rank[order] = np.arange(pop_size)
+    return rank, front_no, crowd_dis
+
+
+def mda(curr_pop, his_pop, his_best_solution):
+    """
+    Marginalized denoising autoencoder mapping (MToP ``mDA``).
+
+    Learns a linear map from the source-domain initial population to the
+    target-domain initial population and applies it to the source elites.
+
+    Parameters
+    ----------
+    curr_pop : np.ndarray
+        Target-domain population, shape (n, d_curr)
+    his_pop : np.ndarray
+        Source-domain population, shape (n, d_his)
+    his_best_solution : np.ndarray
+        Source-domain elites to map, shape (n_best, d_his)
+
+    Returns
+    -------
+    inj_solution : np.ndarray
+        Mapped solutions in the target domain, shape (n_best, d_curr)
+    """
+    curr_pop = np.asarray(curr_pop, dtype=float)
+    his_pop = np.asarray(his_pop, dtype=float)
+    his_best_solution = np.asarray(his_best_solution, dtype=float)
+
+    n_curr, curr_len = curr_pop.shape
+    n_his, tmp_len = his_pop.shape
+    if n_curr != n_his:
+        raise ValueError(
+            f"mDA requires equal population sizes, got {n_curr} and {n_his}")
+
+    # Zero-pad the shorter genome so both domains share one width
+    if curr_len < tmp_len:
+        curr_pop = np.hstack([curr_pop, np.zeros((n_curr, tmp_len - curr_len))])
+    elif curr_len > tmp_len:
+        his_pop = np.hstack([his_pop, np.zeros((n_his, curr_len - tmp_len))])
+
+    xx = curr_pop.T
+    noise = his_pop.T
+    d, n = xx.shape
+
+    xxb = np.vstack([xx, np.ones((1, n))])
+    noise_xb = np.vstack([noise, np.ones((1, n))])
+
+    Q = noise_xb @ noise_xb.T
+    P = xxb @ noise_xb.T
+    reg = 1e-5 * np.eye(d + 1)
+    reg[-1, -1] = 0.0
+
+    # MATLAB "P / (Q + reg)" is a right division, i.e. solve W (Q+reg) = P
+    A = Q + reg
+    try:
+        W = np.linalg.solve(A.T, P.T).T
+    except np.linalg.LinAlgError:
+        W = P @ np.linalg.pinv(A)
+
+    # Drop the bias row and column
+    W = W[:-1, :-1]
+
+    if curr_len <= tmp_len:
+        tmp_solution = (W @ his_best_solution.T).T
+        return tmp_solution[:, :curr_len]
+
+    pad = np.zeros((his_best_solution.shape[0], curr_len - tmp_len))
+    return (W @ np.hstack([his_best_solution, pad]).T).T
+
+
 class MO_EMEA:
     """
     Multi-task Multi-objective Evolutionary Multitasking via Explicit Autoencoding (MO_EMEA).
@@ -33,7 +251,7 @@ class MO_EMEA:
     """
 
     algorithm_information = {
-        'n_tasks': '[1, K]',
+        'n_tasks': '[2, K]',
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
@@ -41,7 +259,7 @@ class MO_EMEA:
         'n_cons': '[0, C]',
         'expensive': 'False',
         'knowledge_transfer': 'True',
-        'n': 'unequal',
+        'n': 'equal',
         'max_nfes': 'equal'
     }
 
@@ -65,6 +283,7 @@ class MO_EMEA:
             Maximum number of function evaluations per task (default: 10000)
         operator : str, optional
             Selection operator(s) split with '/', e.g., 'SP/NS' (default: 'SP/NS')
+
             - 'SP': SPEA2 selection
             - 'NS': NSGA-II selection
         s_num : int, optional
@@ -78,9 +297,9 @@ class MO_EMEA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MO_EMEA_test')
+            Name for the experiment (default: 'MO-EMEA')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -99,8 +318,7 @@ class MO_EMEA:
         self.mu_c = mu_c if mu_c is not None else 20
         self.mu_m = mu_m if mu_m is not None else 15
 
-        self.gen = 0
-        self.operators = self.operator.split('/')
+        self.operators = [op.strip() for op in self.operator.split('/')]
         self.nt = problem.n_tasks
         self.n_per_task = par_list(self.n, self.nt)
         self.max_nfes_per_task = par_list(self.max_nfes, self.nt)
@@ -117,476 +335,199 @@ class MO_EMEA:
         start_time = time.time()
         problem = self.problem
         nt = self.nt
+        dims = problem.dims
+        d_max = max(dims)
         n_per_task = self.n_per_task
+        max_nfes_per_task = self.max_nfes_per_task
 
-        # 1. Initialize population
+        # 1. Initialization. MToP evolves one unified genome of length max(D)
+        #    per individual and truncates to D(t) only at evaluation time, so
+        #    the padded genes take part in crossover/mutation and are carried
+        #    along by the autoencoder injection.
         decs = initialization(problem, n_per_task)
         objs, cons = evaluation(problem, decs)
-        nfes_per_task = np.array(n_per_task).copy()
-        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
+        nfes_per_task = list(n_per_task)
+        pop_decs = space_transfer(problem=problem, decs=decs, type='uni', padding='random')
 
-        # Save initial population (for knowledge transfer)
-        init_pop_dec = []
-        for t in range(nt):
-            init_pop_dec.append(decs[t][:, :problem.dims[t]].copy())
-
-        # 2. Initial selection (SPEA2)
+        # 2. Initial SPEA2 selection (sorts the population by fitness)
         fitness = [None] * nt
         for t in range(nt):
-            decs[t], fitness[t] = selection_spea2(decs[t], objs[t], cons[t], n_per_task[t])
+            index, fitness[t] = selection_spea2(objs[t], cons[t], n_per_task[t])
+            pop_decs[t] = pop_decs[t][index]
+            objs[t] = objs[t][index]
+            cons[t] = cons[t][index]
 
-        # 3. Progress bar settings
-        total_nfes = sum(self.max_nfes_per_task)
+        # MToP records the population inside notTerminated, i.e. after this
+        # first selection, so the history starts from the sorted population.
+        all_decs, all_objs, all_cons = init_history(
+            [pop_decs[t][:, :dims[t]] for t in range(nt)], objs, cons)
+
+        # Autoencoder anchor: the sorted initial population of every task
+        init_pop_dec = [pop_decs[t][:, :dims[t]].copy() for t in range(nt)]
+
+        # 3. Progress bar
+        total_nfes = sum(max_nfes_per_task)
         pbar = tqdm(total=total_nfes, initial=sum(nfes_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
+        # MToP increments Algo.Gen once inside notTerminated before the loop
+        # body runs, so the first executed generation already sees Gen == 2.
+        gen = 1
+
         # 4. Main optimization loop
         while sum(nfes_per_task) < total_nfes:
-            self.gen += 1  # Update generation count
-            active_tasks = [i for i in range(nt) if nfes_per_task[i] < self.max_nfes_per_task[i]]
-            if not active_tasks:
-                break
+            gen += 1
 
-            for t in active_tasks:
-                # 4.1 Tournament Selection (generate mating pool)
-                mating_pool_idx = tournament_selection(2, n_per_task[t], fitness[t])
-                mating_pool_decs = decs[t][mating_pool_idx]
+            for t in range(nt):
+                if nfes_per_task[t] >= max_nfes_per_task[t]:
+                    continue
 
-                # 4.2 Generate offspring via GA
-                off_decs = ga_generation(mating_pool_decs, self.mu_c, self.mu_m)
+                # 4.1 Binary tournament on the SPEA2 / NSGA-II fitness
+                mating_pool = _platemo_tournament_selection(2, n_per_task[t], fitness[t])
 
-                # 4.3 Knowledge Transfer
-                if self.s_num > 0 and self.gen % self.t_gap == 0:
-                    inject_decs = knowledge_transfer(
-                        t, self.gen, self.s_num, self.t_gap, self.problem, init_pop_dec, decs
-                    )
-                    if inject_decs is not None and len(inject_decs) > 0:
-                        # Randomly replace offspring with injected solutions
-                        replace_idx = np.random.permutation(len(off_decs))[:len(inject_decs)]
-                        off_decs[replace_idx] = inject_decs[:len(replace_idx)]
+                # 4.2 GA offspring. MO-EMEA pairs the mating pool
+                #     deterministically (i with i + floor(N/2)); the pool is
+                #     already randomized by the tournament.
+                off_decs = self._generation(pop_decs[t][mating_pool])
 
-                # 4.4 Evaluate offspring
-                off_objs, off_cons = evaluation_single(problem, off_decs, t)
-                nfes_per_task[t] += len(off_decs)
-                pbar.update(len(off_decs))
+                # 4.3 Knowledge transfer via explicit autoencoding
+                if self.s_num > 0 and gen % self.t_gap == 0:
+                    inject_decs = self._knowledge_transfer(t, init_pop_dec, pop_decs, dims, d_max)
+                    if inject_decs.shape[0] > 0:
+                        n_inject = min(inject_decs.shape[0], off_decs.shape[0])
+                        replace_idx = np.random.permutation(off_decs.shape[0])[:n_inject]
+                        off_decs[replace_idx] = inject_decs[:n_inject]
+
+                # 4.4 Evaluate offspring on the task's own decision space
+                off_objs, off_cons = evaluation_single(problem, off_decs[:, :dims[t]], t)
+                nfes_per_task[t] += off_decs.shape[0]
+                pbar.update(off_decs.shape[0])
 
                 # 4.5 Merge parents and offspring
-                decs[t] = np.vstack([decs[t], off_decs])
-                objs[t] = np.vstack([objs[t], off_objs])
-                cons[t] = np.vstack([cons[t], off_cons]) if cons[t] is not None else off_cons
+                merged_decs = np.vstack([pop_decs[t], off_decs])
+                merged_objs = np.vstack([objs[t], off_objs])
+                merged_cons = np.vstack([cons[t], off_cons])
 
-                # 4.6 Environmental Selection (Alternate between SP and NS)
-                op_idx = (t - 1) % len(self.operators)
-                op = self.operators[op_idx]
+                # 4.6 Environmental selection, alternating over the operator
+                #     list exactly as MToP's mod(t - 1, numel(operator)) + 1
+                op = self.operators[t % len(self.operators)]
+                if op == 'SP':
+                    index, fitness[t] = selection_spea2(merged_objs, merged_cons, n_per_task[t])
+                elif op == 'NS':
+                    rank, _, _ = nsga2_sort(merged_objs, merged_cons)
+                    index = np.argsort(rank, kind='stable')[:n_per_task[t]]
+                    fitness[t] = np.arange(1, n_per_task[t] + 1, dtype=float)
+                else:
+                    raise ValueError(f"Unknown MO-EMEA operator '{op}', expected 'SP' or 'NS'")
 
-                if op == 'SP':  # SPEA2 selection
-                    decs[t], fitness[t] = selection_spea2(decs[t], objs[t], cons[t], n_per_task[t])
-                elif op == 'NS':  # NSGA-II selection
-                    rank, front_no, crowd_dis = nsga2_sort(objs[t], cons[t])
-                    sorted_indices = np.lexsort((-crowd_dis, front_no))
-                    select_idx = sorted_indices[:n_per_task[t]]
-                    decs[t] = decs[t][select_idx]
-                    fitness[t] = np.arange(1, n_per_task[t] + 1)  # Simple assignment for compatibility
+                pop_decs[t] = merged_decs[index]
+                objs[t] = merged_objs[index]
+                cons[t] = merged_cons[index]
 
-                # 4.7 Update history
-                objs[t], cons[t] = evaluation_single(problem, decs[t], t)
-                append_history(all_decs, decs, all_objs, objs, all_cons, cons)
+                # 4.7 Record the maintained population in the task's own space
+                append_history(all_decs[t], pop_decs[t][:, :dims[t]],
+                               all_objs[t], objs[t], all_cons[t], cons[t])
 
         # 5. Process results
         pbar.close()
         runtime = time.time() - start_time
 
-        # Save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results
 
+    def _generation(self, parent_decs):
+        """
+        Generate offspring with SBX + polynomial mutation (MToP ``Generation``).
 
-def knowledge_transfer(t, gen, s_num, t_gap, problem, init_pop_dec, pop_decs_all):
-    """
-    Knowledge transfer via marginal Denoising Autoencoder (mDA).
+        Parent i is paired with parent i + floor(N/2) for i = 1..ceil(N/2) and
+        each pair yields two children; the single clip to [0, 1] happens only
+        after mutation. For an odd N this produces N + 1 offspring, exactly as
+        in the MATLAB reference (which does not truncate).
 
-    Parameters
-    ----------
-    t : int
-        Current task index (0-based)
-    gen : int
-        Current generation number
-    s_num : int
-        Number of solutions to transfer (total across tasks)
-    t_gap : int
-        Interval (generations) between transfer events
-    problem : MTOP
-        Multi-task optimization problem instance
-    init_pop_dec : list of np.ndarray
-        Initial population decision variables for all tasks
-    pop_decs_all : list of np.ndarray
-        Current population decision variables for all tasks
+        Parameters
+        ----------
+        parent_decs : np.ndarray
+            Mating pool of shape (pop_size, d_max)
 
-    Returns
-    -------
-    inject_decs : np.ndarray or None
-        Injected decision variables for current task, or None if no transfer occurs
-    """
-    if s_num <= 0 or gen % t_gap != 0:
-        return None
+        Returns
+        -------
+        off_decs : np.ndarray
+            Offspring of shape (2 * ceil(pop_size / 2), d_max)
+        """
+        pop_size, dim = parent_decs.shape
+        half = pop_size // 2
+        n_pairs = int(np.ceil(pop_size / 2))
+        off_decs = np.empty((2 * n_pairs, dim))
 
-    inject_decs = []
-    inject_num = np.round(s_num / (problem.n_tasks - 1)).astype(int)
+        count = 0
+        for i in range(n_pairs):
+            p1 = parent_decs[i]
+            p2 = parent_decs[i + half]
 
-    for k in range(problem.n_tasks):
-        if k == t:
-            continue  # Skip current task
+            c1, c2 = _sbx_crossover_unclipped(p1, p2, self.mu_c)
+            c1 = _poly_mutation_unclipped(c1, self.mu_m)
+            c2 = _poly_mutation_unclipped(c2, self.mu_m)
 
-        # Extract best solutions from source task k
-        his_pop_dec = pop_decs_all[k]
-        his_best_dec = his_pop_dec[:inject_num, :problem.dims[k]]  # Take top 'inject_num' best solutions
+            off_decs[count] = np.clip(c1, 0, 1)
+            off_decs[count + 1] = np.clip(c2, 0, 1)
+            count += 2
 
-        # Transfer via marginal Denoising Autoencoder (mDA)
-        inject = mda(
-            init_pop_dec[t][:, :problem.dims[t]],
-            init_pop_dec[k][:, :problem.dims[k]],
-            his_best_dec
-        )
+        return off_decs
 
-        # Dimensionality completion
-        n_inject, n_dims_inject = inject.shape
-        if n_dims_inject < problem.dims[t]:
-            # Randomly fill remaining dimensions
-            rand_part = np.random.rand(n_inject, problem.dims[t] - n_dims_inject)
-            inject = np.hstack([inject, rand_part])
+    def _knowledge_transfer(self, t, init_pop_dec, pop_decs, dims, d_max):
+        """
+        Build the injected solutions for task ``t`` via explicit autoencoding.
 
-        # Boundary handling
-        inject = np.clip(inject, 0, 1)
-        inject_decs.append(inject)
+        For every other task k a linear mDA map is learned between the two
+        (sorted) initial populations and applied to the current elites of task
+        k. The mapped genome keeps only D(t) genes; the remaining unified genes
+        are drawn from U[0, 1], matching ``rand(1, max(D) - D(t))`` in MToP.
 
-    # Merge all injected solutions
-    if inject_decs:
-        inject_decs = np.vstack(inject_decs)
-        return inject_decs
-    return None
+        Parameters
+        ----------
+        t : int
+            Target task index
+        init_pop_dec : list of np.ndarray
+            Sorted initial populations of every task, truncated to D(k)
+        pop_decs : list of np.ndarray
+            Current unified populations of every task
+        dims : list of int
+            Decision-variable count of every task
+        d_max : int
+            Unified genome width
 
+        Returns
+        -------
+        inject_decs : np.ndarray
+            Injected solutions of shape (inject_num * (T - 1), d_max)
+        """
+        nt = len(pop_decs)
+        if nt < 2:
+            return np.zeros((0, d_max))
 
-def mda(curr_pop: np.ndarray,
-        his_pop: np.ndarray,
-        his_bestSolution: np.ndarray) -> np.ndarray:
-    """
-    Marginal Denoising Autoencoder (mDA) for knowledge transfer in evolutionary multitasking.
+        # MATLAB round() is half-away-from-zero, unlike numpy's banker rounding
+        inject_num = int(np.floor(self.s_num / (nt - 1) + 0.5))
+        if inject_num <= 0:
+            return np.zeros((0, d_max))
 
-    Parameters
-    ----------
-    curr_pop : np.ndarray
-        Current population from target domain (n_samples, d_curr)
-        n_samples: number of individuals, d_curr: variable dimension of target domain
-    his_pop : np.ndarray
-        Population from source domain (n_samples, d_his)
-        n_samples: number of individuals (same as curr_pop), d_his: variable dimension of source domain
-    his_bestSolution : np.ndarray
-        Best solutions from source domain (n_best, d_his)
-        n_best: number of best solutions, d_his: variable dimension of source domain
+        chunks = []
+        for k in range(nt):
+            if k == t:
+                continue
 
-    Returns
-    -------
-    inj_solution : np.ndarray
-        Transformed solutions for target domain (n_best, d_curr)
-    """
-    # ========== Step 1: Get dimension information ==========
-    # curr_pop: (n, d_curr), his_pop: (n, d_his)
-    n_curr, curr_len = curr_pop.shape
-    n_his, tmp_len = his_pop.shape
+            n_take = min(inject_num, pop_decs[k].shape[0])
+            his_best_dec = pop_decs[k][:n_take, :dims[k]]
 
-    # Ensure both populations have same sample size
-    assert n_curr == n_his, f"curr_pop ({n_curr}) and his_pop ({n_his}) must have the same number of samples!"
+            inject = mda(init_pop_dec[t], init_pop_dec[k], his_best_dec)
 
-    # ========== Step 2: Align dimensions by padding zeros ==========
-    if curr_len < tmp_len:
-        # Target dim < Source dim: Pad curr_pop with 0
-        pad_width = ((0, 0), (0, tmp_len - curr_len))
-        curr_pop = np.pad(curr_pop, pad_width, mode='constant', constant_values=0)
-    elif curr_len > tmp_len:
-        # Target dim > Source dim: Pad his_pop with 0
-        pad_width = ((0, 0), (0, curr_len - tmp_len))
-        his_pop = np.pad(his_pop, pad_width, mode='constant', constant_values=0)
+            if d_max > dims[t]:
+                inject = np.hstack([inject, np.random.rand(inject.shape[0], d_max - dims[t])])
+            inject = np.clip(inject, 0, 1)
+            chunks.append(inject)
 
-    # ========== Step 3: Transpose and add bias term  ==========
-    xx = curr_pop.T
-    noise = his_pop.T
-
-    d, n = xx.shape  # d: aligned dimension, n: number of samples
-    # Add bias term (last row is all 1s)
-    xxb = np.vstack([xx, np.ones((1, n))])
-    noise_xb = np.vstack([noise, np.ones((1, n))])
-
-    # ========== Step 4: Calculate weight matrix W ==========
-    lambda_ = 1e-5  # Regularization parameter
-    Q = noise_xb @ noise_xb.T
-    P = xxb @ noise_xb.T
-
-    # Regularization term: lambda * eye(d+1), set last element to 0
-    reg = lambda_ * np.eye(d + 1)
-    reg[-1, -1] = 0
-
-    # W = P / (Q + reg) -> W = P * inv(Q + reg)
-    W = P @ np.linalg.inv(Q + reg)
-
-    # ========== Step 5: Remove bias term from weight matrix ==========
-    W = W[:-1, :-1]
-
-    # ========== Step 6: Transform best solutions to target domain ==========
-    if curr_len <= tmp_len:
-        # Target dim <= Source dim: Transform then crop to target dimension
-        tmp_solution = (W @ his_bestSolution.T).T
-        inj_solution = tmp_solution[:, :curr_len]
-    elif curr_len > tmp_len:
-        # Target dim > Source dim: Pad best solutions, then transform
-        pad_width = ((0, 0), (0, curr_len - tmp_len))
-        his_bestSolution_padded = np.pad(his_bestSolution, pad_width, mode='constant', constant_values=0)
-        inj_solution = (W @ his_bestSolution_padded.T).T
-
-    return inj_solution
-
-
-def nsga2_sort(objs, cons=None):
-    """
-    Sort solutions based on NSGA-II criteria using non-dominated sorting and crowding distance.
-
-    Parameters
-    ----------
-    objs : np.ndarray
-        Objective value matrix of shape (pop_size, n_obj)
-    cons : np.ndarray, optional
-        Constraint matrix of shape (pop_size, n_con). If None, no constraints are considered (default: None)
-
-    Returns
-    -------
-    rank : np.ndarray
-        Ranking of each solution (0-based index after sorting) of shape (pop_size,).
-        rank[i] indicates the position of solution i in the sorted order
-    front_no : np.ndarray
-        Non-dominated front number of each solution of shape (pop_size,)
-    crowd_dis : np.ndarray
-        Crowding distance of each solution of shape (pop_size,)
-    """
-    pop_size = objs.shape[0]
-
-    # Perform non-dominated sorting
-    if cons is not None:
-        front_no, _ = nd_sort(objs, cons, pop_size)
-    else:
-        front_no, _ = nd_sort(objs, pop_size)
-
-    # Calculate crowding distance for diversity preservation
-    crowd_dis = crowding_distance(objs, front_no)
-
-    # Sort by front number (ascending), then by crowding distance (descending)
-    sorted_indices = np.lexsort((-crowd_dis, front_no))
-
-    # Create rank array: rank[i] gives the sorted position of solution i
-    rank = np.empty(pop_size, dtype=int)
-    rank[sorted_indices] = np.arange(pop_size)
-
-    return rank, front_no, crowd_dis
-
-
-def selection_spea2(pop_decs: np.ndarray, pop_objs: np.ndarray, pop_cons: np.ndarray,
-                    n: int, epsilon: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Environmental selection of SPEA2.
-
-    Parameters
-    ----------
-    pop_decs : np.ndarray
-        Population decision variables (n_individuals, n_dims)
-    pop_objs : np.ndarray
-        Population objective values (n_individuals, n_objs)
-    pop_cons : np.ndarray
-        Population constraint violation values (n_individuals, n_cons)
-        If no constraints, pass an empty array or all zeros
-    n : int
-        Target population size for next generation
-    epsilon : float, optional
-        Epsilon constraint tolerance (default: 0.0)
-
-    Returns
-    -------
-    selected_decs : np.ndarray
-        Selected population decision variables (n, n_dims)
-    fitness_values : np.ndarray
-        Fitness values of selected population (n,)
-    """
-    # Check if critical inputs are empty/invalid
-    if pop_decs is None or pop_objs is None or len(pop_objs) == 0 or len(pop_decs) == 0:
-        # Return empty arrays to avoid None type errors
-        return np.array([]), np.array([])
-    # Ensure n is a valid value (non-negative, not exceeding population size)
-    n = max(0, min(n, len(pop_objs)))
-    if n == 0:
-        return np.array([]), np.array([])
-
-    # ========== Step 1: Calculate constraint violation (CV) ==========
-    # Handle empty constraints (no constraints)
-    if pop_cons.size == 0:
-        cvs = np.zeros(len(pop_objs))
-    else:
-        cvs = np.sum(np.maximum(0, pop_cons), axis=1)
-    cvs[cvs < epsilon] = 0
-
-    # ========== Step 2: Calculate SPEA2 fitness ==========
-    fitness = cal_fitness(pop_objs, cvs)
-
-    # ========== Step 3: Environmental selection ==========
-    # Initial selection: fitness < 1
-    next_mask = fitness < 1  # Boolean mask (True/False)
-    n_selected = np.sum(next_mask)
-
-    # Case 1: Not enough solutions (select top N by fitness)
-    if n_selected < n:
-        # Sort fitness and select top N
-        sorted_indices = np.argsort(fitness)
-        next_mask = np.zeros_like(next_mask, dtype=bool)
-        next_mask[sorted_indices[:n]] = True
-
-    # Case 2: Too many solutions (truncation to N)
-    elif n_selected > n:
-        # Get indices of initially selected solutions
-        selected_indices = np.where(next_mask)[0]
-        # Get their objective values
-        selected_objs = pop_objs[selected_indices]
-        # Calculate truncation indices (to delete)
-        del_indices = truncation(selected_objs, n_selected - n)
-        # Update next_mask: set del_indices to False
-        next_mask[selected_indices[del_indices]] = False
-
-    # ========== Step 4: Select population and sort by fitness ==========
-    # Apply selection mask
-    selected_decs = pop_decs[next_mask]
-    fitness_values = fitness[next_mask]
-
-    # Sort population by fitness (ascending)
-    sorted_fitness_indices = np.argsort(fitness_values)
-    fitness_values = fitness_values[sorted_fitness_indices]
-    selected_decs = selected_decs[sorted_fitness_indices]
-
-    return selected_decs, fitness_values
-
-
-def truncation(pop_obj: np.ndarray, k: int) -> np.ndarray:
-    """
-    Truncation operator for SPEA2.
-    Select K solutions to delete by density estimation.
-
-    Parameters
-    ----------
-    pop_obj : np.ndarray
-        Objective values of the population to truncate (n_individuals, n_objs)
-    k : int
-        Number of solutions to delete
-
-    Returns
-    -------
-    del_indices : np.ndarray
-        Indices of solutions to delete (k,)
-    """
-    n = len(pop_obj)
-    del_mask = np.zeros(n, dtype=bool)  # Initial mask (all False)
-
-    # Calculate pairwise distance matrix
-    distance = cdist(pop_obj, pop_obj)
-    # Set diagonal to infinity (distance to self = inf)
-    np.fill_diagonal(distance, np.inf)
-
-    # Iteratively delete the most crowded solution until K are deleted
-    while np.sum(del_mask) < k:
-        # Get indices of remaining solutions
-        remain_indices = np.where(~del_mask)[0]
-        # Get distance matrix of remaining solutions
-        remain_dist = distance[remain_indices][:, remain_indices]
-        # Sort distances for each solution (ascending)
-        sorted_dist = np.sort(remain_dist, axis=1)
-        # Sort rows by the sorted distances
-        # Use lexsort (sort by first column, then second, etc.)
-        sorted_rows_indices = np.lexsort(np.rot90(sorted_dist))
-        # Select the first solution (most crowded) to delete
-        del_idx_in_remain = sorted_rows_indices[0]
-        del_mask[remain_indices[del_idx_in_remain]] = True
-
-    # Return indices of deleted solutions
-    del_indices = np.where(del_mask)[0]
-    return del_indices
-
-
-def cal_fitness(pop_obj: np.ndarray, pop_cv: np.ndarray = None) -> np.ndarray:
-    """
-    Calculate SPEA2 fitness values.
-
-    Parameters
-    ----------
-    pop_obj : np.ndarray
-        Objective values (n_individuals, n_objs)
-    pop_cv : np.ndarray, optional
-        Constraint violation values (n_individuals,) (default: None -> no constraints)
-
-    Returns
-    -------
-    fitness : np.ndarray
-        SPEA2 fitness values (n_individuals,)
-    """
-    n = len(pop_obj)
-    if n == 0:
-        return np.array([])
-    # Handle no constraint case
-    if pop_cv is None:
-        cv = np.zeros(n)
-    else:
-        cv = pop_cv.copy()
-
-    # ========== Step 1: Detect dominance relations ==========
-    dominate = np.zeros((n, n), dtype=bool)  # Dominance matrix (dominate[i,j] = i dominates j)
-
-    for i in range(n):
-        for j in range(i + 1, n):
-            # Compare constraints first
-            if cv[i] < cv[j]:
-                dominate[i, j] = True
-            elif cv[i] > cv[j]:
-                dominate[j, i] = True
-            else:
-                # No constraint violation: compare objectives (minimization)
-                obj_i = pop_obj[i]
-                obj_j = pop_obj[j]
-                has_better = np.any(obj_i < obj_j)
-                has_worse = np.any(obj_i > obj_j)
-                k = 1 if has_better and not has_worse else (-1 if has_worse and not has_better else 0)
-
-                if k == 1:
-                    dominate[i, j] = True
-                elif k == -1:
-                    dominate[j, i] = True
-
-    # ========== Step 2: Calculate strength S(i) ==========
-    # S(i) = number of solutions dominated by i (sum over columns)
-    s = np.sum(dominate, axis=1)
-
-    # ========== Step 3: Calculate raw fitness R(i) ==========
-    # R(i) = sum of S(j) for all j that dominate i (sum S where dominate[:,i] is True)
-    r = np.zeros(n)
-    for i in range(n):
-        dominating_indices = np.where(dominate[:, i])[0]
-        r[i] = np.sum(s[dominating_indices])
-
-    # ========== Step 4: Calculate density D(i) ==========
-    # Pairwise distance matrix
-    distance = cdist(pop_obj, pop_obj)
-    np.fill_diagonal(distance, np.inf)  # Distance to self = inf
-    # Sort distances for each solution
-    distance_sorted = np.sort(distance, axis=1)
-    # k-th nearest neighbor (floor(sqrt(N)))
-    k_neighbor = int(np.floor(np.sqrt(n)))
-    # D(i) = 1 / (distance to k-th neighbor + 2)
-    d = 1.0 / (distance_sorted[:, k_neighbor] + 2)
-
-    # ========== Step 5: Total fitness = R + D ==========
-    fitness = r + d
-    return fitness
+        if not chunks:
+            return np.zeros((0, d_max))
+        return np.vstack(chunks)
