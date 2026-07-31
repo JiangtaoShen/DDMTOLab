@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.MTSO.SaEF_AKT &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -85,10 +85,31 @@
 
 <span class="sd">Notes</span>
 <span class="sd">-----</span>
+<span class="sd">Verified against the paper (v1.1). Structure matches Algorithm 2 and the</span>
+<span class="sd">component equations: local GP on the NC nearest + NR most-recent points, merit</span>
+<span class="sd">functions f_M = t_hat - g*s_t with g in {0, 1, 2, 4} optimized inside the</span>
+<span class="sd">hypercube around x_best (Eqs. 15-16), KLD similarity between the training-data</span>
+<span class="sd">normal distributions (Eq. 21), Softmax-normalized reciprocal similarity</span>
+<span class="sd">(Eqs. 23-24), pheromone/similarity transfer selection (Eqs. 22, 25), and</span>
+<span class="sd">pheromone volatilize/reward/clamp (Eqs. 26-28). Default parameters follow the</span>
+<span class="sd">paper: NC = NR = 60, Phe_a = 0.1, Phe_max = 1.0, Phe_min = 0.01, P_max = 0.9,</span>
+<span class="sd">DE population 15 with 2000 merit evaluations.</span>
+
+<span class="sd">Correction: the GPOP phase now evaluates the optima of all four merit functions</span>
+<span class="sd">with the true fitness each generation (the defining exploration mechanism of</span>
+<span class="sd">GPOP), instead of the previous single best-predicted candidate.</span>
+
+<span class="sd">Deliberate substitutions (inner-solver / modeling choices that do not change the</span>
+<span class="sd">algorithm&#39;s semantics): the merit functions and GP hyper-parameters are</span>
+<span class="sd">optimized with the platform&#39;s DE / botorch&#39;s L-BFGS rather than the paper&#39;s</span>
+<span class="sd">JADE, and the GP uses botorch&#39;s default Matern 5/2 kernel rather than the</span>
+<span class="sd">paper&#39;s squared-exponential-with-periodic kernel (more robust on general,</span>
+<span class="sd">non-periodic landscapes).</span>
+
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
-<span class="sd">Date: 2026.02.22</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Date: 2026.07.18</span>
+<span class="sd">Version: 1.1</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
@@ -246,13 +267,16 @@
                 <span class="k">break</span>
 
             <span class="c1"># ===== Phase 1: Surrogate-Assisted EA (GPOP) =====</span>
-            <span class="c1"># For each task: GP search + evaluate best candidate with real function</span>
+            <span class="c1"># For each task: build a local GP and evaluate the optima of all four</span>
+            <span class="c1"># merit functions (g = 0, 1, 2, 4) with the real fitness (GPOP).</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
                     <span class="k">continue</span>
 
-                <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gpop_search</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                <span class="k">if</span> <span class="n">candidate</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">candidates</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_gpop_search</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+                <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]:</span>
+                        <span class="k">break</span>
                     <span class="n">candidate</span> <span class="o">=</span> <span class="n">candidate</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
                     <span class="n">obj_new</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
                     <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">candidate</span><span class="p">])</span>
@@ -373,8 +397,9 @@
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        np.ndarray or None</span>
-<span class="sd">            Best candidate found, shape (dim_t,), or None if GP fails</span>
+<span class="sd">        list of np.ndarray</span>
+<span class="sd">            Optima of the four merit functions (g = 0, 1, 2, 4), each of shape</span>
+<span class="sd">            (dim_t,); near-duplicates removed. Empty if the GP cannot be built.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">n</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">decs_t</span><span class="p">)</span>
         <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">objs_t</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
@@ -407,26 +432,23 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_gp</span><span class="p">(</span><span class="n">train_x</span><span class="p">,</span> <span class="n">train_y</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="k">return</span> <span class="kc">None</span>
+            <span class="k">return</span> <span class="p">[]</span>
 
-        <span class="c1"># Search with multiple merit functions (g = 0, 1, 2, 4)</span>
-        <span class="c1"># Each g explores different exploration-exploitation trade-off</span>
-        <span class="c1"># Select best candidate using predicted mean (g=0) for fair comparison</span>
-        <span class="n">best_candidate</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="n">best_pred_mean</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">inf</span>
-
+        <span class="c1"># Optimize each merit function f_M = mean - g*std (g = 0, 1, 2, 4). Each</span>
+        <span class="c1"># optimum is a distinct exploration/exploitation trade-off; per the GPOP</span>
+        <span class="c1"># procedure all of them are returned to be evaluated with the true</span>
+        <span class="c1"># fitness (g=0 exploits the surrogate mean, larger g probes uncertain</span>
+        <span class="c1"># regions). Near-duplicates are dropped to avoid wasting evaluations.</span>
+        <span class="n">candidates</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">g_values</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_optimize_merit</span><span class="p">(</span><span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">,</span> <span class="n">dim_t</span><span class="p">,</span> <span class="n">g</span><span class="p">)</span>
-                <span class="c1"># Compare using predicted mean (g=0) to avoid bias toward high-g</span>
-                <span class="n">pred_mean</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_evaluate_merit</span><span class="p">(</span><span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
-                <span class="k">if</span> <span class="n">pred_mean</span> <span class="o">&lt;</span> <span class="n">best_pred_mean</span><span class="p">:</span>
-                    <span class="n">best_pred_mean</span> <span class="o">=</span> <span class="n">pred_mean</span>
-                    <span class="n">best_candidate</span> <span class="o">=</span> <span class="n">candidate</span>
+                <span class="n">cand</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_optimize_merit</span><span class="p">(</span><span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">,</span> <span class="n">dim_t</span><span class="p">,</span> <span class="n">g</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
                 <span class="k">continue</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="nb">any</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">cand</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">atol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">)</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">candidates</span><span class="p">):</span>
+                <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">cand</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">best_candidate</span>
+        <span class="k">return</span> <span class="n">candidates</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_gp</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">train_x</span><span class="p">,</span> <span class="n">train_y</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
@@ -459,33 +481,6 @@
         <span class="n">fit_gpytorch_mll</span><span class="p">(</span><span class="n">mll</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_evaluate_merit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Evaluate merit function: f_M(x) = mean(x) - g * std(x).</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        gp : SingleTaskGP</span>
-<span class="sd">            Fitted GP model</span>
-<span class="sd">        y_mean, y_std : torch.Tensor</span>
-<span class="sd">            Standardization parameters</span>
-<span class="sd">        x : np.ndarray</span>
-<span class="sd">            Decision vector, shape (dim,)</span>
-<span class="sd">        g : float</span>
-<span class="sd">            Exploration weight</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        float</span>
-<span class="sd">            Merit function value</span>
-<span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">x_t</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">tensor</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">double</span><span class="p">)</span><span class="o">.</span><span class="n">unsqueeze</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-        <span class="k">with</span> <span class="n">torch</span><span class="o">.</span><span class="n">no_grad</span><span class="p">():</span>
-            <span class="n">posterior</span> <span class="o">=</span> <span class="n">gp</span><span class="o">.</span><span class="n">posterior</span><span class="p">(</span><span class="n">x_t</span><span class="p">)</span>
-            <span class="n">mean</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">mean</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="n">y_std</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">+</span> <span class="n">y_mean</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-            <span class="n">std</span> <span class="o">=</span> <span class="n">posterior</span><span class="o">.</span><span class="n">variance</span><span class="o">.</span><span class="n">sqrt</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">()</span> <span class="o">*</span> <span class="n">y_std</span><span class="o">.</span><span class="n">item</span><span class="p">()</span>
-        <span class="k">return</span> <span class="n">mean</span> <span class="o">-</span> <span class="n">g</span> <span class="o">*</span> <span class="n">std</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_batch_merit</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">gp</span><span class="p">,</span> <span class="n">y_mean</span><span class="p">,</span> <span class="n">y_std</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">g</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>

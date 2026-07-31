@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.STSO.DDEA_MESS &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -87,16 +87,14 @@
 <span class="sd">-----</span>
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
-<span class="sd">Date: 2026.02.19</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Date: 2026.07.23</span>
+<span class="sd">Version: 1.1</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">RBFInterpolator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">minimize</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
 
 <span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
@@ -109,9 +107,9 @@
 <span class="sd">    Data-Driven Evolutionary Algorithm with Multi-Evolutionary Sampling Strategy.</span>
 
 <span class="sd">    Dynamically selects from three search strategies based on evaluation budget usage:</span>
-<span class="sd">    1. Global search: DE/rand/1 prescreening on RBF model built from first min(N, 300) samples</span>
-<span class="sd">    2. Local search: DE/best/1 on RBF model built from top tau samples by fitness</span>
-<span class="sd">    3. Trust region search: Local optimization (L-BFGS-B) on RBF model around best solution</span>
+<span class="sd">    1. Global search: one-generation DE prescreening on RBF built from the first min(N, 300) samples</span>
+<span class="sd">    2. Local search: DE/best/1 (10 generations) on RBF built from the top tau samples by fitness</span>
+<span class="sd">    3. Interior-point search: local optimization on RBF around the best solution</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
     <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
@@ -143,7 +141,7 @@
 <span class="sd">        problem : MTOP</span>
 <span class="sd">            Multi-task optimization problem instance</span>
 <span class="sd">        n_initial : int or List[int], optional</span>
-<span class="sd">            Number of initial samples per task (default: 100)</span>
+<span class="sd">            Number of initial samples per task (default: 50)</span>
 <span class="sd">        max_nfes : int or List[int], optional</span>
 <span class="sd">            Maximum number of function evaluations per task (default: 300)</span>
 <span class="sd">        save_data : bool, optional</span>
@@ -156,7 +154,7 @@
 <span class="sd">            Whether to disable progress bar (default: True)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">50</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">300</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
@@ -204,15 +202,15 @@
                 <span class="n">X</span> <span class="o">=</span> <span class="n">current_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
                 <span class="n">Y</span> <span class="o">=</span> <span class="n">current_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
 
-                <span class="c1"># Select strategy using MESS</span>
-                <span class="n">strategy_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mess</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="mi">500</span><span class="p">)</span>
+                <span class="c1"># Select strategy using MESS (MATLAB passes its FEsMax=500 here)</span>
+                <span class="n">strategy_id</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mess</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
                 <span class="k">if</span> <span class="n">strategy_id</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
                     <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy_global</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
                 <span class="k">elif</span> <span class="n">strategy_id</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
                     <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy_local</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy_trust_region</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+                    <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_strategy_interior_point</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
 
                 <span class="c1"># Ensure uniqueness</span>
                 <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ensure_uniqueness</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
@@ -249,20 +247,10 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Multi-Evolutionary Sampling Strategy selector.</span>
 
-<span class="sd">        Dynamically computes probabilities for three strategies based on</span>
-<span class="sd">        the ratio of used evaluations to total budget.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        fes_used : int</span>
-<span class="sd">            Number of function evaluations used (including initial samples)</span>
-<span class="sd">        fes_max : int</span>
-<span class="sd">            Maximum number of function evaluations (total budget)</span>
-
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        int</span>
-<span class="sd">            Strategy ID: 1 (global), 2 (local), or 3 (trust region)</span>
+<span class="sd">            Strategy ID: 1 (global), 2 (local), or 3 (interior point)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">ratio</span> <span class="o">=</span> <span class="n">fes_used</span> <span class="o">/</span> <span class="n">fes_max</span>
         <span class="n">beta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">ratio</span> <span class="o">**</span> <span class="mi">3</span><span class="p">)</span> <span class="o">**</span> <span class="mi">2</span>
@@ -275,46 +263,18 @@
         <span class="k">elif</span> <span class="n">r</span> <span class="o">&lt;=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">P1</span><span class="p">:</span>
             <span class="k">return</span> <span class="mi">2</span>  <span class="c1"># local search</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="mi">3</span>  <span class="c1"># trust region search</span>
-
-    <span class="k">def</span><span class="w"> </span><span class="nf">_build_rbf_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build Gaussian RBF surrogate model.&quot;&quot;&quot;</span>
-        <span class="n">Y_flat</span> <span class="o">=</span> <span class="n">Y</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-        <span class="n">n_samples</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span>
-
-        <span class="k">if</span> <span class="n">n_samples</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">dist_matrix</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;euclidean&#39;</span><span class="p">)</span>
-            <span class="n">max_dist</span> <span class="o">=</span> <span class="n">dist_matrix</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
-            <span class="n">spread</span> <span class="o">=</span> <span class="n">max_dist</span> <span class="o">/</span> <span class="p">(</span><span class="n">dim</span> <span class="o">*</span> <span class="n">n_samples</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">dim</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">spread</span> <span class="o">=</span> <span class="mf">1.0</span>
-
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">rbf</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y_flat</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">spread</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="n">rbf</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y_flat</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;thin_plate_spline&#39;</span><span class="p">)</span>
-
-        <span class="k">def</span><span class="w"> </span><span class="nf">model</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-                <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">rbf</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-
-        <span class="k">return</span> <span class="n">model</span>
+            <span class="k">return</span> <span class="mi">3</span>  <span class="c1"># interior point search</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_strategy_global</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Strategy 1: Global search with DE/rand/1 prescreening.</span>
-
-<span class="sd">        Builds RBF on first min(N, 300) samples (initial LHS provides good coverage).</span>
-<span class="sd">        Runs 1 generation of DE/rand/1 with elite initialization from full database.</span>
+<span class="sd">        Strategy 1: Global prescreening (one DE generation) on an RBF model</span>
+<span class="sd">        built from the first min(N, 300) samples, searched over [0, 1]^dim.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="n">m</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="mi">300</span><span class="p">)</span>
 
-        <span class="c1"># Build RBF on first m samples</span>
-        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_rbf_model</span><span class="p">(</span><span class="n">X</span><span class="p">[:</span><span class="n">m</span><span class="p">],</span> <span class="n">Y</span><span class="p">[:</span><span class="n">m</span><span class="p">])</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">newrbe_surrogate</span><span class="p">(</span><span class="n">X</span><span class="p">[:</span><span class="n">m</span><span class="p">],</span> <span class="n">Y</span><span class="p">[:</span><span class="n">m</span><span class="p">])</span>
 
-        <span class="c1"># DE/rand/1 prescreening (1 generation)</span>
         <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_search</span><span class="p">(</span>
             <span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span>
             <span class="n">lb</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span> <span class="n">ub</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span>
@@ -325,33 +285,23 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_strategy_local</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Strategy 2: Local search with DE/best/1.</span>
-
-<span class="sd">        Selects top tau = min(dim+25, N) solutions by fitness.</span>
-<span class="sd">        Builds RBF on selected data within local bounds.</span>
-<span class="sd">        Runs 10 generations of DE/best/1 with elite initialization from full database.</span>
+<span class="sd">        Strategy 2: Local search with DE/best/1 (10 generations) on an RBF model</span>
+<span class="sd">        built from the top tau = min(dim+25, N) samples, searched inside their</span>
+<span class="sd">        bounding box.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="n">tau</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">dim</span> <span class="o">+</span> <span class="mi">25</span><span class="p">,</span> <span class="n">N</span><span class="p">)</span>
 
-        <span class="c1"># Select top tau solutions by fitness</span>
         <span class="n">Y_flat</span> <span class="o">=</span> <span class="n">Y</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">)[:</span><span class="n">tau</span><span class="p">]</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">tau</span><span class="p">]</span>
         <span class="n">X_local</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
         <span class="n">Y_local</span> <span class="o">=</span> <span class="n">Y</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
 
         <span class="n">lb_local</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">X_local</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">ub_local</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">X_local</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
-        <span class="c1"># Handle degenerate bounds</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">ub_local</span> <span class="o">-</span> <span class="n">lb_local</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span>
-        <span class="n">lb_local</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">lb_local</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.05</span><span class="p">)</span>
-        <span class="n">ub_local</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">ub_local</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">+</span> <span class="mf">0.05</span><span class="p">)</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">newrbe_surrogate</span><span class="p">(</span><span class="n">X_local</span><span class="p">,</span> <span class="n">Y_local</span><span class="p">)</span>
 
-        <span class="c1"># Build RBF on local data</span>
-        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_rbf_model</span><span class="p">(</span><span class="n">X_local</span><span class="p">,</span> <span class="n">Y_local</span><span class="p">)</span>
-
-        <span class="c1"># DE/best/1 search (10 generations)</span>
         <span class="n">candidate</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_search</span><span class="p">(</span>
             <span class="n">model</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span>
             <span class="n">lb</span><span class="o">=</span><span class="n">lb_local</span><span class="p">,</span> <span class="n">ub</span><span class="o">=</span><span class="n">ub_local</span><span class="p">,</span>
@@ -360,12 +310,11 @@
 
         <span class="k">return</span> <span class="n">candidate</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_strategy_trust_region</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_strategy_interior_point</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Strategy 3: Trust region search with local optimization.</span>
-
-<span class="sd">        Selects min(N, 5*dim) nearest neighbors to the best solution.</span>
-<span class="sd">        Builds RBF on selected data and runs L-BFGS-B optimization.</span>
+<span class="sd">        Strategy 3: Interior-point local optimization on an RBF model built</span>
+<span class="sd">        from the min(N, 5*dim) samples nearest to the current best, started</span>
+<span class="sd">        from the best solution.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="n">m</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">N</span><span class="p">,</span> <span class="mi">5</span> <span class="o">*</span> <span class="n">dim</span><span class="p">)</span>
@@ -373,29 +322,22 @@
         <span class="n">Y_flat</span> <span class="o">=</span> <span class="n">Y</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
         <span class="n">idx_min</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">)</span>
 
-        <span class="c1"># Select m nearest neighbors to best</span>
+        <span class="c1"># Select m nearest neighbors to the best point</span>
         <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">X</span><span class="p">[</span><span class="n">idx_min</span><span class="p">:</span><span class="n">idx_min</span> <span class="o">+</span> <span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dist</span><span class="p">)[:</span><span class="n">m</span><span class="p">]</span>
+        <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">dist</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">m</span><span class="p">]</span>
         <span class="n">X_trs</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
         <span class="n">Y_trs</span> <span class="o">=</span> <span class="n">Y</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
 
-        <span class="c1"># Build RBF on trust region data</span>
-        <span class="n">model</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_rbf_model</span><span class="p">(</span><span class="n">X_trs</span><span class="p">,</span> <span class="n">Y_trs</span><span class="p">)</span>
+        <span class="n">model</span> <span class="o">=</span> <span class="n">newrbe_surrogate</span><span class="p">(</span><span class="n">X_trs</span><span class="p">,</span> <span class="n">Y_trs</span><span class="p">)</span>
 
         <span class="n">lb_trs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">X_trs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
         <span class="n">ub_trs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">X_trs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
 
-        <span class="c1"># Handle degenerate bounds</span>
-        <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">ub_trs</span> <span class="o">-</span> <span class="n">lb_trs</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-10</span>
-        <span class="n">lb_trs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">lb_trs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">-</span> <span class="mf">0.05</span><span class="p">)</span>
-        <span class="n">ub_trs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">ub_trs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">+</span> <span class="mf">0.05</span><span class="p">)</span>
-
-        <span class="c1"># Local optimization starting from best solution</span>
         <span class="n">x0</span> <span class="o">=</span> <span class="n">X</span><span class="p">[</span><span class="n">idx_min</span><span class="p">]</span>
         <span class="n">bounds</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">lb_trs</span><span class="p">,</span> <span class="n">ub_trs</span><span class="p">))</span>
 
         <span class="k">def</span><span class="w"> </span><span class="nf">obj_func</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-            <span class="k">return</span> <span class="n">model</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))</span><span class="o">.</span><span class="n">flatten</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="n">model</span><span class="p">(</span><span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">))[</span><span class="mi">0</span><span class="p">])</span>
 
         <span class="k">try</span><span class="p">:</span>
             <span class="n">result</span> <span class="o">=</span> <span class="n">minimize</span><span class="p">(</span><span class="n">obj_func</span><span class="p">,</span> <span class="n">x0</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;trust-constr&#39;</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span>
@@ -410,97 +352,79 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">_de_search</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">surrogate_func</span><span class="p">,</span> <span class="n">X_full</span><span class="p">,</span> <span class="n">Y_full</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span>
                    <span class="n">popsize</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">max_gen</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;rand&#39;</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Run DE on surrogate model with elite initialization.</span>
+<span class="sd">        DE search on a surrogate with elite initialization from the full database.</span>
 
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        surrogate_func : callable</span>
-<span class="sd">            Surrogate model, accepts (n, d) array, returns (n, 1) predictions</span>
-<span class="sd">        X_full : np.ndarray</span>
-<span class="sd">            Full database of decision variables (for elite initialization)</span>
-<span class="sd">        Y_full : np.ndarray</span>
-<span class="sd">            Full database of objectives (for elite initialization)</span>
-<span class="sd">        lb, ub : np.ndarray</span>
-<span class="sd">            Search bounds, shape (d,)</span>
-<span class="sd">        dim : int</span>
-<span class="sd">            Problem dimension</span>
-<span class="sd">        popsize : int</span>
-<span class="sd">            Population size</span>
-<span class="sd">        max_gen : int</span>
-<span class="sd">            Maximum DE generations</span>
-<span class="sd">        mode : str</span>
-<span class="sd">            &#39;rand&#39; for DE/rand/1/bin, &#39;best&#39; for DE/best/1/bin</span>
+<span class="sd">        The initial parents carry their raw database objective values; offspring</span>
+<span class="sd">        are scored on the surrogate and compete 1-to-1 (ties go to offspring).</span>
+<span class="sd">        Parents from the full database may lie outside [lb, ub]; they are</span>
+<span class="sd">        normalized without clipping, and only offspring are confined to the box.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="n">CR</span><span class="p">,</span> <span class="n">F</span> <span class="o">=</span> <span class="mf">0.8</span><span class="p">,</span> <span class="mf">0.5</span>
         <span class="n">Y_flat</span> <span class="o">=</span> <span class="n">Y_full</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
         <span class="n">N</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">)</span>
 
-        <span class="c1"># Elite initialization: top popsize from full database</span>
+        <span class="c1"># Elite initialization: top popsize with raw objective values (sorted ascending)</span>
         <span class="k">if</span> <span class="n">N</span> <span class="o">&gt;=</span> <span class="n">popsize</span><span class="p">:</span>
-            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">)[:</span><span class="n">popsize</span><span class="p">]</span>
+            <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">Y_flat</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s1">&#39;stable&#39;</span><span class="p">)[:</span><span class="n">popsize</span><span class="p">]</span>
             <span class="n">pop</span> <span class="o">=</span> <span class="n">X_full</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
             <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">Y_flat</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">extra</span> <span class="o">=</span> <span class="n">lb</span> <span class="o">+</span> <span class="p">(</span><span class="n">ub</span> <span class="o">-</span> <span class="n">lb</span><span class="p">)</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">popsize</span> <span class="o">-</span> <span class="n">N</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
             <span class="n">pop</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">X_full</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span> <span class="n">extra</span><span class="p">])</span>
-            <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">Y_flat</span><span class="p">,</span> <span class="n">surrogate_func</span><span class="p">(</span><span class="n">extra</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()])</span>
+            <span class="n">pop_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">Y_flat</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">surrogate_func</span><span class="p">(</span><span class="n">extra</span><span class="p">))</span><span class="o">.</span><span class="n">flatten</span><span class="p">()])</span>
 
-        <span class="c1"># Compute range for normalization</span>
-        <span class="n">range_vec</span> <span class="o">=</span> <span class="n">ub</span> <span class="o">-</span> <span class="n">lb</span>
-        <span class="n">range_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">range_vec</span><span class="p">,</span> <span class="mf">1e-30</span><span class="p">)</span>
+        <span class="n">range_vec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">ub</span> <span class="o">-</span> <span class="n">lb</span><span class="p">,</span> <span class="mf">1e-12</span><span class="p">)</span>
 
         <span class="k">for</span> <span class="n">gen</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_gen</span><span class="p">):</span>
-            <span class="c1"># Normalize to [0,1] within [lb, ub]</span>
-            <span class="n">pop_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">pop</span> <span class="o">-</span> <span class="n">lb</span><span class="p">)</span> <span class="o">/</span> <span class="n">range_vec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="c1"># Normalize parents without clipping (offspring are clipped to [0,1])</span>
+            <span class="n">pop_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">pop</span> <span class="o">-</span> <span class="n">lb</span><span class="p">)</span> <span class="o">/</span> <span class="n">range_vec</span>
 
-            <span class="c1"># Generate offspring in normalized space</span>
             <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s1">&#39;rand&#39;</span><span class="p">:</span>
-                <span class="n">off_norm</span> <span class="o">=</span> <span class="n">de_generation</span><span class="p">(</span><span class="n">pop_norm</span><span class="p">,</span> <span class="n">F</span><span class="p">,</span> <span class="n">CR</span><span class="p">)</span>
+                <span class="n">off_norm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_r1</span><span class="p">(</span><span class="n">pop_norm</span><span class="p">)</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="n">off_norm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_best1</span><span class="p">(</span><span class="n">pop_norm</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">F</span><span class="p">,</span> <span class="n">CR</span><span class="p">)</span>
+                <span class="n">off_norm</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_de_best1</span><span class="p">(</span><span class="n">pop_norm</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">)</span>
 
-            <span class="c1"># Denormalize to original space</span>
-            <span class="n">offspring</span> <span class="o">=</span> <span class="n">lb</span> <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_norm</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span> <span class="o">*</span> <span class="n">range_vec</span>
+            <span class="n">offspring</span> <span class="o">=</span> <span class="n">lb</span> <span class="o">+</span> <span class="n">off_norm</span> <span class="o">*</span> <span class="n">range_vec</span>
 
-            <span class="c1"># Evaluate on surrogate</span>
-            <span class="n">off_objs</span> <span class="o">=</span> <span class="n">surrogate_func</span><span class="p">(</span><span class="n">offspring</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+            <span class="n">off_objs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">surrogate_func</span><span class="p">(</span><span class="n">offspring</span><span class="p">))</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
 
-            <span class="c1"># Comparison selection (standard DE)</span>
-            <span class="n">improved</span> <span class="o">=</span> <span class="n">off_objs</span> <span class="o">&lt;</span> <span class="n">pop_objs</span>
-            <span class="n">pop</span><span class="p">[</span><span class="n">improved</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">improved</span><span class="p">]</span>
-            <span class="n">pop_objs</span><span class="p">[</span><span class="n">improved</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_objs</span><span class="p">[</span><span class="n">improved</span><span class="p">]</span>
+            <span class="c1"># 1-to-1 comparison selection (ties go to offspring)</span>
+            <span class="n">replace</span> <span class="o">=</span> <span class="n">off_objs</span> <span class="o">&lt;=</span> <span class="n">pop_objs</span>
+            <span class="n">pop</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span> <span class="o">=</span> <span class="n">offspring</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span>
+            <span class="n">pop_objs</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span> <span class="o">=</span> <span class="n">off_objs</span><span class="p">[</span><span class="n">replace</span><span class="p">]</span>
 
         <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">pop_objs</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">pop</span><span class="p">[</span><span class="n">best_idx</span><span class="p">:</span><span class="n">best_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_de_best1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parents</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.8</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_de_r1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parents</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.8</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        DE/best/1/bin offspring generation in [0,1] normalized space.</span>
-
-<span class="sd">        Parameters</span>
-<span class="sd">        ----------</span>
-<span class="sd">        parents : np.ndarray</span>
-<span class="sd">            Parent population, shape (n, d), in [0,1]</span>
-<span class="sd">        objs : np.ndarray</span>
-<span class="sd">            Objective values, shape (n,)</span>
-<span class="sd">        F : float</span>
-<span class="sd">            Differential weight</span>
-<span class="sd">        CR : float</span>
-<span class="sd">            Crossover rate</span>
-
-<span class="sd">        Returns</span>
-<span class="sd">        -------</span>
-<span class="sd">        offspring : np.ndarray</span>
-<span class="sd">            Offspring population, shape (n, d), clipped to [0,1]</span>
+<span class="sd">        MATLAB &#39;de-r&#39; offspring generation: the base vector is the first row of</span>
+<span class="sd">        the (elite-sorted) population, i.e. the best individual at generation 1.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">popsize</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
+        <span class="n">base</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="n">offspring</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">popsize</span><span class="p">):</span>
+            <span class="n">r1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rand_index</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="p">{</span><span class="n">i</span><span class="p">})</span>
+            <span class="n">r2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rand_index</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="p">{</span><span class="n">i</span><span class="p">,</span> <span class="n">r1</span><span class="p">})</span>
+            <span class="n">r3</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rand_index</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="p">{</span><span class="n">i</span><span class="p">,</span> <span class="n">r1</span><span class="p">,</span> <span class="n">r2</span><span class="p">})</span>
+            <span class="n">mutant</span> <span class="o">=</span> <span class="n">base</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">r2</span><span class="p">]</span> <span class="o">-</span> <span class="n">parents</span><span class="p">[</span><span class="n">r3</span><span class="p">])</span>
+            <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
+            <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">CR</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">==</span> <span class="n">j_rand</span><span class="p">)</span>
+            <span class="n">offspring</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">mutant</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_de_best1</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">parents</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">F</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">CR</span><span class="o">=</span><span class="mf">0.8</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;DE/best/1/bin offspring generation in [0,1] normalized space.&quot;&quot;&quot;</span>
         <span class="n">popsize</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
         <span class="n">best_idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
         <span class="n">best</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="n">best_idx</span><span class="p">]</span>
 
         <span class="n">offspring</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">popsize</span><span class="p">):</span>
-            <span class="n">idxs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">delete</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">popsize</span><span class="p">),</span> <span class="n">i</span><span class="p">)</span>
-            <span class="n">r1</span><span class="p">,</span> <span class="n">r2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">choice</span><span class="p">(</span><span class="n">idxs</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">replace</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+            <span class="n">r1</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rand_index</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="p">{</span><span class="n">i</span><span class="p">})</span>
+            <span class="n">r2</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rand_index</span><span class="p">(</span><span class="n">popsize</span><span class="p">,</span> <span class="p">{</span><span class="n">i</span><span class="p">,</span> <span class="n">r1</span><span class="p">})</span>
             <span class="n">mutant</span> <span class="o">=</span> <span class="n">best</span> <span class="o">+</span> <span class="n">F</span> <span class="o">*</span> <span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">r1</span><span class="p">]</span> <span class="o">-</span> <span class="n">parents</span><span class="p">[</span><span class="n">r2</span><span class="p">])</span>
             <span class="n">j_rand</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span>
             <span class="n">mask</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">CR</span><span class="p">)</span> <span class="o">|</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">dim</span><span class="p">)</span> <span class="o">==</span> <span class="n">j_rand</span><span class="p">)</span>
@@ -508,15 +432,22 @@
 
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offspring</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_uniqueness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">5e-3</span><span class="p">,</span> <span class="n">max_trials</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure candidate is not too close to existing samples.&quot;&quot;&quot;</span>
-        <span class="n">scales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">max_trials</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_trials</span><span class="p">):</span>
-            <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;chebyshev&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">dist</span> <span class="o">&gt;=</span> <span class="n">epsilon</span><span class="p">:</span>
-                <span class="k">break</span>
-            <span class="n">perturbation</span> <span class="o">=</span> <span class="n">scales</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rand_index</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">exclude</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Random index in [0, n) avoiding the excluded set.&quot;&quot;&quot;</span>
+        <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">while</span> <span class="n">r</span> <span class="ow">in</span> <span class="n">exclude</span><span class="p">:</span>
+            <span class="n">r</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">r</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_uniqueness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">5e-3</span><span class="p">,</span> <span class="n">n_scales</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">max_trials</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Perturb the candidate until it is not too close to existing samples.&quot;&quot;&quot;</span>
+        <span class="n">scales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_scales</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">cdist</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;chebyshev&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">epsilon</span> <span class="ow">and</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">max_trials</span><span class="p">:</span>
+            <span class="n">perturbation</span> <span class="o">=</span> <span class="n">scales</span><span class="p">[</span><span class="n">c</span> <span class="o">%</span> <span class="n">n_scales</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span>
             <span class="n">candidate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">candidate</span> <span class="o">+</span> <span class="n">perturbation</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="n">candidate</span></div>
 
 </pre></div>

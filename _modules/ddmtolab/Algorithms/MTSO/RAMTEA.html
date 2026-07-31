@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.MTSO.RAMTEA &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -77,26 +77,54 @@
 <span></span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">Radial Basis Functions-Assisted MTEA (RAMTEA)</span>
 
-<span class="sd">This module implements RAMTEA for expensive multi-task optimization with surrogate-assisted adaptive knowledge transfer.</span>
+<span class="sd">This module implements RAMTEA for expensive multi-task optimization with</span>
+<span class="sd">surrogate-assisted adaptive knowledge transfer. Each task keeps an RBF surrogate</span>
+<span class="sd">built from its evaluated database; a GA search seeded from that database refines</span>
+<span class="sd">the surrogate optimum, and promising solutions are transferred between tasks with</span>
+<span class="sd">a probability equal to their rank-correlation similarity.</span>
 
 <span class="sd">References</span>
 <span class="sd">----------</span>
-<span class="sd">    [1] Shen, Jiangtao, et al. &quot;Surrogate-assisted adaptive knowledge transfer for expensive multitasking optimization.&quot; 2024 IEEE Congress on Evolutionary Computation (CEC). IEEE, 2024.</span>
+<span class="sd">    [1] J. Shen, et al., &quot;Surrogate-assisted adaptive knowledge transfer for</span>
+<span class="sd">        expensive multitasking optimization,&quot; 2024 IEEE Congress on Evolutionary</span>
+<span class="sd">        Computation (CEC). IEEE, 2024.</span>
 
 <span class="sd">Notes</span>
 <span class="sd">-----</span>
+<span class="sd">Reconciled with the reference MATLAB implementation (MTO-Platform) and generalized</span>
+<span class="sd">to K &gt;= 3 tasks (v2.0):</span>
+
+<span class="sd">- Task similarity is the Spearman rank correlation between the objective values a</span>
+<span class="sd">  shared set of points attains on each task, clamped to &gt;= 0 (the reference&#39;s</span>
+<span class="sd">  ``S = max(S, 0)``). The previous version used Pearson correlation on the raw</span>
+<span class="sd">  objectives and transferred on ``|corr|``, which incorrectly transferred between</span>
+<span class="sd">  negatively correlated tasks.</span>
+<span class="sd">- The surrogate search is seeded from each task&#39;s evaluated database and runs</span>
+<span class="sd">  ``w_max`` GA generations, keeping the ``n_in`` best by RBF prediction each</span>
+<span class="sd">  generation (the reference procedure), instead of a GA restarted from random</span>
+<span class="sd">  points which can chase unreliable RBF extrapolations far from the data.</span>
+<span class="sd">- Knowledge transfer generalizes the reference&#39;s coupled 2-task transfer to any</span>
+<span class="sd">  number of tasks: task r always evaluates its own surrogate optimum and, for</span>
+<span class="sd">  each other task s, additionally evaluates task s&#39;s optimum with probability</span>
+<span class="sd">  ``S(r, s)``. For two tasks the per-direction transfer probability is identical</span>
+<span class="sd">  to the reference.</span>
+
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
-<span class="sd">Date: 2025.11.20</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Date: 2026.07.18</span>
+<span class="sd">Version: 2.0</span>
 <span class="sd">&quot;&quot;&quot;</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">RBFInterpolator</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.mtop</span><span class="w"> </span><span class="kn">import</span> <span class="n">MTOP</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Algorithms.STSO.GA</span><span class="w"> </span><span class="kn">import</span> <span class="n">GA</span>
+
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.sim_evaluation</span><span class="w"> </span><span class="kn">import</span> <span class="n">sim_calculate</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="RAMTEA">
@@ -130,8 +158,9 @@
 
 <div class="viewcode-block" id="RAMTEA.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.RAMTEA.RAMTEA.__init__">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">pop_size</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">w_max</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
-                 <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;RAMTEA&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">n_in</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">w_max</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
+                 <span class="n">muc</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;RAMTEA&#39;</span><span class="p">,</span>
+                 <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize RAMTEA algorithm.</span>
 
@@ -140,27 +169,37 @@
 <span class="sd">        problem : MTOP</span>
 <span class="sd">            Multi-task optimization problem instance</span>
 <span class="sd">        n_initial : int or List[int], optional</span>
-<span class="sd">            Number of initial samples per task (default: 50)</span>
+<span class="sd">            Number of initial samples per task (default: 50; the reference uses</span>
+<span class="sd">            100)</span>
 <span class="sd">        max_nfes : int or List[int], optional</span>
 <span class="sd">            Maximum number of function evaluations per task (default: 100)</span>
-<span class="sd">        pop_size : int, optional</span>
-<span class="sd">            Population size for GA optimization on surrogate (default: 50)</span>
+<span class="sd">        n_in : int, optional</span>
+<span class="sd">            Number of solutions retained each generation of the surrogate search</span>
+<span class="sd">            (default: 50)</span>
 <span class="sd">        w_max : int, optional</span>
-<span class="sd">            Maximum number of generations for GA optimization on surrogate (default: 50)</span>
+<span class="sd">            Number of generations of the surrogate search (default: 50)</span>
+<span class="sd">        muc : float, optional</span>
+<span class="sd">            Distribution index for SBX crossover in the surrogate search</span>
+<span class="sd">            (default: 2)</span>
+<span class="sd">        mum : float, optional</span>
+<span class="sd">            Distribution index for polynomial mutation in the surrogate search</span>
+<span class="sd">            (default: 5)</span>
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
-<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
 <span class="sd">        name : str, optional</span>
-<span class="sd">            Name for the experiment (default: &#39;RA-MTEA_test&#39;)</span>
+<span class="sd">            Name for the experiment (default: &#39;RAMTEA&#39;)</span>
 <span class="sd">        disable_tqdm : bool, optional</span>
 <span class="sd">            Whether to disable progress bar (default: True)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">50</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">pop_size</span> <span class="o">=</span> <span class="n">pop_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_in</span> <span class="o">=</span> <span class="n">n_in</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">w_max</span> <span class="o">=</span> <span class="n">w_max</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">muc</span> <span class="o">=</span> <span class="n">muc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">mum</span> <span class="o">=</span> <span class="n">mum</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
@@ -186,132 +225,174 @@
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-        <span class="c1"># Initialize samples using Latin Hypercube Sampling</span>
+        <span class="c1"># Shared initial design: the same points are evaluated on every task so</span>
+        <span class="c1"># that the rank-correlation similarity is well defined.</span>
         <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">,</span> <span class="n">the_same</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
         <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
 
-        <span class="c1"># Compute task similarity matrix based on objective correlations</span>
-        <span class="n">sim</span> <span class="o">=</span> <span class="n">sim_calculate</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
+        <span class="c1"># Spearman rank-correlation similarity, clamped to &gt;= 0 (reference S)</span>
+        <span class="n">sim</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">maximum</span><span class="p">(</span><span class="n">sim_calculate</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;spearman&#39;</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">)</span>
 
-        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
-                    <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
         <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
-            <span class="c1"># Skip tasks that have exhausted their evaluation budget</span>
             <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
             <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
 
+            <span class="c1"># Build an RBF surrogate per task and refine its optimum with a</span>
+            <span class="c1"># database-seeded GA search.</span>
             <span class="n">best_solutions</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="n">nt</span>
-
-            <span class="c1"># Build RBF surrogate and optimize for each task</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="n">rbf_model</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+                <span class="n">best_solutions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rbf_search</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
 
-                <span class="k">def</span><span class="w"> </span><span class="nf">rbf</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-                    <span class="k">return</span> <span class="n">rbf_model</span><span class="p">(</span><span class="n">x</span><span class="p">)</span>
-
-                <span class="c1"># Optimize surrogate using GA to find promising solutions</span>
-                <span class="n">surrogate_problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
-                <span class="n">surrogate_problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span><span class="n">rbf</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                <span class="n">ga</span> <span class="o">=</span> <span class="n">GA</span><span class="p">(</span><span class="n">surrogate_problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">pop_size</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">w_max</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-                <span class="n">results</span> <span class="o">=</span> <span class="n">ga</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
-                <span class="n">best_solutions</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">results</span><span class="o">.</span><span class="n">best_decs</span>
-
-            <span class="c1"># Select candidates via similarity-based knowledge transfer</span>
+            <span class="c1"># Similarity-based knowledge transfer + real evaluation per task</span>
             <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="n">candidate</span> <span class="o">=</span> <span class="n">ramtea_knowledge_transfer</span><span class="p">(</span><span class="n">task_idx</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">active_tasks</span><span class="o">=</span><span class="n">active_tasks</span><span class="p">,</span>
-                                                      <span class="n">best_solutions</span><span class="o">=</span><span class="n">best_solutions</span><span class="p">,</span>
-                                                      <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">sim</span><span class="o">=</span><span class="n">sim</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
-                                                      <span class="n">max_nfes_per_task</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
+                <span class="n">candidates</span> <span class="o">=</span> <span class="n">ramtea_knowledge_transfer</span><span class="p">(</span>
+                    <span class="n">task_idx</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">active_tasks</span><span class="o">=</span><span class="n">active_tasks</span><span class="p">,</span> <span class="n">best_solutions</span><span class="o">=</span><span class="n">best_solutions</span><span class="p">,</span>
+                    <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">sim</span><span class="o">=</span><span class="n">sim</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
+                    <span class="n">max_nfes_per_task</span><span class="o">=</span><span class="n">max_nfes_per_task</span><span class="p">)</span>
+                <span class="k">if</span> <span class="n">candidates</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                    <span class="k">continue</span>
 
-                <span class="n">n_candidates</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidate</span><span class="p">)</span>
-                <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">new_objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidates</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">candidates</span><span class="p">),</span> <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">))</span>
 
-                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">candidate</span><span class="p">),</span> <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">new_objs</span><span class="p">))</span>
-
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">n_candidates</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">n_candidates</span><span class="p">)</span>
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">))</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
 
         <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-        <span class="c1"># Save results</span>
-        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
-                                     <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span>
-                                     <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
-
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span><span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+                                     <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+                                     <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+                                     <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">results</span></div>
-</div>
+
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_rbf_search</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">decs_t</span><span class="p">,</span> <span class="n">objs_t</span><span class="p">,</span> <span class="n">dim_t</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Refine the RBF optimum with a GA search seeded from the task&#39;s database.</span>
+
+<span class="sd">        Builds an RBF surrogate from the task&#39;s evaluated data, seeds the search</span>
+<span class="sd">        population with that data, and runs ``w_max`` GA generations keeping the</span>
+<span class="sd">        ``n_in`` best individuals (by RBF prediction) each generation.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        decs_t : np.ndarray</span>
+<span class="sd">            Task decision database, shape (n, dim_t).</span>
+<span class="sd">        objs_t : np.ndarray</span>
+<span class="sd">            Task objective database, shape (n, 1).</span>
+<span class="sd">        dim_t : int</span>
+<span class="sd">            Task dimensionality.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        np.ndarray</span>
+<span class="sd">            Best decision vector found on the surrogate, shape (dim_t,).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">rbf_model</span> <span class="o">=</span> <span class="n">_build_rbf</span><span class="p">(</span><span class="n">decs_t</span><span class="p">,</span> <span class="n">objs_t</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+
+        <span class="n">pop</span> <span class="o">=</span> <span class="n">decs_t</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">w_max</span><span class="p">):</span>
+            <span class="n">offspring</span> <span class="o">=</span> <span class="n">ga_generation</span><span class="p">(</span><span class="n">pop</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
+            <span class="n">combined</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">pop</span><span class="p">,</span> <span class="n">offspring</span><span class="p">])</span>
+            <span class="n">pred</span> <span class="o">=</span> <span class="n">rbf_model</span><span class="p">(</span><span class="n">combined</span><span class="p">)</span>
+            <span class="n">keep</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_in</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">combined</span><span class="p">))</span>
+            <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">pred</span><span class="p">)[:</span><span class="n">keep</span><span class="p">]</span>
+            <span class="n">pop</span> <span class="o">=</span> <span class="n">combined</span><span class="p">[</span><span class="n">order</span><span class="p">]</span>
+
+        <span class="n">pred</span> <span class="o">=</span> <span class="n">rbf_model</span><span class="p">(</span><span class="n">pop</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">pop</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">pred</span><span class="p">)]</span></div>
 
 
 
-<span class="k">def</span><span class="w"> </span><span class="nf">ramtea_knowledge_transfer</span><span class="p">(</span><span class="n">task_idx</span><span class="p">,</span> <span class="n">active_tasks</span><span class="p">,</span> <span class="n">best_solutions</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">sim</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">max_nfes_per_task</span><span class="p">):</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">_build_rbf</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Build an RBF surrogate robustly against ill-conditioned interpolation systems.</span>
+
+<span class="sd">    scipy&#39;s exact RBF interpolation can raise ``LinAlgError`` on degenerate or</span>
+<span class="sd">    near-duplicate data (which arises here as transferred solutions accumulate).</span>
+<span class="sd">    Escalating smoothing turns the interpolant into a regularized least-squares</span>
+<span class="sd">    fit only as much as needed to obtain a solvable system.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    decs : np.ndarray</span>
+<span class="sd">        Training decisions, shape (n, dim).</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Training objectives, shape (n,).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    RBFInterpolator</span>
+<span class="sd">        A fitted surrogate.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">for</span> <span class="n">smoothing</span> <span class="ow">in</span> <span class="p">(</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">1e-8</span><span class="p">,</span> <span class="mf">1e-6</span><span class="p">,</span> <span class="mf">1e-4</span><span class="p">,</span> <span class="mf">1e-2</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">):</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="n">smoothing</span><span class="p">)</span>
+        <span class="k">except</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">LinAlgError</span><span class="p">:</span>
+            <span class="k">continue</span>
+    <span class="c1"># Final fallback: heavy smoothing is always solvable</span>
+    <span class="k">return</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">smoothing</span><span class="o">=</span><span class="mf">10.0</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">ramtea_knowledge_transfer</span><span class="p">(</span><span class="n">task_idx</span><span class="p">,</span> <span class="n">active_tasks</span><span class="p">,</span> <span class="n">best_solutions</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">sim</span><span class="p">,</span>
+                              <span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">max_nfes_per_task</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Construct candidate solutions via similarity-based knowledge transfer.</span>
+
+<span class="sd">    Task ``task_idx`` always evaluates its own surrogate optimum, and additionally</span>
+<span class="sd">    evaluates each other active task&#39;s optimum with probability equal to the</span>
+<span class="sd">    (rank-correlation, non-negative) similarity ``sim[task_idx, s]``.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    task_idx : int</span>
-<span class="sd">        Current task index</span>
+<span class="sd">        Current task index.</span>
 <span class="sd">    active_tasks : list[int]</span>
-<span class="sd">        List of active task indices</span>
+<span class="sd">        Active task indices.</span>
 <span class="sd">    best_solutions : list[np.ndarray or None]</span>
-<span class="sd">        Best solutions for each task, length nt. Each element can be None or np.ndarray</span>
+<span class="sd">        Surrogate optima per task, length nt.</span>
 <span class="sd">    dims : list[int]</span>
-<span class="sd">        Dimensions of each task, length nt</span>
+<span class="sd">        Dimensions of each task, length nt.</span>
 <span class="sd">    sim : np.ndarray</span>
-<span class="sd">        Task similarity matrix of shape (nt, nt)</span>
-<span class="sd">    nfes_per_task : list[int]</span>
-<span class="sd">        Number of function evaluations consumed for each task, length nt</span>
-<span class="sd">    max_nfes_per_task : list[int]</span>
-<span class="sd">        Maximum number of function evaluations for each task, length nt</span>
+<span class="sd">        Non-negative similarity matrix, shape (nt, nt).</span>
+<span class="sd">    nfes_per_task, max_nfes_per_task : list[int]</span>
+<span class="sd">        Consumed and maximum evaluations per task.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    candidates : np.ndarray or None</span>
-<span class="sd">        Candidate solutions for current task of shape (n_candidates, dims[task_idx]).</span>
-<span class="sd">        Returns None if current task has exhausted its evaluation budget</span>
-
-<span class="sd">    Notes</span>
-<span class="sd">    -----</span>
-<span class="sd">    Knowledge transfer is performed with probability proportional to task similarity.</span>
-<span class="sd">    The current task&#39;s best solution is always included, and solutions from other tasks</span>
-<span class="sd">    are borrowed based on similarity values. Dimension alignment is performed via</span>
-<span class="sd">    zero-padding or truncation as needed.</span>
+<span class="sd">        Candidate solutions of shape (n_candidates, dims[task_idx]), or None if</span>
+<span class="sd">        the task&#39;s budget is exhausted. Dimension mismatches are resolved by</span>
+<span class="sd">        zero-padding or truncation.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="c1"># Check if current task has exhausted its evaluation budget</span>
     <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span> <span class="o">&gt;=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]:</span>
         <span class="k">return</span> <span class="kc">None</span>
 
-    <span class="n">candidates</span> <span class="o">=</span> <span class="p">[]</span>
+    <span class="c1"># Always include the task&#39;s own surrogate optimum</span>
+    <span class="n">candidates</span> <span class="o">=</span> <span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">best_solutions</span><span class="p">[</span><span class="n">task_idx</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()]</span>
 
-    <span class="c1"># Add current task&#39;s best solution</span>
-    <span class="n">current_solution</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">best_solutions</span><span class="p">[</span><span class="n">task_idx</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-    <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">current_solution</span><span class="p">)</span>
-
-    <span class="c1"># Borrow solutions from other tasks based on similarity</span>
+    <span class="c1"># Borrow other tasks&#39; optima with probability = similarity</span>
     <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
         <span class="k">if</span> <span class="n">task_idx</span> <span class="o">==</span> <span class="n">j</span> <span class="ow">or</span> <span class="n">best_solutions</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">continue</span>
-
-        <span class="c1"># Transfer knowledge with probability proportional to similarity</span>
-        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">sim</span><span class="p">[</span><span class="n">task_idx</span><span class="p">,</span> <span class="n">j</span><span class="p">]):</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">sim</span><span class="p">[</span><span class="n">task_idx</span><span class="p">,</span> <span class="n">j</span><span class="p">]:</span>
             <span class="n">sol_j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">best_solutions</span><span class="p">[</span><span class="n">j</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-
-            <span class="c1"># Dimension alignment</span>
             <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">sol_j</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]:</span>
                 <span class="n">sol_j</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">sol_j</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span> <span class="o">-</span> <span class="nb">len</span><span class="p">(</span><span class="n">sol_j</span><span class="p">))])</span>
             <span class="k">elif</span> <span class="nb">len</span><span class="p">(</span><span class="n">sol_j</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]:</span>
                 <span class="n">sol_j</span> <span class="o">=</span> <span class="n">sol_j</span><span class="p">[:</span><span class="n">dims</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]]</span>
-
             <span class="n">candidates</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">sol_j</span><span class="p">)</span>
 
-    <span class="c1"># Stack all candidates into a 2D array</span>
-    <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span>
+    <span class="n">candidates</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">candidates</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
 
-    <span class="c1"># Respect evaluation budget constraint</span>
+    <span class="c1"># Respect the remaining evaluation budget</span>
     <span class="n">remaining_budget</span> <span class="o">=</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span> <span class="o">-</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">task_idx</span><span class="p">]</span>
     <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">candidates</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">remaining_budget</span><span class="p">:</span>
         <span class="n">candidates</span> <span class="o">=</span> <span class="n">candidates</span><span class="p">[:</span><span class="n">remaining_budget</span><span class="p">]</span>

@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Methods.mtop &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
@@ -120,6 +120,38 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">func</span> <span class="o">=</span> <span class="n">func</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">dim</span> <span class="o">=</span> <span class="n">dim</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_eval_per_row</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Evaluate the function one sample at a time and stack the results.&quot;&quot;&quot;</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])))</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_align_output</span><span class="p">(</span><span class="n">out</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">kind</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize function output to shape (n, k); return None when the</span>
+<span class="sd">        output cannot be aligned to the batch size (caller may retry per-row).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="c1"># ambiguous: if length == n -&gt; (n,1); else if n==1 -&gt; (1,len)</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span>
+            <span class="c1"># maybe user returned shape (k, n) accidentally -&gt; try transpose</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">kind</span><span class="si">}</span><span class="s2"> returned array with ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
+
     <span class="k">def</span><span class="w"> </span><span class="fm">__call__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Evaluate the objective function on input samples.</span>
@@ -141,17 +173,15 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">aligned</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>  <span class="c1"># try vectorized call</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">n</span><span class="p">,</span> <span class="s2">&quot;Objective&quot;</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">vec_err</span><span class="p">:</span>
             <span class="c1"># try per-row; if that also fails, surface the original vectorized</span>
             <span class="c1"># error instead of silently masking a bug in the user&#39;s function</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-                    <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
-                <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+                <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_eval_per_row</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="n">n</span><span class="p">,</span> <span class="s2">&quot;Objective&quot;</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">row_err</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s2">&quot;Objective function failed for both vectorized and per-row &quot;</span>
@@ -159,30 +189,14 @@
                     <span class="sa">f</span><span class="s2">&quot;per-row error: </span><span class="si">{</span><span class="n">row_err</span><span class="si">!r}</span><span class="s2">&quot;</span>
                 <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">row_err</span>
 
-        <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
-        <span class="c1"># Normalize to 2D with n rows</span>
-        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="c1"># ambiguous: if length == n -&gt; (n,1); else if n==1 -&gt; (1,len)</span>
-            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
-                <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># cannot align</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned 1D array that cannot be aligned to input batch.&quot;</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n</span><span class="p">:</span>
-                <span class="c1"># maybe user returned shape (n_obj, n) accidental -&gt; try transpose</span>
-                <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
-                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned 2D array with incompatible number of rows.&quot;</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Objective returned array with ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">aligned</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Vectorized call succeeded but its shape does not match the batch</span>
+            <span class="c1"># (typical for per-sample functions handed a 2D batch): retry per-row</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_eval_per_row</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="n">n</span><span class="p">,</span> <span class="s2">&quot;Objective&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">aligned</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Objective returned an array that cannot be aligned to the input batch.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">aligned</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
 
 
 <span class="k">class</span><span class="w"> </span><span class="nc">ConstraintFunctionWrapper</span><span class="p">:</span>
@@ -248,48 +262,62 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">X</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_2d</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
         <span class="n">n</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">aligned</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">)</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="n">out</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">vec_err</span><span class="p">:</span>
             <span class="c1"># try per-row; if that also fails, surface the original vectorized</span>
             <span class="c1"># error instead of silently masking a bug in the user&#39;s function</span>
             <span class="k">try</span><span class="p">:</span>
-                <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
-                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n</span><span class="p">):</span>
-                    <span class="n">r</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
-                    <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">r</span><span class="p">))</span>
-                <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+                <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_eval_per_row</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="n">n</span><span class="p">)</span>
             <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">row_err</span><span class="p">:</span>
                 <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span>
                     <span class="sa">f</span><span class="s2">&quot;Constraint function failed for both vectorized and per-row &quot;</span>
                     <span class="sa">f</span><span class="s2">&quot;evaluation. Vectorized error: </span><span class="si">{</span><span class="n">vec_err</span><span class="si">!r}</span><span class="s2">; &quot;</span>
                     <span class="sa">f</span><span class="s2">&quot;per-row error: </span><span class="si">{</span><span class="n">row_err</span><span class="si">!r}</span><span class="s2">&quot;</span>
                 <span class="p">)</span> <span class="kn">from</span><span class="w"> </span><span class="nn">row_err</span>
+
+        <span class="k">if</span> <span class="n">aligned</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># Vectorized call succeeded but its shape does not match the batch</span>
+            <span class="c1"># (typical for per-sample functions handed a 2D batch): retry per-row</span>
+            <span class="n">aligned</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_align_output</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_eval_per_row</span><span class="p">(</span><span class="n">X</span><span class="p">),</span> <span class="n">n</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">aligned</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Constraint returned an array that cannot be aligned to the input batch.&quot;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">aligned</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_eval_per_row</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Evaluate the function one sample at a time and stack the results.&quot;&quot;&quot;</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">X</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]):</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">X</span><span class="p">[</span><span class="n">i</span><span class="p">])))</span>
+        <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_align_output</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">out</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Normalize constraint output to shape (n, k); return None when the</span>
+<span class="sd">        output cannot be aligned (caller may retry per-row evaluation).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
-        <span class="c1"># normalize to (n, k_local)</span>
         <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
-            <span class="n">out</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
-        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
-                <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="c1"># if can reshape to (n, k_local), try:</span>
-                    <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">n</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">:</span>
-                        <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">)</span>
-                    <span class="k">else</span><span class="p">:</span>
-                        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned 1D that cannot be aligned to inputs.&quot;</span><span class="p">)</span>
-        <span class="k">elif</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
-            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">n</span><span class="p">:</span>
-                <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
-                    <span class="n">out</span> <span class="o">=</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
-                <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned 2D with incompatible rows.&quot;</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
-        <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">n</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+            <span class="c1"># flat (n * k_local) output can be reshaped unambiguously</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="n">n</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">k_local</span><span class="p">)</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span>
+            <span class="k">if</span> <span class="n">out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="n">n</span><span class="p">:</span>
+                <span class="k">return</span> <span class="n">out</span><span class="o">.</span><span class="n">T</span>
+            <span class="k">return</span> <span class="kc">None</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Constraint returned ndim &gt; 2, unsupported.&quot;</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="MTOP">
@@ -619,17 +647,28 @@
         <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">upper_bound</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">lb</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">dim</span> <span class="ow">or</span> <span class="n">ub</span><span class="o">.</span><span class="n">size</span> <span class="o">!=</span> <span class="n">dim</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Bounds must be length </span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">lb</span> <span class="o">&gt;</span> <span class="n">ub</span><span class="p">):</span>
+            <span class="n">bad</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">lb</span> <span class="o">&gt;</span> <span class="n">ub</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;lower_bound must not exceed upper_bound &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(violated at dimension(s) </span><span class="si">{</span><span class="n">bad</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span><span class="si">}</span><span class="s2">: &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;lb=</span><span class="si">{</span><span class="n">lb</span><span class="p">[</span><span class="n">bad</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span><span class="si">}</span><span class="s2">, ub=</span><span class="si">{</span><span class="n">ub</span><span class="p">[</span><span class="n">bad</span><span class="p">]</span><span class="o">.</span><span class="n">tolist</span><span class="p">()</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="p">)</span>
 
         <span class="c1"># Wrap objective and constraints (using independent wrapper classes, can be pickled)</span>
         <span class="n">wrapped_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_wrap_objective_func</span><span class="p">(</span><span class="n">objective_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
 
-        <span class="c1"># Infer n_objectives by testing a single sample</span>
-        <span class="n">test_out</span> <span class="o">=</span> <span class="n">wrapped_obj</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)))</span>
+        <span class="c1"># Infer n_objectives by probing a single sample at the bounds midpoint</span>
+        <span class="c1"># (always inside the box, unlike the origin, so functions that are</span>
+        <span class="c1"># undefined at zero still work)</span>
+        <span class="n">probe_point</span> <span class="o">=</span> <span class="p">((</span><span class="n">lb</span> <span class="o">+</span> <span class="n">ub</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">test_out</span> <span class="o">=</span> <span class="n">wrapped_obj</span><span class="p">(</span><span class="n">probe_point</span><span class="p">)</span>
         <span class="k">if</span> <span class="n">test_out</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Wrapped objective must produce 2D array&quot;</span><span class="p">)</span>
         <span class="n">n_obj</span> <span class="o">=</span> <span class="n">test_out</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
-        <span class="n">constraint_wrappers</span><span class="p">,</span> <span class="n">n_constraints</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_constraints</span><span class="p">(</span><span class="n">constraint_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
+        <span class="n">constraint_wrappers</span><span class="p">,</span> <span class="n">n_constraints</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_process_constraints</span><span class="p">(</span>
+            <span class="n">constraint_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">probe_point</span><span class="o">=</span><span class="n">probe_point</span><span class="p">)</span>
 
         <span class="n">task</span> <span class="o">=</span> <span class="p">{</span>
             <span class="s1">&#39;raw_objective&#39;</span><span class="p">:</span> <span class="n">objective_func</span><span class="p">,</span>
@@ -807,7 +846,12 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">return</span> <span class="n">ObjectiveFunctionWrapper</span><span class="p">(</span><span class="n">func</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_process_constraints</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">constraint_func</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span> <span class="nb">int</span><span class="p">]:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_process_constraints</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">constraint_func</span><span class="p">,</span>
+            <span class="n">dim</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+            <span class="n">probe_point</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Callable</span><span class="p">[[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span> <span class="nb">int</span><span class="p">]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Normalize constraint functions into list of pickle-compatible wrappers.</span>
 
@@ -817,6 +861,9 @@
 <span class="sd">            Constraint function(s) to process.</span>
 <span class="sd">        dim : int</span>
 <span class="sd">            Dimension of decision variables.</span>
+<span class="sd">        probe_point : np.ndarray, optional</span>
+<span class="sd">            In-bounds sample of shape (1, dim) used to probe each constraint&#39;s</span>
+<span class="sd">            output size. Defaults to the origin for backward compatibility.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -847,16 +894,25 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">TypeError</span><span class="p">(</span><span class="s2">&quot;constraint_func must be callable or list/tuple of callables or None&quot;</span><span class="p">)</span>
 
+        <span class="k">if</span> <span class="n">probe_point</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">probe_point</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span>
+        <span class="n">probe_row</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">probe_point</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
         <span class="n">wrappers</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">total</span> <span class="o">=</span> <span class="mi">0</span>
         <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">funcs</span><span class="p">:</span>
-            <span class="c1"># probe to detect per-call output size</span>
-            <span class="k">try</span><span class="p">:</span>
-                <span class="n">probe</span> <span class="o">=</span> <span class="n">f</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dim</span><span class="p">))</span>
-                <span class="n">probe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">probe</span><span class="p">))</span>
-                <span class="n">k</span> <span class="o">=</span> <span class="n">probe</span><span class="o">.</span><span class="n">size</span>
-            <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-                <span class="c1"># if probe fails, assume scalar per-call</span>
+            <span class="c1"># Probe to detect per-call output size: try the 1D row first</span>
+            <span class="c1"># (most constraint functions are written per-sample), then 2D</span>
+            <span class="n">k</span> <span class="o">=</span> <span class="kc">None</span>
+            <span class="k">for</span> <span class="n">candidate</span> <span class="ow">in</span> <span class="p">(</span><span class="n">probe_row</span><span class="p">,</span> <span class="n">probe_point</span><span class="p">):</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">probe</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">atleast_1d</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">(</span><span class="n">candidate</span><span class="p">)))</span>
+                    <span class="n">k</span> <span class="o">=</span> <span class="n">probe</span><span class="o">.</span><span class="n">size</span>
+                    <span class="k">break</span>
+                <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+                    <span class="k">continue</span>
+            <span class="k">if</span> <span class="n">k</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="c1"># if probing fails entirely, assume scalar per-call</span>
                 <span class="n">k</span> <span class="o">=</span> <span class="mi">1</span>
 
             <span class="n">total</span> <span class="o">+=</span> <span class="n">k</span>

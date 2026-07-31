@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.STSO.LSADE &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -93,7 +93,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">scipy.interpolate</span><span class="w"> </span><span class="kn">import</span> <span class="n">RBFInterpolator</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.optimize</span><span class="w"> </span><span class="kn">import</span> <span class="n">minimize</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
@@ -319,26 +318,11 @@
     <span class="c1"># ==================== Surrogate Models ====================</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_build_rbf_model</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build Gaussian RBF surrogate model (matching MATLAB newrbe).&quot;&quot;&quot;</span>
-        <span class="n">Y_flat</span> <span class="o">=</span> <span class="n">Y</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
-        <span class="n">n_samples</span><span class="p">,</span> <span class="n">dim</span> <span class="o">=</span> <span class="n">X</span><span class="o">.</span><span class="n">shape</span>
-
-        <span class="k">if</span> <span class="n">n_samples</span> <span class="o">&gt;</span> <span class="mi">1</span><span class="p">:</span>
-            <span class="n">dist_matrix</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;euclidean&#39;</span><span class="p">)</span>
-            <span class="n">max_dist</span> <span class="o">=</span> <span class="n">dist_matrix</span><span class="o">.</span><span class="n">max</span><span class="p">()</span>
-            <span class="n">spread</span> <span class="o">=</span> <span class="n">max_dist</span> <span class="o">/</span> <span class="p">(</span><span class="n">dim</span> <span class="o">*</span> <span class="n">n_samples</span><span class="p">)</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">dim</span><span class="p">)</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">spread</span> <span class="o">=</span> <span class="mf">1.0</span>
-
-        <span class="k">try</span><span class="p">:</span>
-            <span class="n">rbf</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y_flat</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;gaussian&#39;</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">spread</span><span class="p">)</span>
-        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="n">rbf</span> <span class="o">=</span> <span class="n">RBFInterpolator</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y_flat</span><span class="p">,</span> <span class="n">kernel</span><span class="o">=</span><span class="s1">&#39;thin_plate_spline&#39;</span><span class="p">)</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Build Gaussian RBF surrogate model (MATLAB newrbe equivalent).&quot;&quot;&quot;</span>
+        <span class="n">predict</span> <span class="o">=</span> <span class="n">newrbe_surrogate</span><span class="p">(</span><span class="n">X</span><span class="p">,</span> <span class="n">Y</span><span class="p">)</span>
 
         <span class="k">def</span><span class="w"> </span><span class="nf">model</span><span class="p">(</span><span class="n">x</span><span class="p">):</span>
-            <span class="k">if</span> <span class="n">x</span><span class="o">.</span><span class="n">ndim</span> <span class="o">==</span> <span class="mi">1</span><span class="p">:</span>
-                <span class="n">x</span> <span class="o">=</span> <span class="n">x</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
-            <span class="k">return</span> <span class="n">rbf</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">predict</span><span class="p">(</span><span class="n">x</span><span class="p">))</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
 
         <span class="k">return</span> <span class="n">model</span>
 
@@ -505,15 +489,14 @@
 
     <span class="c1"># ==================== Utilities ====================</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_uniqueness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">5e-3</span><span class="p">,</span> <span class="n">max_trials</span><span class="o">=</span><span class="mi">50</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Ensure candidate is not too close to existing samples.&quot;&quot;&quot;</span>
-        <span class="n">scales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">max_trials</span><span class="p">)</span>
-        <span class="k">for</span> <span class="n">t</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">max_trials</span><span class="p">):</span>
-            <span class="n">dist</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;chebyshev&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">dist</span> <span class="o">&gt;=</span> <span class="n">epsilon</span><span class="p">:</span>
-                <span class="k">break</span>
-            <span class="n">perturbation</span> <span class="o">=</span> <span class="n">scales</span><span class="p">[</span><span class="n">t</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_ensure_uniqueness</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">5e-3</span><span class="p">,</span> <span class="n">n_scales</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">max_trials</span><span class="o">=</span><span class="mi">1000</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Perturb the candidate until it is not too close to existing samples.&quot;&quot;&quot;</span>
+        <span class="n">scales</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">n_scales</span><span class="p">)</span>
+        <span class="n">c</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="n">cdist</span><span class="p">(</span><span class="n">candidate</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;chebyshev&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">epsilon</span> <span class="ow">and</span> <span class="n">c</span> <span class="o">&lt;</span> <span class="n">max_trials</span><span class="p">:</span>
+            <span class="n">perturbation</span> <span class="o">=</span> <span class="n">scales</span><span class="p">[</span><span class="n">c</span> <span class="o">%</span> <span class="n">n_scales</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">dim</span><span class="p">)</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span>
             <span class="n">candidate</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">candidate</span> <span class="o">+</span> <span class="n">perturbation</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">c</span> <span class="o">+=</span> <span class="mi">1</span>
         <span class="k">return</span> <span class="n">candidate</span></div>
 
 </pre></div>

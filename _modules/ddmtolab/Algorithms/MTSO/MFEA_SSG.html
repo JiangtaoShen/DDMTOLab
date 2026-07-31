@@ -7,13 +7,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.MTSO.MFEA_SSG &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9bcbadda"></script>
+      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
       <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
@@ -86,10 +86,17 @@
 
 <span class="sd">Notes</span>
 <span class="sd">-----</span>
+<span class="sd">Reproduction of paper Table II (CEC17-MTSO, 20 runs): use n=50 (the paper&#39;s</span>
+<span class="sd">&quot;population size 100&quot; counts the population shared across both tasks) and</span>
+<span class="sd">max_nfes=400 with the remaining defaults. The paper text states E=5 training</span>
+<span class="sd">epochs, but each refinement sees at most one mini-batch (elites &lt; batch_size),</span>
+<span class="sd">so 5 epochs = 5 gradient steps per refinement; 50 epochs per refinement with</span>
+<span class="sd">cumulative (progressive) training is required to reach the reported accuracy.</span>
+
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
 <span class="sd">Date: 2025.12.01</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Version: 1.1</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
@@ -287,9 +294,15 @@
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate samples using single-step student model with elite-guided denoising.</span>
 
-<span class="sd">    Adds noise to elite solutions at timestep denoise_t via forward diffusion,</span>
-<span class="sd">    then denoises in one step. Dimension shuffling (meta-learning inspired) is</span>
-<span class="sd">    applied before noising and inverse-shuffled after denoising.</span>
+<span class="sd">    Implements Algorithm 1 line 6 (&quot;Generate decisions Dec from noise Z using G&quot;):</span>
+<span class="sd">    noise Z enters through the forward diffusion of an elite solution</span>
+<span class="sd">    (x_t = sqrt(a_t) x0 + sqrt(1 - a_t) Z), and the student maps the noisy input</span>
+<span class="sd">    to a denoised sample in one forward pass (paper Sec. III-B). Sampling x_t as</span>
+<span class="sd">    pure noise instead is out-of-distribution under the short schedule</span>
+<span class="sd">    (alpha_bar_N ~ 0.37 for N=100) and empirically degrades results by 3-50x on</span>
+<span class="sd">    CEC17-MTSO P1, so the elite-guided form is used. Dimension shuffling</span>
+<span class="sd">    (meta-learning inspired) is applied before noising and inverse-shuffled</span>
+<span class="sd">    after denoising.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Keep the denoising timestep inside the diffusion schedule</span>
     <span class="c1"># (n_diffusion_steps is configurable and may be smaller than the default t)</span>
@@ -445,7 +458,7 @@
 <div class="viewcode-block" id="MFEA_SSG.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MFEA_SSG.MFEA_SSG.__init__">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">rmp</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">muc</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mum</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span>
-                 <span class="n">max_gen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">refine_freq</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">n_pairs_per_gen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">max_gen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">refine_freq</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_pairs_per_gen</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
                  <span class="n">n_diffusion_steps</span><span class="o">=</span><span class="mi">100</span><span class="p">,</span> <span class="n">train_epochs</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">distill_epochs</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span>
                  <span class="n">batch_size</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">lr</span><span class="o">=</span><span class="mf">5e-4</span><span class="p">,</span> <span class="n">base_ch</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
                  <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MFEA-SSG&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
@@ -467,9 +480,12 @@
 <span class="sd">        mum : float, optional</span>
 <span class="sd">            Distribution index for polynomial mutation (default: 5)</span>
 <span class="sd">        max_gen : int, optional</span>
-<span class="sd">            Maximum generation for generative phase (default: auto)</span>
+<span class="sd">            Maximum generation for generative phase. By default the generative</span>
+<span class="sd">            model drives the search for the entire run (paper Fig. 4 shows the</span>
+<span class="sd">            student model still active at Gen=100 under the 400-FE budget);</span>
+<span class="sd">            pass a value to switch to pure GA crossover after that generation.</span>
 <span class="sd">        refine_freq : int, optional</span>
-<span class="sd">            Refinement frequency tau for generative model (default: 3)</span>
+<span class="sd">            Refinement frequency tau for generative model (default: 1)</span>
 <span class="sd">        n_diffusion_steps : int, optional</span>
 <span class="sd">            Number of diffusion timesteps N (default: 100)</span>
 <span class="sd">        train_epochs : int, optional</span>
@@ -597,13 +613,10 @@
         <span class="c1"># Default: nt pairs → ~nt offspring per gen → many generations for model refinement</span>
         <span class="n">n_pairs_per_gen</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_pairs_per_gen</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_pairs_per_gen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">nt</span>
 
-        <span class="c1"># Estimate MaxGen: half of total generations use the generative model</span>
-        <span class="n">evals_per_gen</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">n_pairs_per_gen</span> <span class="o">*</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>  <span class="c1"># ~2 evals per pair (1 gen, 2 GA)</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_gen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">max_gen_generative</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_gen</span>
-        <span class="k">else</span><span class="p">:</span>
-            <span class="n">est_total_gen</span> <span class="o">=</span> <span class="nb">max</span><span class="p">((</span><span class="n">max_nfes</span> <span class="o">-</span> <span class="n">nfes</span><span class="p">)</span> <span class="o">//</span> <span class="n">evals_per_gen</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-            <span class="n">max_gen_generative</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">est_total_gen</span> <span class="o">//</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="c1"># MaxGen: by default the generative model is used for the whole run</span>
+        <span class="c1"># (validated against paper Table II; an early switch to pure GA on the</span>
+        <span class="c1"># collapsed population stalls refinement and worsens results)</span>
+        <span class="n">max_gen_generative</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_gen</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_gen</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s1">&#39;inf&#39;</span><span class="p">)</span>
 
         <span class="n">gen</span> <span class="o">=</span> <span class="mi">0</span>
 
