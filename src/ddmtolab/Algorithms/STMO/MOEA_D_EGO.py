@@ -19,6 +19,7 @@ from tqdm import tqdm
 import time
 import numpy as np
 from scipy.stats import norm
+from scipy.stats import qmc
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
@@ -138,12 +139,19 @@ class MOEA_D_EGO:
                 # Optimize ETI and select batch of candidate points
                 new_x = _opt_eti_fcm(M, D, actual_batch, decs[i], objs[i], models, centers)
 
-                # Remove duplicates
+                # Remove duplicates, then top up so that exactly `actual_batch`
+                # points are evaluated per cycle (MATLAB always returns
+                # Batch_size query points)
                 new_x = remove_duplicates(new_x, decs[i])
-                if new_x.shape[0] == 0:
-                    new_x = np.clip(np.random.rand(1, D), 0, 1)
                 if new_x.shape[0] > actual_batch:
                     new_x = new_x[:actual_batch]
+                while new_x.shape[0] < actual_batch:
+                    pad = np.random.rand(actual_batch - new_x.shape[0], D)
+                    pad = remove_duplicates(pad, np.vstack([decs[i], new_x])
+                                            if new_x.shape[0] > 0 else decs[i])
+                    if pad.shape[0] == 0:
+                        continue
+                    new_x = np.vstack([new_x, pad]) if new_x.shape[0] > 0 else pad
 
                 # Expensive evaluation
                 new_obj, _ = evaluation_single(problem, new_x, i)
@@ -167,15 +175,79 @@ class MOEA_D_EGO:
 # GP Model Building with Clustering
 # =============================================================================
 
-_L1 = 80  # Max cluster size for GP
-_L2 = 20  # Step size for clustering
+_L1 = 80  # Max number of training points per GP model
+_L2 = 20  # Increment of archive size that adds one more cluster
+
+
+def _lhs(n, d):
+    """Latin hypercube sample in [0, 1]^d (MATLAB ``lhsdesign`` equivalent)."""
+    return qmc.LatinHypercube(d=d).random(n=n)
+
+
+def _fcm(data, cluster_n, expo=2.0, max_iter=100, min_impro=0.05):
+    """Fuzzy c-means clustering.
+
+    Faithful port of the ``FCM`` helper embedded in PlatEMO's ``GPmodelFCM.m``,
+    invoked there as ``FCM(train_x, csize, [2 NaN 0.05 false])`` i.e. fuzzifier
+    ``expo = 2``, default ``max_iter = 100``, minimum improvement ``0.05``.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        Data to cluster, shape (n, d)
+    cluster_n : int
+        Number of clusters
+    expo : float, optional
+        Exponent for the fuzzy partition matrix (default: 2.0)
+    max_iter : int, optional
+        Maximum number of iterations (default: 100)
+    min_impro : float, optional
+        Minimum improvement of the objective before stopping (default: 0.05)
+
+    Returns
+    -------
+    center : np.ndarray
+        Cluster centers, shape (cluster_n, d)
+    """
+    data_n = data.shape[0]
+
+    # initfcm: random partition matrix whose columns sum to one
+    U = np.random.rand(cluster_n, data_n)
+    U = U / U.sum(axis=0, keepdims=True)
+
+    center = np.tile(data.mean(axis=0), (cluster_n, 1))
+    obj_prev = None
+
+    for _ in range(max_iter):
+        # stepfcm
+        mf = U ** expo
+        center = (mf @ data) / mf.sum(axis=1, keepdims=True)
+        dist = cdist(center, data)  # distfcm
+        obj_fcn = np.sum((dist ** 2) * mf)
+
+        with np.errstate(divide='ignore', invalid='ignore'):
+            tmp = dist ** (-2.0 / (expo - 1.0))
+        # Singularity guard (a data point coinciding with a center)
+        if not np.all(np.isfinite(tmp)):
+            bad = ~np.isfinite(tmp)
+            tmp[bad] = 1.0
+            tmp[:, np.any(bad, axis=0)] = 0.0
+            tmp[bad] = 1.0
+        U = tmp / tmp.sum(axis=0, keepdims=True)
+
+        if obj_prev is not None and abs(obj_fcn - obj_prev) < min_impro:
+            break
+        obj_prev = obj_fcn
+
+    return center
 
 
 def _build_gp_models_fcm(train_x, train_y, L1=_L1, L2=_L2):
-    """Build GP models with K-Means clustering (approximation of Fuzzy C-Means).
+    """Build GP models with fuzzy c-means clustering (GPmodelFCM.m).
 
-    When N <= L1, build a single set of M GP models on all data.
-    When N > L1, cluster data and build separate GP models per cluster.
+    When K <= L1 all evaluated points are used directly for a single set of M
+    GP models. Otherwise ``csize = 1 + ceil((K-L1)/L2)`` clusters are formed and
+    for every cluster the L1 nearest training points are used to build M models.
 
     Returns
     -------
@@ -185,22 +257,21 @@ def _build_gp_models_fcm(train_x, train_y, L1=_L1, L2=_L2):
         Cluster centers, shape (csize, D)
     """
     K, M = train_y.shape
-    D = train_x.shape[1]
 
     if K <= L1:
+        # All the K evaluated points are directly used for building GP models
+        centers = _fcm(train_x, 1)
         cluster_models = []
         for j in range(M):
             model = gp_build(train_x, train_y[:, j:j + 1])
             cluster_models.append(model)
-        centers = train_x.mean(axis=0, keepdims=True)
         return [cluster_models], centers
     else:
+        # FuzzyCM
         csize = 1 + int(np.ceil((K - L1) / L2))
-        kmeans = KMeans(n_clusters=csize, n_init=10, random_state=0)
-        kmeans.fit(train_x)
-        centers = kmeans.cluster_centers_
+        centers = _fcm(train_x, csize)
 
-        # For each cluster, use L1 nearest points
+        # For each cluster, use the L1 nearest training points
         dis = cdist(train_x, centers)
         sorted_idx = np.argsort(dis, axis=0)  # (K, csize)
 
@@ -224,13 +295,20 @@ def _gp_evaluate_fcm(X, models, centers):
     u : np.ndarray, shape (N, M) - predicted means
     s : np.ndarray, shape (N, M) - predicted stds
     """
-    dis = cdist(X, centers)
-    nearest = np.argmin(dis, axis=1)
-
     N = X.shape[0]
     M = len(models[0])
     u = np.zeros((N, M))
     s = np.zeros((N, M))
+
+    if len(models) == 1:
+        for j in range(M):
+            pred, std = gp_predict(models[0][j], X)
+            u[:, j] = pred.flatten()
+            s[:, j] = std.flatten()
+        return u, np.maximum(s, 0)
+
+    dis = cdist(X, centers)
+    nearest = np.argmin(dis, axis=1)
 
     for ci in range(len(models)):
         mask = nearest == ci
@@ -318,8 +396,8 @@ def _get_estimation_z(D, models, centers, ref_vecs, z_init):
     B_dist = cdist(ref_vecs, ref_vecs)
     B = np.argsort(B_dist, axis=1)[:, :T]
 
-    # Initial population
-    pop_x = np.random.rand(pop_size, D)
+    # Initial population (lhsdesign in MATLAB)
+    pop_x = _lhs(pop_size, D)
     pop_mean = _gp_evaluate_mean_fcm(pop_x, models, centers)
     z = np.minimum(pop_mean.min(axis=0), z_init)
 
@@ -376,8 +454,8 @@ def _moead_eti(D, models, centers, ref_vecs, gmin, z):
     B_dist = cdist(ref_vecs, ref_vecs)
     B = np.argsort(B_dist, axis=1)[:, :T]
 
-    # Initial population
-    pop_x = np.random.rand(pop_size, D)
+    # Initial population (lhsdesign in MATLAB)
+    pop_x = _lhs(pop_size, D)
     pop_mean, pop_std = _gp_evaluate_fcm(pop_x, models, centers)
     pop_eti = _get_eti(pop_mean, pop_std, ref_vecs, gmin, z)
 
@@ -529,7 +607,7 @@ def _kmeans_batch_select(Q, batch_size, candidate_x, Q_eti):
     actual_batch = min(batch_size, Q.shape[0])
 
     try:
-        kmeans = KMeans(n_clusters=actual_batch, n_init=10, random_state=0)
+        kmeans = KMeans(n_clusters=actual_batch, n_init=10)
         labels = kmeans.fit_predict(Q)
     except Exception:
         idx = np.random.choice(Q.shape[0], size=actual_batch, replace=False)

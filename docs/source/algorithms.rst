@@ -578,7 +578,7 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``CSEA``
      - Classification-based Surrogate-assisted EA
    * - ``DISK``
-     - Distribution-Informed Surrogate-assisted Kriging
+     - Distribution-based Kriging-assisted EA
    * - ``DRLSAEA``
      - Deep Reinforcement Learning Surrogate-Assisted EA
    * - ``DirHV_EI``
@@ -602,7 +602,7 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``PCSAEA``
      - Pairwise Comparison Surrogate-Assisted EA
    * - ``PEA``
-     - Pareto-based Efficient Algorithm
+     - Pareto-based Kriging-assisted Constrained MOEA
    * - ``PIEA``
      - Performance Indicator-based EA
    * - ``SAEA_DBLL``

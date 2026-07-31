@@ -1,20 +1,22 @@
 """
-Pareto-based Efficient Algorithm (PEA)
+Pareto-based Kriging-assisted constrained multi-objective evolutionary algorithm (PEA)
 
-This module implements PEA for computationally expensive multi-objective optimization.
-It uses Constrained Probabilistic Pareto Dominance (CPPD) sorting that accounts for
-prediction uncertainty from Kriging models during evolutionary search, and selects
-promising candidates for expensive re-evaluation using diversity-based strategies.
+This module implements PEA for expensive constrained multi-objective optimization.
+Kriging (Gaussian process) surrogates are built for every objective and every
+constraint, and the surrogate-based search is driven by Constrained Probabilistic
+Pareto Dominance (CPPD): the probability that solution i is better than solution j on
+an objective is weighted by the least probability of feasibility of the two
+solutions, and the resulting weighted probabilities define the dominance relation.
 
 References
 ----------
-    [1] T. Sonoda and M. Nakata. Multiple Objective Optimization Based on Kriging Surrogate Model with Constrained Probabilistic Pareto Dominance. IEEE Congress on Evolutionary Computation (CEC), 2020.
+    [1] Z. Zhang, Y. Wang, G. Sun, and K. Tang. Constrained probabilistic Pareto dominance for expensive constrained multiobjective optimization problems. IEEE Transactions on Evolutionary Computation, 2024.
 
 Notes
 -----
 Author: Jiangtao Shen
 Date: 2026.02.17
-Version: 1.0
+Version: 2.0
 """
 from tqdm import tqdm
 import time
@@ -23,16 +25,19 @@ import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.stats import norm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Methods.Algo_Methods.bo_utils import mo_gp_build, mo_gp_predict
+from ddmtolab.Methods.Algo_Methods.bo_utils import mo_gp_build, gp_predict
 import warnings
 
 warnings.filterwarnings("ignore")
 
+_EPS_VAR = 1e-20
+
 
 class PEA:
     """
-    Pareto-based Efficient Algorithm for expensive multi-objective optimization
-    using Constrained Probabilistic Pareto Dominance and Kriging surrogates.
+    Pareto-based Kriging-assisted constrained multi-objective evolutionary
+    algorithm for expensive optimization, based on Constrained Probabilistic
+    Pareto Dominance.
     """
 
     algorithm_information = {
@@ -40,7 +45,7 @@ class PEA:
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'equal',
+        'cons': 'unequal',
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'False',
@@ -52,7 +57,7 @@ class PEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n=100,
+    def __init__(self, problem, n_initial=None, max_nfes=None,
                  wmax=20, mu=5,
                  save_data=True, save_path='./Data', name='PEA', disable_tqdm=True):
         """
@@ -63,15 +68,16 @@ class PEA:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 11*dim-1)
+            Number of initial samples per task (default: 11*dim-1). This is
+            MATLAB's ``NI = Problem.N``: it is simultaneously the size of the
+            initial Latin hypercube design and the size of the working
+            population maintained by ``Pop_Update``.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
-        n : int or List[int], optional
-            Population/archive size per task (default: 100)
         wmax : int, optional
-            Number of inner surrogate evolution generations (default: 20)
+            Generations of the surrogate-based evolutionary search (default: 20)
         mu : int, optional
-            Number of candidate solutions per iteration (default: 5)
+            Number of candidates selected per iteration (default: 5)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -84,7 +90,6 @@ class PEA:
         self.problem = problem
         self.n_initial = n_initial
         self.max_nfes = max_nfes if max_nfes is not None else 200
-        self.n = n
         self.wmax = wmax
         self.mu = mu
         self.save_data = save_data
@@ -107,503 +112,449 @@ class PEA:
         nt = problem.n_tasks
         dims = problem.dims
         n_objs = problem.n_objs
+        n_cons = problem.n_cons
 
         if self.n_initial is None:
             n_initial_per_task = [11 * dims[i] - 1 for i in range(nt)]
         else:
             n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
-        n_per_task = par_list(self.n, nt)
 
-        # Initialize with LHS
+        # MATLAB: NI = Problem.N is both the DoE size and the population size
+        ni_per_task = list(n_initial_per_task)
+
         decs = initialization(problem, n_initial_per_task, method='lhs')
-        objs, _ = evaluation(problem, decs)
+        objs, cons = evaluation(problem, decs)
         nfes_per_task = n_initial_per_task.copy()
+        has_cons = any(nc > 0 for nc in n_cons)
 
-        # Initialize working populations (indices into database)
-        pop_indices = []
-        for i in range(nt):
-            N = n_per_task[i]
-            if decs[i].shape[0] <= N:
-                pop_indices.append(np.arange(decs[i].shape[0]))
-            else:
-                idx = _pop_update(objs[i], None, N)
-                pop_indices.append(np.where(idx)[0])
+        sample_success = [1] * nt
+        models_obj = [None] * nt
+        models_con = [None] * nt
+        pop_indices = [np.arange(decs[i].shape[0]) for i in range(nt)]
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
+        stagnation = 0
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_sweep = sum(nfes_per_task)
 
             for i in active_tasks:
                 M = n_objs[i]
-                N = n_per_task[i]
+                NI = ni_per_task[i]
+                nc = n_cons[i]
 
-                # ===== Build GP models =====
-                try:
-                    obj_models = mo_gp_build(decs[i], objs[i], data_type)
-                except Exception:
-                    continue
+                # ---------------- Model management ----------------
+                if sample_success[i]:
+                    keep = _distinct_rows(decs[i])
+                    try:
+                        models_obj[i] = mo_gp_build(decs[i][keep], objs[i][keep], data_type)
+                    except Exception:
+                        continue
+                    if nc > 0:
+                        try:
+                            models_con[i] = mo_gp_build(decs[i][keep], cons[i][keep], data_type)
+                        except Exception:
+                            models_con[i] = None
+                    else:
+                        models_con[i] = None
 
-                # ===== Evolutionary Search =====
+                # ---------------- Evolutionary search ----------------
                 P_decs = decs[i][pop_indices[i]]
                 P_objs = objs[i][pop_indices[i]]
+                P_cons = cons[i][pop_indices[i]] if nc > 0 else np.zeros((P_decs.shape[0], 0))
 
-                pop_decs, pop_objs, pop_mse = _evo_search(
-                    P_decs, P_objs, obj_models, M, N, self.wmax, data_type
+                pop_decs, pop_objs, pop_cons, obj_mse, con_mse = _evo_search(
+                    P_decs, P_objs, P_cons, self.wmax,
+                    models_obj[i], models_con[i], M, data_type
                 )
 
-                # ===== Candidate Selection =====
+                # ---------------- Candidate selection ----------------
+                db_cons = cons[i] if nc > 0 else np.zeros((decs[i].shape[0], 0))
                 candidates = _candi_select(
-                    pop_decs, pop_objs, pop_mse,
-                    decs[i], objs[i], self.mu, N
+                    pop_decs, pop_objs, pop_cons, obj_mse, con_mse,
+                    decs[i], objs[i], db_cons, self.mu, NI
                 )
 
-                if candidates is None or candidates.shape[0] == 0:
-                    continue
+                sample_success[i] = 0
+                if candidates is not None and candidates.shape[0] > 0:
+                    remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                    candidates = candidates[:remaining]
 
-                # ===== Evaluate Candidates =====
-                cand_objs, _ = evaluation_single(problem, candidates, i)
+                    cand_objs, cand_cons = evaluation_single(problem, candidates, i)
 
-                # Update database
-                decs[i] = np.vstack([decs[i], candidates])
-                objs[i] = np.vstack([objs[i], cand_objs])
+                    decs[i] = np.vstack([decs[i], candidates])
+                    objs[i] = np.vstack([objs[i], cand_objs])
+                    cons[i] = np.vstack([cons[i], cand_cons])
 
-                # Update working population
-                idx = _pop_update(objs[i], None, N)
-                pop_indices[i] = np.where(idx)[0]
+                    upd_cons = cons[i] if nc > 0 else None
+                    pop_indices[i] = np.where(_pop_update(objs[i], upd_cons, NI))[0]
+                    sample_success[i] = 1
 
-                nfes_per_task[i] += candidates.shape[0]
-                pbar.update(candidates.shape[0])
+                    nfes_per_task[i] += candidates.shape[0]
+                    pbar.update(candidates.shape[0])
+
+            if sum(nfes_per_task) == nfes_before_sweep:
+                stagnation += 1
+                if stagnation >= 50:
+                    break
+            else:
+                stagnation = 0
 
         pbar.close()
         runtime = time.time() - start_time
 
-        all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu)
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-                                     max_nfes=nfes_per_task, bounds=problem.bounds,
-                                     save_path=self.save_path, filename=self.name,
-                                     save_data=self.save_data)
+        if has_cons:
+            all_decs, all_objs, all_cons = build_staircase_history(
+                decs, objs, k=self.mu, db_cons=cons)
+            results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                         max_nfes=nfes_per_task, all_cons=all_cons,
+                                         bounds=problem.bounds,
+                                         save_path=self.save_path, filename=self.name,
+                                         save_data=self.save_data)
+        else:
+            all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu)
+            results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                         max_nfes=nfes_per_task, bounds=problem.bounds,
+                                         save_path=self.save_path, filename=self.name,
+                                         save_data=self.save_data)
         return results
 
 
 # =============================================================================
-# Evolutionary Search
+# Helpers
 # =============================================================================
 
-def _evo_search(P_decs, P_objs, obj_models, M, N, wmax, data_type):
-    """
-    Surrogate-based evolutionary search using CPPD environmental selection.
-
-    Parameters
-    ----------
-    P_decs : np.ndarray
-        Current population decisions, shape (N, D)
-    P_objs : np.ndarray
-        Current population objectives, shape (N, M)
-    obj_models : list
-        List of trained GP models
-    M : int
-        Number of objectives
-    N : int
-        Population size
-    wmax : int
-        Number of generations
-    data_type : torch.dtype
-        Data type for GP
-
-    Returns
-    -------
-    pop_decs, pop_objs, pop_mse : np.ndarray
-        Final population with predicted objectives and MSE
-    """
-    pop_decs = P_decs.copy()
-    pop_objs = P_objs.copy()
-    pop_mse = np.zeros_like(pop_objs)
-
-    for w in range(wmax):
-        # Generate offspring via GA
-        off_decs = ga_generation(pop_decs, muc=20, mum=20)
-
-        # Predict objectives and MSE for offspring
-        off_objs, off_mse = _predict_with_mse(off_decs, obj_models, M, data_type)
-
-        # Merge parent + offspring
-        merged_decs = np.vstack([pop_decs, off_decs])
-        merged_objs = np.vstack([pop_objs, off_objs])
-        merged_mse = np.vstack([pop_mse, off_mse])
-
-        # Environmental selection using CPPD
-        selected = _environmental_selection(merged_objs, merged_mse, N)
-
-        pop_decs = merged_decs[selected]
-        pop_objs = merged_objs[selected]
-        pop_mse = merged_mse[selected]
-
-    return pop_decs, pop_objs, pop_mse
+def _distinct_rows(decs):
+    """Indices of the first occurrence of each distinct decision vector."""
+    _, idx = np.unique(np.round(decs, 10), axis=0, return_index=True)
+    return np.sort(idx)
 
 
-def _predict_with_mse(pop_decs, obj_models, M, data_type):
-    """Predict objectives and MSE using GP models."""
-    N = pop_decs.shape[0]
-    pop_objs = np.zeros((N, M))
-    pop_mse = np.zeros((N, M))
+def _predict(models, x, n_out, data_type):
+    """Predict mean and MSE with one GP per output. Returns zeros if no model."""
+    n = x.shape[0]
+    mean = np.zeros((n, n_out))
+    mse = np.zeros((n, n_out))
+    if models is None or n_out == 0:
+        return mean, mse
+    for j in range(n_out):
+        pred, std = gp_predict(models[j], x, data_type)
+        mean[:, j] = pred.flatten()
+        mse[:, j] = std.flatten() ** 2
+    return mean, mse
 
-    for j in range(M):
-        pred, std = gp_predict_single(obj_models[j], pop_decs, data_type)
-        pop_objs[:, j] = pred.flatten()
-        pop_mse[:, j] = (std.flatten()) ** 2
 
-    return pop_objs, pop_mse
-
-
-def gp_predict_single(gp, test_X, data_type=torch.float):
-    """Predict using a single GP model. Wrapper around bo_utils gp_predict."""
-    from ddmtolab.Methods.Algo_Methods.bo_utils import gp_predict
-    return gp_predict(gp, test_X, data_type)
+def _is_member_rows(a, b):
+    """Boolean mask of the rows of ``a`` that occur exactly in ``b``."""
+    if b.shape[0] == 0:
+        return np.zeros(a.shape[0], dtype=bool)
+    bset = set(map(tuple, b.tolist()))
+    return np.array([tuple(row) in bset for row in a.tolist()], dtype=bool)
 
 
 # =============================================================================
 # Constrained Probabilistic Pareto Dominance (CPPD) Sorting
 # =============================================================================
 
-def _ndsort_cppd(pop_objs, obj_mse, n_sort):
+def _least_feasible_probability(pop_cons, con_mse):
+    """MATLAB ``Feasible_Probability``: least probability of feasibility."""
+    n = pop_cons.shape[0]
+    if pop_cons.shape[1] == 0:
+        return np.ones(n)
+    p = norm.cdf((0.0 - pop_cons) / np.sqrt(np.maximum(con_mse, _EPS_VAR)))
+    return np.minimum(np.min(p, axis=1), 1.0)
+
+
+def _ndsort_cppd(pop_objs, obj_mse, pop_cons, con_mse, n_sort):
     """
     Non-dominated sorting based on Constrained Probabilistic Pareto Dominance.
 
-    For unconstrained problems, feasibility probability = 1 for all solutions.
+    ``A[i,j,k]`` is the probability that solution i is better than solution j on
+    objective k; it is weighted by the least feasibility probability ``LFP`` of
+    the corresponding solution. Solution i dominates j when
+    ``A[i,j,:]*LFP[i] >= (1-A[i,j,:])*LFP[j]`` component-wise and the two
+    vectors are not identical. For unconstrained problems ``LFP == 1``, which
+    reduces the relation to plain probabilistic dominance.
 
     Parameters
     ----------
-    pop_objs : np.ndarray
-        Predicted objectives, shape (N, M)
-    obj_mse : np.ndarray
-        Prediction MSE, shape (N, M)
+    pop_objs : np.ndarray, shape (N, M)
+        Predicted objectives.
+    obj_mse : np.ndarray, shape (N, M)
+        Prediction MSE of the objectives.
+    pop_cons : np.ndarray, shape (N, C)
+        Predicted constraints (may have zero columns).
+    con_mse : np.ndarray, shape (N, C)
+        Prediction MSE of the constraints.
     n_sort : int
-        Number of solutions to sort
+        Number of solutions to sort.
 
     Returns
     -------
-    front_no : np.ndarray
-        Front assignment, shape (N,). inf = unassigned.
+    front_no : np.ndarray, shape (N,)
+        Front assignment. inf = unassigned.
     max_fno : int
-        Last assigned front number
+        Last assigned front number.
     """
-    N, M = pop_objs.shape
+    N = pop_objs.shape[0]
+    lfp = _least_feasible_probability(pop_cons, con_mse)
 
-    # Build probabilistic dominance matrix
-    # For each pair (i, j), check if i probabilistically dominates j
-    # x_PD[i,j,k] = P(obj_j_k <= obj_i_k) -> probability j is at least as good as i on obj k
-    # y_PD[i,j,k] = P(obj_i_k <= obj_j_k) -> probability i is at least as good as j on obj k
+    sigma = np.sqrt(np.maximum(
+        obj_mse[:, np.newaxis, :] + obj_mse[np.newaxis, :, :], _EPS_VAR))
+    mean_diff = pop_objs[:, np.newaxis, :] - pop_objs[np.newaxis, :, :]
+    A = norm.cdf(-mean_diff / sigma)
+    B = 1.0 - A
 
-    # Pairwise differences and combined std
-    # mean_diff[i,j,k] = obj_i_k - obj_j_k
-    mean_diff = pop_objs[:, np.newaxis, :] - pop_objs[np.newaxis, :, :]  # (N, N, M)
-    sigma_sum = obj_mse[:, np.newaxis, :] + obj_mse[np.newaxis, :, :]    # (N, N, M)
-    sigma = np.sqrt(np.maximum(sigma_sum, 1e-20))
+    x_pd = A * lfp[:, np.newaxis, np.newaxis]
+    y_pd = B * lfp[np.newaxis, :, np.newaxis]
 
-    # P(obj_i_k - obj_j_k <= 0) = Phi(-mean_diff / sigma) = Phi((obj_j - obj_i) / sigma)
-    # This is probability i is better than or equal to j on objective k
-    z = -mean_diff / sigma
-    y_PD = norm.cdf(z)  # P(i <= j) on each objective
-    x_PD = 1.0 - y_PD  # P(j <= i) on each objective
+    dominate = np.all(x_pd >= y_pd, axis=2) & ~np.all(x_pd == y_pd, axis=2)
+    np.fill_diagonal(dominate, False)
 
-    # For unconstrained: feasibility = 1, so no modification needed
-    # x_PD and y_PD already represent dominance probabilities
+    return _min_domination_sort(dominate, n_sort)
 
-    # Dominance: i dominates j iff all(x_PD[i,j,:] <= y_PD[i,j,:]) and not all equal
-    # This means: for all k, P(j <= i) <= P(i <= j), with strict somewhere
-    # i.e., i is probabilistically at least as good as j on all objectives
-    dominates = np.all(x_PD <= y_PD, axis=2) & ~np.all(
-        np.abs(x_PD - y_PD) < 1e-10, axis=2)  # (N, N)
-    np.fill_diagonal(dominates, False)
 
-    # Non-dominated sorting
+def _min_domination_sort(dominate, n_sort):
+    """
+    Front assignment used by the CPPD sorter: repeatedly extract the solutions
+    with the minimum number of dominators among the remaining ones.
+    """
+    N = dominate.shape[0]
+    dominate = dominate.copy()
     front_no = np.full(N, np.inf)
     max_fno = 0
-    n_assigned = 0
-
-    # Count how many solutions dominate each solution
-    dom_count = np.sum(dominates, axis=0)  # dom_count[j] = how many dominate j
-
-    remaining = np.ones(N, dtype=bool)
-
-    while n_assigned < min(n_sort, N):
+    while np.sum(np.isfinite(front_no)) < min(n_sort, N):
         max_fno += 1
-        current = np.where(remaining)[0]
+        current = np.where(~np.isfinite(front_no))[0]
         if len(current) == 0:
             break
-
-        # Compute domination count among remaining
-        sub_dom_count = np.sum(dominates[np.ix_(current, current)], axis=0)
-
-        # Find minimum domination count
-        min_count = np.min(sub_dom_count)
-        frontal = current[sub_dom_count == min_count]
-
-        front_no[frontal] = max_fno
-        remaining[frontal] = False
-        n_assigned += len(frontal)
-
+        dom_count = np.sum(dominate[np.ix_(current, current)], axis=0)
+        index = current[dom_count == np.min(dom_count)]
+        front_no[index] = max_fno
+        dominate[index, :] = False
     return front_no, max_fno
 
 
-def _environmental_selection(pop_objs, pop_mse, N):
+# =============================================================================
+# Evolutionary Search
+# =============================================================================
+
+def _evo_search(P_decs, P_objs, P_cons, wmax, models_obj, models_con, M, data_type):
     """
-    Environmental selection using CPPD sorting + diversity truncation.
+    Surrogate-based evolutionary search using CPPD environmental selection.
 
-    Parameters
-    ----------
-    pop_objs : np.ndarray
-        Objectives, shape (n_total, M)
-    pop_mse : np.ndarray
-        MSE, shape (n_total, M)
-    N : int
-        Target size
-
-    Returns
-    -------
-    selected : np.ndarray
-        Indices of selected solutions
+    The parent population keeps its real objective/constraint values and zero
+    prediction variance, exactly as in MATLAB.
     """
-    n_total = pop_objs.shape[0]
-    front_no, max_fno = _ndsort_cppd(pop_objs, pop_mse, N)
+    N = P_decs.shape[0]
+    n_con = P_cons.shape[1]
 
-    # Select all solutions from fronts before last
-    selected = np.where(front_no < max_fno)[0]
-    last_front = np.where(front_no == max_fno)[0]
+    pop_decs = P_decs.copy()
+    pop_objs = P_objs.copy()
+    pop_cons = P_cons.copy()
+    obj_mse = np.zeros((N, M))
+    con_mse = np.zeros((N, n_con))
 
-    n_remaining = N - len(selected)
+    for _ in range(wmax):
+        off_decs = ga_generation(pop_decs, muc=20, mum=20)
+        off_objs, off_obj_mse = _predict(models_obj, off_decs, M, data_type)
+        off_cons, off_con_mse = _predict(models_con, off_decs, n_con, data_type)
 
-    if n_remaining <= 0:
-        return selected[:N]
+        pop_decs = np.vstack([pop_decs, off_decs])
+        pop_objs = np.vstack([pop_objs, off_objs])
+        pop_cons = np.vstack([pop_cons, off_cons])
+        obj_mse = np.vstack([obj_mse, off_obj_mse])
+        con_mse = np.vstack([con_mse, off_con_mse])
 
-    if len(last_front) <= n_remaining:
-        selected = np.concatenate([selected, last_front])
-    elif max_fno == 1:
-        # Only one front: truncation by distance
-        chosen = spea2_truncation_fast(pop_objs[last_front], n_remaining)
-        selected = np.concatenate([selected, last_front[chosen]])
+        keep = _environmental_selection(pop_objs, obj_mse, pop_cons, con_mse, N)
+
+        pop_decs = pop_decs[keep]
+        pop_objs = pop_objs[keep]
+        pop_cons = pop_cons[keep]
+        obj_mse = obj_mse[keep]
+        con_mse = con_mse[keep]
+
+    return pop_decs, pop_objs, pop_cons, obj_mse, con_mse
+
+
+def _environmental_selection(pop_objs, obj_mse, pop_cons, con_mse, N):
+    """
+    Environmental selection of the surrogate search. Note that, unlike TEA,
+    PEA does *not* normalize the objectives here.
+    """
+    front_no, max_fno = _ndsort_cppd(pop_objs, obj_mse, pop_cons, con_mse, N)
+
+    next_mask = front_no < max_fno
+    last = np.where(front_no == max_fno)[0]
+
+    if max_fno == 1:
+        keep = spea2_truncation(pop_objs[last], N)
+        next_mask[last[keep]] = True
     else:
-        # Multiple fronts: diversity selection from last front
-        chosen = _dist_selection(pop_objs[selected], pop_objs[last_front], n_remaining)
-        selected = np.concatenate([selected, last_front[chosen]])
+        choose = _dist_selection(pop_objs[next_mask], pop_objs[last],
+                                 N - int(np.sum(next_mask)))
+        next_mask[last[choose]] = True
 
-    return selected
+    return np.where(next_mask)[0]
 
 
 # =============================================================================
 # Candidate Selection
 # =============================================================================
 
-def _candi_select(pop_decs, pop_objs, pop_mse, db_decs, db_objs, mu, N):
+def _candi_select(pop_decs, pop_objs, pop_cons, obj_mse, con_mse,
+                  db_decs, db_objs, db_cons, mu, NI):
     """
-    Select mu candidate solutions for expensive re-evaluation.
-
-    Parameters
-    ----------
-    pop_decs : np.ndarray
-        Evolved population decisions
-    pop_objs : np.ndarray
-        Evolved population predicted objectives
-    pop_mse : np.ndarray
-        Evolved population prediction MSE
-    db_decs : np.ndarray
-        All evaluated decisions (database)
-    db_objs : np.ndarray
-        All evaluated objectives (database)
-    mu : int
-        Number of candidates to select
-    N : int
-        Population size
-
-    Returns
-    -------
-    candidates : np.ndarray or None
-        Selected candidate decisions, shape (n_selected, D)
+    Select at most ``mu`` candidates for expensive evaluation (MATLAB
+    ``Candi_Select``).
     """
-    n_pop = pop_decs.shape[0]
+    in_db = _is_member_rows(pop_decs, db_decs)
+    if np.all(in_db):
+        return None
 
-    # Check for duplicates against database
-    if db_decs.shape[0] > 0:
-        dist_to_db = cdist(pop_decs, db_decs)
-        min_dist = np.min(dist_to_db, axis=1)
-        novel_mask = min_dist > 1e-5
+    novel = np.where(~in_db)[0]
+    if len(novel) <= mu:
+        return _filter_close(pop_decs[novel], db_decs)
+
+    pop_decs = pop_decs[novel]
+    pop_objs = pop_objs[novel]
+    obj_mse = obj_mse[novel]
+    pop_cons = pop_cons[novel]
+    con_mse = con_mse[novel]
+
+    zmin = np.min(np.vstack([db_objs, pop_objs]), axis=0)
+    zmax = np.max(np.vstack([db_objs, pop_objs]), axis=0)
+    rng = np.maximum(zmax - zmin, 10e-10)
+    ref_obj = (db_objs - zmin) / rng
+    pop_objs = (pop_objs - zmin) / rng
+    obj_mse = obj_mse / (rng ** 2)
+
+    # ---- Reference set -------------------------------------------------
+    if db_cons.shape[1] > 0:
+        num = int(np.sum(np.all(db_cons <= 0, axis=1)))
+        front_no, _ = nd_sort(ref_obj, db_cons, ref_obj.shape[0])
     else:
-        novel_mask = np.ones(n_pop, dtype=bool)
+        num = ref_obj.shape[0]
+        front_no, _ = nd_sort(ref_obj, ref_obj.shape[0])
 
-    n_novel = np.sum(novel_mask)
-    if n_novel == 0:
+    if num >= NI:
+        ref_obj = ref_obj[front_no == 1]
+    else:
+        mask = front_no == 1
+        f = 1
+        max_f = int(np.max(front_no[np.isfinite(front_no)])) if np.any(np.isfinite(front_no)) else 1
+        while np.sum(mask) < NI and f <= max_f:
+            mask = mask | (front_no == f)
+            f += 1
+        ref_obj = ref_obj[mask]
+
+    # ---- Select mu points ----------------------------------------------
+    front_no, max_fno = _ndsort_cppd(pop_objs, obj_mse, pop_cons, con_mse, mu)
+    next_mask = front_no < max_fno
+    last = list(np.where(front_no == max_fno)[0])
+    n_need = mu - int(np.sum(next_mask))
+
+    if len(last) == n_need:
+        next_mask[np.array(last, dtype=int)] = True
+    elif len(last) > n_need:
+        ref = np.vstack([ref_obj, pop_objs[next_mask]])
+        for _ in range(n_need):
+            cand = pop_objs[np.array(last, dtype=int)]
+            pos = int(np.argmax(np.min(cdist(cand, ref), axis=1)))
+            next_mask[last[pos]] = True
+            ref = np.vstack([ref, pop_objs[last[pos]].reshape(1, -1)])
+            last.pop(pos)
+
+    return _filter_close(pop_decs[next_mask], db_decs)
+
+
+def _filter_close(cand, db_decs):
+    """Drop candidates closer than 1e-5 to any already evaluated solution."""
+    if cand.shape[0] == 0:
         return None
-
-    if n_novel <= mu:
-        return pop_decs[novel_mask]
-
-    # Keep only novel solutions
-    novel_decs = pop_decs[novel_mask]
-    novel_objs = pop_objs[novel_mask]
-    novel_mse = pop_mse[novel_mask]
-
-    # Normalize objectives
-    all_objs = np.vstack([db_objs, novel_objs])
-    zmin = np.min(all_objs, axis=0)
-    zmax = np.max(all_objs, axis=0)
-    obj_range = np.maximum(zmax - zmin, 1e-10)
-
-    norm_objs = (novel_objs - zmin) / obj_range
-    norm_mse = novel_mse / (obj_range ** 2)
-    norm_db_objs = (db_objs - zmin) / obj_range
-
-    # Build reference set from database (non-dominated front)
-    n_db = db_objs.shape[0]
-    front_no_db, _ = nd_sort(db_objs, n_db)
-    ref_objs = norm_db_objs[front_no_db == 1]
-
-    # CPPD sorting on novel solutions
-    front_no, max_fno = _ndsort_cppd(norm_objs, norm_mse, mu)
-
-    # Select from best fronts
-    selected = []
-    for fno in range(1, max_fno + 1):
-        front_idx = np.where(front_no == fno)[0]
-
-        if len(selected) + len(front_idx) <= mu:
-            selected.extend(front_idx.tolist())
-        else:
-            # Need to select from this front with diversity
-            n_need = mu - len(selected)
-            if len(selected) == 0:
-                # First front only, use truncation
-                chosen = spea2_truncation_fast(norm_objs[front_idx], n_need)
-                selected.extend(front_idx[chosen].tolist())
-            else:
-                # Use distance-based selection
-                already_objs = norm_objs[np.array(selected)]
-                chosen = _dist_selection(already_objs, norm_objs[front_idx], n_need)
-                selected.extend(front_idx[chosen].tolist())
-            break
-
-    if len(selected) == 0:
-        return None
-
-    # Final duplicate check
-    candidates = []
-    for idx in selected:
-        c = novel_decs[idx]
-        if db_decs.shape[0] > 0:
-            d = cdist(c.reshape(1, -1), db_decs)
-            if np.min(d) > 1e-5:
-                candidates.append(c)
-        else:
-            candidates.append(c)
-
-    if len(candidates) == 0:
-        return None
-
-    return np.array(candidates)
+    keep = [cand[k] for k in range(cand.shape[0])
+            if db_decs.shape[0] == 0 or np.min(cdist(cand[k:k + 1], db_decs)) > 1e-5]
+    return np.array(keep) if keep else None
 
 
 # =============================================================================
-# Population Update (for real evaluated solutions)
+# Population Update
 # =============================================================================
 
 def _pop_update(pop_objs, pop_cons, N):
     """
-    Standard non-dominated sorting based population update.
-
-    Parameters
-    ----------
-    pop_objs : np.ndarray
-        All evaluated objectives
-    pop_cons : np.ndarray or None
-        All evaluated constraints
-    N : int
-        Target population size
-
-    Returns
-    -------
-    next_mask : np.ndarray
-        Boolean mask for selected solutions
+    MATLAB ``Pop_Update``: rebuild the working population from the database
+    with constrained non-dominated sorting.
     """
     n_total = pop_objs.shape[0]
     if n_total <= N:
         return np.ones(n_total, dtype=bool)
 
-    front_no, max_fno = nd_sort(pop_objs, N)
+    if pop_cons is not None and pop_cons.shape[1] > 0:
+        front_no, max_fno = nd_sort(pop_objs, pop_cons, N)
+    else:
+        front_no, max_fno = nd_sort(pop_objs, N)
 
     next_mask = front_no < max_fno
-    last_front = np.where(front_no == max_fno)[0]
-    n_remaining = N - np.sum(next_mask)
+    last = np.where(front_no == max_fno)[0]
 
-    if n_remaining <= 0:
-        return next_mask
-
-    if len(last_front) <= n_remaining:
-        next_mask[last_front] = True
-    elif max_fno == 1:
-        chosen = spea2_truncation_fast(pop_objs[last_front], n_remaining)
-        next_mask[last_front[chosen]] = True
+    if max_fno == 1:
+        keep = spea2_truncation(pop_objs[last], N)
+        next_mask[last[keep]] = True
     else:
-        selected_objs = pop_objs[next_mask]
-        chosen = _dist_selection(selected_objs, pop_objs[last_front], n_remaining)
-        next_mask[last_front[chosen]] = True
+        choose = _dist_selection(pop_objs[next_mask], pop_objs[last],
+                                 N - int(np.sum(next_mask)))
+        next_mask[last[choose]] = True
 
     return next_mask
 
 
 # =============================================================================
-# Diversity Helper Functions
+# Diversity Helper
 # =============================================================================
 
 def _dist_selection(selected_objs, candidate_objs, n_select):
     """
-    Select n_select solutions from candidates maximizing min distance to selected.
+    MATLAB ``Dist_Selection``: greedily add the candidate whose nearest
+    neighbour among the already selected solutions is farthest away.
 
     Parameters
     ----------
-    selected_objs : np.ndarray
-        Already selected objectives, shape (N1, M)
-    candidate_objs : np.ndarray
-        Candidate objectives, shape (N2, M)
+    selected_objs : np.ndarray, shape (N1, M)
+        Objectives of the already selected solutions.
+    candidate_objs : np.ndarray, shape (N2, M)
+        Objectives of the last-front candidates.
     n_select : int
-        Number to select
+        Number of candidates to add.
 
     Returns
     -------
-    chosen : list
-        Indices into candidate_objs
+    chosen : np.ndarray
+        Indices into ``candidate_objs``.
     """
     N2 = candidate_objs.shape[0]
     if N2 <= n_select:
-        return list(range(N2))
+        return np.arange(N2)
 
-    # Combined distance matrix
-    all_objs = np.vstack([selected_objs, candidate_objs])
-    dist = cdist(all_objs, all_objs)
-    np.fill_diagonal(dist, np.inf)
-
-    N1 = selected_objs.shape[0]
-    chosen_set = set(range(N1))
-    remaining = set(range(N1, N1 + N2))
+    dist = cdist(candidate_objs, selected_objs)
+    min_dist = np.min(dist, axis=1)
+    remaining = np.ones(N2, dtype=bool)
     chosen = []
 
     for _ in range(n_select):
-        if not remaining:
+        avail = np.where(remaining)[0]
+        if len(avail) == 0:
             break
-        best_idx = None
-        best_min_dist = -1.0
+        pos = avail[int(np.argmax(min_dist[avail]))]
+        chosen.append(pos)
+        remaining[pos] = False
+        # the newly selected candidate joins the reference set
+        new_d = cdist(candidate_objs, candidate_objs[pos:pos + 1]).ravel()
+        min_dist = np.minimum(min_dist, new_d)
 
-        for idx in remaining:
-            min_d = min(dist[idx, c] for c in chosen_set)
-            if min_d > best_min_dist:
-                best_min_dist = min_d
-                best_idx = idx
-
-        chosen_set.add(best_idx)
-        remaining.remove(best_idx)
-        chosen.append(best_idx - N1)
-
-    return chosen
+    return np.array(chosen, dtype=int)

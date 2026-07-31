@@ -214,8 +214,8 @@ def _infill_sampling_eim(models, pop_obj_scaled, D, M, eim_type, ga_pop_size, ga
     best : np.ndarray
         Best candidate decision vector, shape (D,)
     """
-    # Get non-dominated front from scaled objectives
-    front_no, _ = nd_sort(pop_obj_scaled, pop_obj_scaled.shape[0])
+    # Get non-dominated front from scaled objectives (NDSort(PopObjScaled,1))
+    front_no, _ = nd_sort(pop_obj_scaled, 1)
     f = pop_obj_scaled[front_no == 1]  # (p, M)
     p = f.shape[0]
 
@@ -243,7 +243,7 @@ def _infill_sampling_eim(models, pop_obj_scaled, D, M, eim_type, ga_pop_size, ga
 
         # GA selection and evolution
         sorted_idx = np.argsort(eim)
-        half = max(2, int(np.ceil(ga_pop_size / 2)))
+        half = int(np.ceil(ga_pop_size / 2))
         parents = offspring[sorted_idx[:half]]
         parent_eim = eim[sorted_idx[:half]]
 

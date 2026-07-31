@@ -33,6 +33,23 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+def _platemo_tournament_selection(K, N, *fitness):
+    """
+    Exact port of PlatEMO's ``TournamentSelection``.
+
+    Candidates are compared lexicographically on the given fitness keys (lower is
+    better, matching SPEA2 fitness). Solutions with identical fitness share the
+    same rank, so a tournament among tied candidates is decided by the (random)
+    draw order rather than deterministically by index.
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
+
+
 def _spea2_select(fitness, pop_obj, N, use_real_obj=None):
     """
     SPEA2 selection: prefer fitness < 1, fill/truncate to N.
@@ -171,8 +188,10 @@ def _update_population(pop_decs, pop_objs, pop_cons, new_decs, new_objs, new_con
 
     # SPEA2 selection to N
     if pop_decs.shape[0] > N:
-        if status is None or status == 3:
-            # Unconstrained or all constraints satisfied
+        if status is None:
+            # Stage 1 (MATLAB nargin == 3): CalFitness(Population.objs), no cons
+            fitness = spea2_fitness(pop_objs)
+        elif status == 3:
             fitness = spea2_fitness(pop_objs, pop_cons)
         elif status == 1:
             fitness = spea2_fitness(pop_objs, pop_cons)
@@ -234,7 +253,9 @@ def _calc_max_change(ideal_points, current_iter, gap):
     delta = 1e-6
     current = ideal_points[current_iter]
     previous = ideal_points[current_iter - gap]
-    rz = np.abs((current - previous) / np.maximum(np.abs(previous), delta))
+    # MATLAB: max(ideal_points(Iter-gap,:),delta) -- the reference does NOT take
+    # the absolute value of the denominator.
+    rz = np.abs((current - previous) / np.maximum(previous, delta))
     return np.max(rz)
 
 
@@ -394,8 +415,9 @@ class MGSAEA:
                 # Track ideal points
                 ideal_points.append(np.min(pop_objs, axis=0))
 
-                # Check stage transition
-                if iteration > self.gap and flag == 0:
+                # Check stage transition. MATLAB's Iter is 1-based and fires the
+                # first check on its 21st iteration, i.e. iteration == gap here.
+                if iteration >= self.gap and flag == 0:
                     max_change = _calc_max_change(ideal_points, iteration, self.gap)
                     if max_change <= self.lam:
                         flag = 1
@@ -417,7 +439,8 @@ class MGSAEA:
                     inner_fitness = fitness.copy()
 
                     for w in range(self.wmax):
-                        mating_pool = tournament_selection(2, NI, -inner_fitness)
+                        # SPEA2 fitness: LOWER is better, so it must not be negated
+                        mating_pool = _platemo_tournament_selection(2, NI, inner_fitness)
                         off_decs = ga_generation(inner_decs[mating_pool], muc=20.0, mum=20.0)
                         inner_decs = np.vstack([inner_decs, off_decs])
 
@@ -494,7 +517,8 @@ class MGSAEA:
                     inner_fitness = fitness.copy()
 
                     for w in range(self.wmax):
-                        mating_pool = tournament_selection(2, NI, -inner_fitness)
+                        # SPEA2 fitness: LOWER is better, so it must not be negated
+                        mating_pool = _platemo_tournament_selection(2, NI, inner_fitness)
                         off_decs = ga_generation(inner_decs[mating_pool], muc=20.0, mum=20.0)
                         inner_decs = np.vstack([inner_decs, off_decs])
 
@@ -521,8 +545,12 @@ class MGSAEA:
                     sel_decs = np.random.rand(self.mu, dim)
                     sel_decs = remove_duplicates(sel_decs, decs[task_i])
                     if sel_decs.shape[0] == 0:
-                        iteration += 1
-                        continue
+                        break
+
+                # Never exceed the remaining budget of this task
+                remaining = max_nfes_per_task[task_i] - nfes_per_task[task_i]
+                if sel_decs.shape[0] > remaining:
+                    sel_decs = sel_decs[:remaining]
 
                 # Expensive evaluation
                 new_objs, new_cons = evaluation_single(problem, sel_decs, task_i)
@@ -576,7 +604,7 @@ class MGSAEA:
             all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu)
             all_cons = None
         results = build_save_results(
-            all_decs, all_objs, runtime, max_nfes_per_task,
+            all_decs, all_objs, runtime, nfes_per_task,
             all_cons=all_cons if has_cons else None,
             bounds=problem.bounds,
             save_path=self.save_path,

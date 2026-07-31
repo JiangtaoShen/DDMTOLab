@@ -46,7 +46,7 @@ class SSDE:
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'False',
-        'n': 'unequal',
+        'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -54,7 +54,7 @@ class SSDE:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None,
+    def __init__(self, problem, n_initial=None, max_nfes=None,
                  num_nodes=None, eta0=0.2, sigma0=None,
                  save_data=True, save_path='./Data', name='SSDE', disable_tqdm=True):
         """
@@ -64,17 +64,19 @@ class SSDE:
         ----------
         problem : MTOP
             Multi-task optimization problem instance
-        n : int or List[int], optional
-            Population size per task (default: 100). Also used as the initial
-            sample count (matching MATLAB: Problem.N).
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 11*dim-1).
+            This plays the role of MATLAB's ``Problem.N``: it is simultaneously
+            the population size, the initial sample count, the default number of
+            SOM neurons and the default neighbourhood size.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
         num_nodes : int, optional
-            Number of neurons in the SOM (default: same as n)
+            Number of neurons in the SOM (default: same as n_initial)
         eta0 : float, optional
             Initial learning rate for SOM training (default: 0.2)
         sigma0 : float, optional
-            Initial neighborhood size for SOM (default: same as n)
+            Initial neighborhood size for SOM (default: same as n_initial)
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -86,7 +88,7 @@ class SSDE:
         """
         self.problem = problem
         self.max_nfes = max_nfes if max_nfes is not None else 200
-        self.n = n if n is not None else 100
+        self.n_initial = n_initial
         self.num_nodes = num_nodes
         self.eta0 = eta0
         self.sigma0 = sigma0
@@ -111,7 +113,12 @@ class SSDE:
         n_objs = problem.n_objs
         n_cons = problem.n_cons
 
-        n_per_task = par_list(self.n, nt)
+        # MATLAB: Problem.N is at once the population size and the number of
+        # initially sampled solutions (Population = Problem.Initialization()).
+        if self.n_initial is None:
+            n_per_task = [11 * dims[i] - 1 for i in range(nt)]
+        else:
+            n_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
         # Generate initial samples using random initialization
@@ -163,10 +170,15 @@ class SSDE:
                 'D': D, 'M': M, 'N': N,
             })
 
+        # Safety guard: MATLAB loops forever if no offspring ever survives the
+        # NSGA-II selection (no expensive evaluation is consumed in that case).
+        stagnation = 0
+
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_sweep = sum(nfes_per_task)
 
             for i in active_tasks:
                 st = task_states[i]
@@ -191,17 +203,20 @@ class SSDE:
                 pop_cons = st['pop_cons']
                 n_pop = pop_decs.shape[0]
 
-                # Tournament selection based on constraint violations
+                # Binary tournament on total constraint violation.
+                # MATLAB: TournamentSelection(2,N,sum(max(0,Population.cons),2)).
+                # For unconstrained problems every fitness is 0, so PlatEMO's
+                # tie handling degenerates to uniform random sampling.
                 if pop_cons is not None and pop_cons.shape[1] > 0:
                     cv = np.sum(np.maximum(0, pop_cons), axis=1)
-                    mating_pool = tournament_selection(2, N, -cv)
+                    mating_pool = _platemo_tournament_selection(2, N, cv)
                 else:
                     mating_pool = np.random.randint(0, n_pop, size=N)
 
-                # DE offspring generation
+                # DE offspring generation (OperatorDE, CR=1, F=0.5, proM=1, disM=20)
                 donor1_idx = np.random.randint(0, n_pop, size=N)
                 donor2_idx = np.random.randint(0, n_pop, size=N)
-                offspring_dec = _de_operator(
+                offspring_dec = _operator_de(
                     pop_decs[mating_pool], pop_decs[donor1_idx], pop_decs[donor2_idx]
                 )
 
@@ -271,8 +286,7 @@ class SSDE:
                     # Update global tracking
                     decs[i] = np.vstack([decs[i], selected_off_dec[:in_count]])
                     objs[i] = np.vstack([objs[i], new_objs[:in_count]])
-                    if all_cons is not None and n_cons[i] > 0:
-                        cons[i] = np.vstack([cons[i], new_cons[:in_count]])
+                    cons[i] = np.vstack([cons[i], new_cons[:in_count]])
 
                     nfes_per_task[i] += in_count
                     pbar.update(in_count)
@@ -281,6 +295,13 @@ class SSDE:
                     # No offspring survived, use current population as samples
                     st['sample_decs'] = np.vstack([st['sample_decs'], pop_decs])
                     st['sample_objs'] = np.vstack([st['sample_objs'], pop_objs])
+
+            if sum(nfes_per_task) == nfes_before_sweep:
+                stagnation += 1
+                if stagnation >= 100:
+                    break
+            else:
+                stagnation = 0
 
         pbar.close()
         runtime = time.time() - start_time
@@ -430,38 +451,72 @@ def _som_training(W, LDis, sample_decs, sample_objs, num_nodes, eta0, sigma0,
 # DE Operator
 # =============================================================================
 
-def _de_operator(parents, donors1, donors2, CR=0.9, F=0.5):
+def _platemo_tournament_selection(K, N, *fitness):
     """
-    Generate offspring using DE/rand/1/bin operator.
+    Exact port of PlatEMO's ``TournamentSelection``.
+
+    Candidates are compared lexicographically on the given fitness keys (lower
+    is better) and ties share the same rank, so a tournament among tied
+    candidates is decided uniformly at random by the draw order.
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
+
+
+def _operator_de(parent1, parent2, parent3, CR=1.0, F=0.5, proM=1.0, disM=20.0):
+    """
+    Exact port of PlatEMO's ``OperatorDE`` (default parameters {1, 0.5, 1, 20}).
+
+    Rand/1 differential mutation on a random subset of variables followed by
+    polynomial mutation. Decision variables live in the normalised box [0, 1],
+    so ``Lower = 0`` and ``Upper = 1``.
 
     Parameters
     ----------
-    parents : np.ndarray
-        Target vectors, shape (N, D)
-    donors1 : np.ndarray
-        First donor population, shape (N, D)
-    donors2 : np.ndarray
-        Second donor population, shape (N, D)
+    parent1 : np.ndarray
+        Base vectors, shape (N, D)
+    parent2, parent3 : np.ndarray
+        Difference vectors, shape (N, D)
     CR : float
-        Crossover rate
+        Differential evolution crossover rate (PlatEMO default 1)
     F : float
-        Differential weight
+        Differential weight (PlatEMO default 0.5)
+    proM : float
+        Expected number of mutated variables (PlatEMO default 1)
+    disM : float
+        Distribution index of polynomial mutation (PlatEMO default 20)
 
     Returns
     -------
     offspring : np.ndarray
-        Offspring decision variables, shape (N, D), clipped to [0, 1]
+        Offspring decision variables, shape (N, D), inside [0, 1]
     """
-    N, D = parents.shape
+    N, D = parent1.shape
 
-    # Mutation
-    mutant = parents + F * (donors1 - donors2)
+    # Differential evolution
+    site = np.random.rand(N, D) < CR
+    offspring = parent1.copy()
+    offspring[site] = offspring[site] + F * (parent2[site] - parent3[site])
 
-    # Binomial crossover
-    mask = np.random.rand(N, D) < CR
-    j_rand = np.random.randint(0, D, size=N)
-    for idx in range(N):
-        mask[idx, j_rand[idx]] = True
+    # Polynomial mutation (bounds are 0/1 in the normalised space)
+    site = np.random.rand(N, D) < proM / D
+    mu = np.random.rand(N, D)
+    offspring = np.clip(offspring, 0.0, 1.0)
 
-    offspring = np.where(mask, mutant, parents)
-    return np.clip(offspring, 0.0, 1.0)
+    temp = site & (mu <= 0.5)
+    if np.any(temp):
+        x = offspring[temp]
+        offspring[temp] = x + ((2 * mu[temp] + (1 - 2 * mu[temp]) *
+                                (1 - x) ** (disM + 1)) ** (1 / (disM + 1)) - 1)
+
+    temp = site & (mu > 0.5)
+    if np.any(temp):
+        x = offspring[temp]
+        offspring[temp] = x + (1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) *
+                                    x ** (disM + 1)) ** (1 / (disM + 1)))
+
+    return offspring

@@ -1,55 +1,56 @@
 """
 Expensive Multiobjective Optimization by Relation Learning and Prediction (REMO)
 
-This module implements the REMO algorithm. It utilizes a neural network to learn
-and predict dominance relationships between candidate solutions and reference solutions,
-guiding the evolutionary search process efficiently under limited evaluation budgets.
+This module implements REMO for computationally expensive multi/many-objective
+optimization. A three-hidden-layer pattern-recognition network learns the ternary
+relation (better / equal / worse) between pairs of decision vectors, and the learnt
+relation is used to rank surrogate offspring without any objective regression.
 
 References
 ----------
-    [1] H. Hao, A. Zhou, H. Qian, and H. Zhang. Expensive multiobjective optimization by relation learning and prediction. IEEE Transactions on Evolutionary Computation, 2022.
+    [1] H. Hao, A. Zhou, H. Qian, and H. Zhang. Expensive multiobjective optimization by relation learning and prediction. IEEE Transactions on Evolutionary Computation, 2022, 26(5): 1157-1170.
 
 Notes
 -----
 Author: Haowei Guo
 Email: ghw@mail.nwpu.edu.cn
 Date: 2026.01.16
-Version: 1.1
+Version: 2.0
 """
-
+from tqdm import tqdm
+import time
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from scipy.spatial.distance import cdist
-from tqdm import tqdm
-import time
-
+from scipy.spatial.distance import pdist, squareform, cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import (
-    get_algorithm_information, initialization, evaluation, evaluation_single,
-    build_staircase_history, build_save_results,
-    nd_sort, ga_generation
-)
+    get_algorithm_information, par_list, initialization, evaluation,
+    evaluation_single, build_staircase_history, build_save_results, nd_sort)
+import warnings
+
+warnings.filterwarnings("ignore")
+
 
 class REMO:
     """
-    Expensive Multiobjective Optimization by Relation Learning and Prediction (REMO)
+    Expensive Multiobjective Optimization by Relation Learning and Prediction.
 
     Attributes
     ----------
     algorithm_information : dict
-    Dictionary containing algorithm capabilities (e.g., supported objectives, constraints).
+        Dictionary containing algorithm capabilities and requirements
     """
+
     algorithm_information = {
-        'n_tasks': '[1, N]',
+        'n_tasks': '[1, K]',
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'unequal',
-        'n_cons': '[0, C]',
+        'cons': 'equal',
+        'n_cons': '0',
         'expensive': 'True',
         'knowledge_transfer': 'False',
-        'n': 'unequal',
+        'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -57,609 +58,830 @@ class REMO:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=50, max_nfes=300, k=6, gmax=3000,
-                 save_data=True, save_path='./Data', name='REMO', disable_tqdm=False, **kwargs):
+    def __init__(self, problem, n_initial=None, max_nfes=None, n=100, k=6, gmax=3000,
+                 save_data=True, save_path='./Data', name='REMO', disable_tqdm=True):
         """
-        Initialize the REMO algorithm parameters.
+        Initialize REMO algorithm.
 
         Parameters
         ----------
         problem : MTOP
-            The optimization problem instance.
-        n : int or List[int]
-            Population size (default: 50).
-        max_nfes : int or List[int]
-            Maximum number of function evaluations (default: 300).
-        k : int
-            Number of reference solutions used for relation learning (default: 6).
-        gmax : int
-            Maximum total steps for internal surrogate-assisted evolution (default: 3000).
+            Multi-task optimization problem instance
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 11*dim-1 if dim <= 10 else 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 300)
+        n : int or List[int], optional
+            Population size per task (MATLAB Problem.N, default: 100)
+        k : int, optional
+            Number of reference solutions (default: 6)
+        gmax : int, optional
+            Number of solutions evaluated by the relation model (default: 3000)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'REMO')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.raw_n = n
-        self.raw_max_nfes = max_nfes
+        self.n_initial = n_initial
+        self.max_nfes = max_nfes if max_nfes is not None else 300
+        self.n = n
         self.k = k
         self.gmax = gmax
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
         self.disable_tqdm = disable_tqdm
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     def optimize(self):
         """
-        Execute the main optimization loop of REMO.
+        Execute the REMO algorithm.
 
         Returns
         -------
         Results
-            Optimization results containing decision variables, objectives, constraints, and runtime
+            Optimization results containing decision variables, objectives, and runtime
         """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
+        dims = problem.dims
 
-        # 1. Parameter Parsing
-        n_per_task = []
-        for t in range(nt):
-            if isinstance(self.raw_n, int) and self.raw_n == 50:
-                D = problem.dims[t]
-                val = 11 * D - 1 if D <= 10 else 100
-                n_per_task.append(val)
-            else:
-                val = self.raw_n if np.isscalar(self.raw_n) else self.raw_n[t]
-                n_per_task.append(int(val))
-
-        if np.isscalar(self.raw_max_nfes):
-            max_nfes_per_task = [int(self.raw_max_nfes)] * nt
+        # MATLAB: N = 11*D-1 for D <= 10, otherwise 100
+        if self.n_initial is None:
+            n_initial_per_task = [11 * dims[i] - 1 if dims[i] <= 10 else 100
+                                  for i in range(nt)]
         else:
-            max_nfes_per_task = [int(x) for x in self.raw_max_nfes]
+            n_initial_per_task = par_list(self.n_initial, nt)
+        max_nfes_per_task = par_list(self.max_nfes, nt)
+        n_per_task = par_list(self.n, nt)
 
-        # 2. Initialization
-        decs_list = initialization(problem, n=n_per_task, method='lhs')
-        objs_list, cons_list = evaluation(problem, decs_list)
+        # Generate initial samples using Latin Hypercube Sampling
+        decs = initialization(problem, n_initial_per_task, method='lhs')
+        objs, _ = evaluation(problem, decs)
+        nfes_per_task = n_initial_per_task.copy()
 
-        for t in range(nt):
-            target = n_per_task[t]
-            current = decs_list[t].shape[0]
-            if current > target:
-                decs_list[t] = decs_list[t][:target]
-                objs_list[t] = objs_list[t][:target]
-                if cons_list[t] is not None:
-                    cons_list[t] = cons_list[t][:target]
+        # decs/objs double as the MATLAB Archive: every expensively evaluated solution
+        # Population: the raw initial design first, then RefSelect(Archive, Problem.N)
+        pop_decs_list = [d.copy() for d in decs]
+        pop_objs_list = [o.copy() for o in objs]
 
-        normalized_cons = []
-        for t in range(nt):
-            if cons_list[t] is None:
-                normalized_cons.append(np.zeros((len(objs_list[t]), 1)))
-            else:
-                normalized_cons.append(cons_list[t])
-
-        db_decs = [d.copy() for d in decs_list]
-        db_objs = [o.copy() for o in objs_list]
-        db_cons = [c.copy() for c in normalized_cons]
-
-        pop_decs_list = [decs.copy() for decs in decs_list]
-        pop_objs_list = [objs.copy() for objs in objs_list]
-        pop_cons_list = [c.copy() for c in normalized_cons]
-
-        nfes_per_task = [len(d) for d in pop_decs_list]
-        total_max_nfes = sum(max_nfes_per_task)
-        total_current_nfes = sum(nfes_per_task)
-        pbar = tqdm(total=total_max_nfes, initial=total_current_nfes,
+        pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        # 3. Main Loop
-        while sum(nfes_per_task) < total_max_nfes:
-            active_tasks = [t for t in range(nt) if nfes_per_task[t] < max_nfes_per_task[t]]
+        while sum(nfes_per_task) < sum(max_nfes_per_task):
+            active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
 
-            for t in active_tasks:
-                curr_pop_decs = pop_decs_list[t]
-                curr_pop_objs = pop_objs_list[t]
-                curr_pop_cons = pop_cons_list[t]
-                n_target = n_per_task[t]
+            for i in active_tasks:
+                pop_decs = pop_decs_list[i]
+                pop_objs = pop_objs_list[i]
+                k = min(self.k, pop_decs.shape[0])
 
-                # 3.1 Select Reference Solutions (Representative subset)
-                ref_indices = ref_select(curr_pop_objs, curr_pop_cons, self.k)
-                ref_decs = curr_pop_decs[ref_indices]
-                ref_objs = curr_pop_objs[ref_indices]
+                # Reference solutions and PBI-based binary catalog
+                ref_idx = _ref_select(pop_objs, k)
+                ref_decs = pop_decs[ref_idx]
+                ref_objs = pop_objs[ref_idx]
+                catalog = _get_output_pbi(pop_objs, ref_objs)
 
-                # 3.2 Data Preparation
-                catalog = get_output_pbi(curr_pop_objs, ref_objs)
-                xxs, yys = get_relation_pairs(curr_pop_decs, catalog)
+                # Relation pairs and stratified train/test split
+                xxs, yys = _get_relation_pairs(pop_decs, catalog)
+                net, scaler = None, None
+                if xxs.shape[0] > 0:
+                    train_in, train_out, test_in, test_out = _data_process(xxs, yys)
+                    if train_in.shape[0] > 0:
+                        scaler = _MapMinMax().fit(train_in)
+                        x_dim = train_in.shape[1]
+                        net = _RelationNet(x_dim)
+                        _train_relation_net(net, scaler.transform(train_in),
+                                            _onehot_index(train_out))
 
-                # 3.3 Model Training
-                if len(xxs) > 0:
-                    train_in, train_out, test_in, test_out = data_process(xxs, yys)
+                s_model = {'net': net, 'scaler': scaler,
+                           'X': pop_decs, 'Y': catalog}
 
-                    scaler = MapMinMax()
-                    train_in_nor = scaler.fit_transform(train_in)
-                    train_out_indices = onehot_encoding_indices(train_out)
+                # Relation-model-assisted selection
+                next_decs = _r_surrogate_assisted_selection(
+                    ref_decs, pop_decs, self.gmax, s_model)
 
-                    x_dim = train_in.shape[1]
-                    net = RelationNet(x_dim).to(self.device)
-                    # Train model (even if labels are all 0, it mimics MATLAB behavior)
-                    train_model(net, train_in_nor, train_out_indices, self.device)
-                else:
-                    # Fallback if absolutely no pairs generated (shouldn't happen with MATLAB logic)
-                    scaler = MapMinMax()
-                    x_dim = curr_pop_decs.shape[1] * 2
-                    net = RelationNet(x_dim).to(self.device)
+                if next_decs is not None and next_decs.shape[0] > 0:
+                    remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                    if next_decs.shape[0] > remaining:
+                        next_decs = next_decs[:remaining]
 
-                s_model = {'scaler': scaler, 'net': net, 'device': self.device,
-                           'X': curr_pop_decs, 'Y': catalog}
+                    next_objs, _ = evaluation_single(problem, next_decs, i)
 
-                # 3.4 Surrogate Assisted Selection (Internal Evolution)
-                next_decs = r_surrogate_assisted_selection(
-                    problem, ref_decs, curr_pop_decs, self.gmax, s_model, t
-                )
+                    decs[i] = np.vstack([decs[i], next_decs])
+                    objs[i] = np.vstack([objs[i], next_objs])
 
-                # 3.5 Real Evaluation & Environment Selection
-                if next_decs is not None and len(next_decs) > 0:
-                    new_objs, new_cons = evaluation_single(problem, next_decs, t)
-                    if new_cons is None: new_cons = np.zeros((len(new_objs), 1))
-                    db_decs[t] = np.vstack([db_decs[t], next_decs])
-                    db_objs[t] = np.vstack([db_objs[t], new_objs])
-                    db_cons[t] = np.vstack([db_cons[t], new_cons])
+                    nfes_per_task[i] += next_decs.shape[0]
+                    pbar.update(next_decs.shape[0])
 
-                    combined_decs = np.vstack((curr_pop_decs, next_decs))
-                    combined_objs = np.vstack((curr_pop_objs, new_objs))
-                    combined_cons = np.vstack((curr_pop_cons, new_cons))
-
-                    if len(combined_decs) > n_target:
-                        survivor_indices = ref_select(combined_objs, combined_cons, n_target)
-
-                        if len(survivor_indices) < n_target:
-                            all_indices = np.arange(len(combined_decs))
-                            remaining = np.setdiff1d(all_indices, survivor_indices)
-                            needed = n_target - len(survivor_indices)
-
-                            if len(remaining) >= needed:
-                                additional = remaining[:needed]
-                            else:
-                                additional = np.random.choice(survivor_indices, needed, replace=True)
-                            survivor_indices = np.concatenate((survivor_indices, additional))
-
-                        if len(survivor_indices) > n_target:
-                            survivor_indices = survivor_indices[:n_target]
-
-                        curr_pop_decs = combined_decs[survivor_indices]
-                        curr_pop_objs = combined_objs[survivor_indices]
-                        curr_pop_cons = combined_cons[survivor_indices]
-                    else:
-                        curr_pop_decs, curr_pop_objs, curr_pop_cons = combined_decs, combined_objs, combined_cons
-
-                    pop_decs_list[t] = curr_pop_decs
-                    pop_objs_list[t] = curr_pop_objs
-                    pop_cons_list[t] = curr_pop_cons
-
-                    n_new = len(next_decs)
-                    nfes_per_task[t] += n_new
-                    pbar.update(n_new)
+                # Population = RefSelect(Archive, Problem.N)
+                survivors = _ref_select(objs[i], n_per_task[i])
+                pop_decs_list[i] = decs[i][survivors]
+                pop_objs_list[i] = objs[i][survivors]
 
         pbar.close()
-        all_decs, all_objs, all_cons = build_staircase_history(db_decs, db_objs, k=1, db_cons=db_cons)
-        results = build_save_results(
-            all_decs=all_decs, all_objs=all_objs, all_cons=all_cons,
-            runtime=time.time() - start_time, max_nfes=nfes_per_task,
-            bounds=problem.bounds, save_path=self.save_path, filename=self.name, save_data=self.save_data
-        )
+        runtime = time.time() - start_time
+
+        all_decs, all_objs = build_staircase_history(decs, objs, k=1)
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
+                                     max_nfes=nfes_per_task, bounds=problem.bounds,
+                                     save_path=self.save_path, filename=self.name,
+                                     save_data=self.save_data)
         return results
 
-# ==============================================================================
-# Helper Functions
-# ==============================================================================
 
-def get_relation_pairs(decs, catalog):
+# =============================================================================
+# PlatEMO OperatorGA (local copy)
+# =============================================================================
+
+def _operator_ga(parent, pro_c=1.0, dis_c=15.0, pro_m=1.0, dis_m=5.0):
     """
-    Construct training pairs for the relation learning model.
+    Exact port of PlatEMO ``OperatorGA`` for real variables on [0, 1].
 
-    Data Balancing Strategy:
-    - Calculates a target size based on cross-class pairs (C1-C2).
-    - Performs lazy downsampling on intra-class pairs (C1-C1, C2-C2) only if
-      they exceed the target size significantly.
+    The shared ``ga_generation`` helper shuffles the parents before pairing and
+    emits an extra child for odd population sizes. REMO depends on the PlatEMO
+    pairing (first half x second half, i.e. the top-ranked candidates crossed
+    with the reference solutions), so a local copy is used.
+
+    Parameters
+    ----------
+    parent : np.ndarray
+        Parent decision variables, shape (N, D)
+    pro_c, dis_c : float
+        Crossover probability and SBX distribution index
+    pro_m, dis_m : float
+        Expected number of mutated variables and PM distribution index
+
+    Returns
+    -------
+    offspring : np.ndarray
+        Offspring decision variables, shape (2*floor(N/2), D)
     """
-    c1 = decs[catalog == 1]
-    c2 = decs[catalog != 1]
+    parent = np.asarray(parent, dtype=float)
+    half = parent.shape[0] // 2
+    if half == 0:
+        return np.zeros((0, parent.shape[1]))
 
-    def pairs(a, b):
-        if len(a) == 0 or len(b) == 0: return np.zeros((0, decs.shape[1]*2))
-        return np.hstack((np.repeat(a, len(b), axis=0), np.tile(b, (len(a), 1))))
+    p1 = parent[:half]
+    p2 = parent[half:2 * half]
+    N, D = p1.shape
 
-    c1c1 = pairs(c1, c1)
-    c2c2 = pairs(c2, c2)
-    # Remove self-pairs
-    if len(c1) > 0: c1c1 = c1c1[np.arange(len(c1c1)) % (len(c1)+1) != 0]
-    if len(c2) > 0: c2c2 = c2c2[np.arange(len(c2c2)) % (len(c2)+1) != 0]
+    mu = np.random.rand(N, D)
+    beta = np.zeros((N, D))
+    low = mu <= 0.5
+    beta[low] = (2 * mu[low]) ** (1.0 / (dis_c + 1))
+    beta[~low] = (2 - 2 * mu[~low]) ** (-1.0 / (dis_c + 1))
+    beta = beta * (-1.0) ** np.random.randint(0, 2, size=(N, D))
+    beta[np.random.rand(N, D) < 0.5] = 1
+    beta[np.repeat(np.random.rand(N, 1) > pro_c, D, axis=1)] = 1
+    offspring = np.vstack([(p1 + p2) / 2 + beta * (p1 - p2) / 2,
+                           (p1 + p2) / 2 - beta * (p1 - p2) / 2])
 
-    c1c2 = pairs(c1, c2)
-    c2c1 = pairs(c2, c1)
+    n2 = offspring.shape[0]
+    site = np.random.rand(n2, D) < pro_m / D
+    mu = np.random.rand(n2, D)
+    offspring = np.clip(offspring, 0.0, 1.0)
 
-    target = int(np.ceil(len(c1c2) / 2))
+    temp = site & (mu <= 0.5)
+    offspring[temp] = offspring[temp] + (
+            (2 * mu[temp] + (1 - 2 * mu[temp]) * (1 - offspring[temp]) ** (dis_m + 1))
+            ** (1.0 / (dis_m + 1)) - 1)
 
-    def sample_if_needed(arr, n):
-        if n == 0: return arr
-        if len(arr) == 0: return arr
-        if len(arr) > n:
-            idx = np.random.choice(len(arr), n, replace=False)
-            return arr[idx]
-        return arr
+    temp = site & (mu > 0.5)
+    offspring[temp] = offspring[temp] + (
+            1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) * offspring[temp] ** (dis_m + 1))
+            ** (1.0 / (dis_m + 1)))
 
-    if target > 0:
-        if len(c1c1) > target and len(c2c2) > target:
-            c1c1 = sample_if_needed(c1c1, target)
-            c2c2 = sample_if_needed(c2c2, target)
-        elif len(c1c1) < target and len(c2c2) > 0:
-            needed = target * 2 - len(c1c1)
-            c2c2 = sample_if_needed(c2c2, needed)
-        elif len(c2c2) < target and len(c1c1) > 0:
-            needed = target * 2 - len(c2c2)
-            c1c1 = sample_if_needed(c1c1, needed)
+    return offspring
 
-    arrays_to_stack = [x for x in [c1c1, c2c2, c1c2, c2c1] if len(x) > 0]
 
-    if not arrays_to_stack:
-        return np.zeros((0, decs.shape[1]*2)), np.zeros(0)
+# =============================================================================
+# Reference Solution Selection (RefSelect / RSEA strategy)
+# =============================================================================
 
-    xxs = np.vstack(arrays_to_stack)
-
-    l_c1c1 = np.zeros(len(c1c1))
-    l_c2c2 = np.zeros(len(c2c2))
-    l_c1c2 = np.ones(len(c1c2))
-    l_c2c1 = -1 * np.ones(len(c2c1))
-    yys = np.concatenate([l_c1c1, l_c2c2, l_c1c2, l_c2c1])
-
-    return xxs, yys
-
-def get_output_pbi(pop_objs, ref_objs):
+def _ref_select(pop_objs, k):
     """
-    Classify solutions using an adaptive Penalty-based Boundary Intersection (PBI) metric.
+    Select k reference solutions with the RSEA radar-grid strategy.
 
-    The function iteratively adjusts the penalty parameter to maintain a reasonable
-    ratio of 'Good' (1) to 'Bad' (0) solutions, typically between 0.3 and 0.7.
+    Parameters
+    ----------
+    pop_objs : np.ndarray
+        Objective values, shape (N, M)
+    k : int
+        Number of solutions to select
+
+    Returns
+    -------
+    index : np.ndarray
+        Indices of the selected solutions, shape (k,)
+    """
+    N = pop_objs.shape[0]
+    k = min(k, N)
+
+    front_no, max_fno = nd_sort(pop_objs, k)
+    next_idx = np.where(front_no <= max_fno)[0]
+
+    pmin = pop_objs.min(axis=0) + 1e-6
+    pmax = pop_objs.max(axis=0)
+    if np.all(pmax > pmin):
+        norm_objs = (pop_objs - pmin) / (pmax - pmin)
+    else:
+        norm_objs = pop_objs.copy()
+
+    is_chosen = np.isin(next_idx, np.where(front_no < max_fno)[0])
+    div = int(np.ceil(np.sqrt(k)))
+    choose = _last_selection(norm_objs[next_idx], is_chosen, div, k)
+    return next_idx[choose]
+
+
+def _last_selection(pop_obj, choose, div, k):
+    """
+    Radar-grid based selection balancing convergence and diversity.
+
+    Parameters
+    ----------
+    pop_obj : np.ndarray
+        Normalized objective values, shape (N, M)
+    choose : np.ndarray
+        Boolean mask of solutions already selected (fronts before the last one)
+    div : int
+        Number of radar-grid divisions
+    k : int
+        Total number of solutions to select
+
+    Returns
+    -------
+    choose : np.ndarray
+        Boolean mask of selected solutions
+    """
+    N, M = pop_obj.shape
+    choose = np.asarray(choose).copy().astype(bool)
+
+    # Extreme solution by the PBI perpendicular distance to the (1,...,1) direction
+    ones_vec = np.ones((1, M))
+    norm = np.sqrt(np.sum(pop_obj ** 2, axis=1))
+    cosine = 1 - cdist(pop_obj, ones_vec, metric='cosine').flatten()
+    pbi = norm * np.sqrt(np.clip(1 - cosine ** 2, 0, None))
+    choose[np.argmin(pbi)] = True
+
+    # Convergence
+    con = np.sum(pop_obj, axis=1)
+    max_con = np.max(con)
+    if max_con > 0:
+        con = con / max_con
+
+    site, rloc = _radar_grid(pop_obj, div)
+    rdis = squareform(pdist(rloc))
+    np.fill_diagonal(rdis, np.inf)
+
+    crowd_g = np.zeros(int(np.max(site)) + 1)
+    if np.any(choose):
+        uniq, counts = np.unique(site[choose], return_counts=True)
+        crowd_g[uniq] = counts
+
+    while np.sum(choose) < k:
+        remain_s = np.where(~choose)[0]
+        if remain_s.size == 0:
+            break
+        remain_g = np.unique(site[remain_s])
+        best_g = remain_g[crowd_g[remain_g] == np.min(crowd_g[remain_g])]
+        current = remain_s[np.isin(site[remain_s], best_g)]
+
+        chosen_idx = np.where(choose)[0]
+        if chosen_idx.size > 0:
+            min_rdis = np.min(rdis[np.ix_(current, chosen_idx)], axis=1)
+        else:
+            min_rdis = np.zeros(current.size)
+        fitness = 0.1 * M * con[current] - min_rdis
+        best = int(np.argmin(fitness))
+
+        choose[current[best]] = True
+        crowd_g[site[current[best]]] += 1
+
+    return choose
+
+
+def _radar_grid(pop_obj, div):
+    """
+    Compute the radar coordinates and grid index of each solution.
+
+    Parameters
+    ----------
+    pop_obj : np.ndarray
+        Objective values, shape (N, M)
+    div : int
+        Number of grid divisions
+
+    Returns
+    -------
+    site : np.ndarray
+        Grid index of each solution, shape (N,)
+    rloc : np.ndarray
+        Radar coordinates, shape (N, 2)
+    """
+    N, M = pop_obj.shape
+    theta = np.linspace(0, 2 * np.pi * (M - 1) / M, M)
+    row_sum = np.maximum(np.sum(pop_obj, axis=1), 1e-10)
+
+    rloc = np.zeros((N, 2))
+    rloc[:, 0] = np.sum(pop_obj * np.cos(theta), axis=1) / row_sum
+    rloc[:, 1] = np.sum(pop_obj * np.sin(theta), axis=1) / row_sum
+    rloc = (rloc + 1) / 2
+
+    yl = np.min(rloc, axis=0)
+    yu = np.max(rloc, axis=0)
+    denom = yu - yl
+    denom[denom < 1e-10] = 1.0
+    nrloc = (rloc - yl) / denom
+
+    gloc = np.floor(nrloc * div).astype(int)
+    gloc = np.clip(gloc, 0, div - 1)
+
+    _, inverse = np.unique(gloc, axis=0, return_inverse=True)
+    return np.asarray(inverse).ravel(), rloc
+
+
+# =============================================================================
+# PBI-based Catalog (GetOutput_PBI)
+# =============================================================================
+
+def _split_data(pop_objs, ref_objs, delt):
+    """
+    Split the population with a penalty-based boundary intersection threshold.
+
+    Parameters
+    ----------
+    pop_objs : np.ndarray
+        Objective values, shape (N, M)
+    ref_objs : np.ndarray
+        Reference objective values, shape (k, M)
+    delt : float
+        Penalty parameter of the PBI aggregation
+
+    Returns
+    -------
+    output : np.ndarray
+        Binary catalog, 1 for solutions inside the PBI boundary and 0 otherwise
+    rate : float
+        Fraction of solutions labelled 1
     """
     N = pop_objs.shape[0]
     output = np.ones(N, dtype=int)
-    dists = cdist(pop_objs, ref_objs, metric='cosine')
-    ref_idx = np.argmin(dists, axis=1)
+
+    # Nearest reference direction by cosine similarity
+    ref_index = np.argmin(cdist(pop_objs, ref_objs, metric='cosine'), axis=1)
     Z = np.min(pop_objs, axis=0)
+
+    for j in range(ref_objs.shape[0]):
+        sub = np.where(ref_index == j)[0]
+        if sub.size == 0:
+            continue
+        bound = ref_objs[j]
+        w = bound - Z
+        norm_w = np.sqrt(np.sum(w ** 2))
+        if norm_w < 1e-12:
+            continue
+        W = w / norm_w                                  # unit direction, ||W|| = 1
+        sub_vec = pop_objs[sub] - Z
+        norm_p = np.sqrt(np.sum(sub_vec ** 2, axis=1))
+        norm_p = np.where(norm_p < 1e-12, 1e-12, norm_p)
+        cosine_p = (sub_vec @ W) / norm_p - 1e-6
+        g = norm_p * cosine_p + delt * norm_p * np.sqrt(
+            np.clip(1 - cosine_p ** 2, 0, None))
+        norm_r = np.sqrt(np.sum((bound - Z) ** 2))
+        if norm_r < 1e-12:
+            continue
+        g = g / norm_r
+        output[sub[g > 1]] = 0
+
+    rate = float(np.sum(output == 1)) / N
+    return output, rate
+
+
+def _get_output_pbi(pop_objs, ref_objs):
+    """
+    Self-adaptive PBI catalog: bisect the penalty until 0.3 <= rate <= 0.7.
+
+    Parameters
+    ----------
+    pop_objs : np.ndarray
+        Objective values, shape (N, M)
+    ref_objs : np.ndarray
+        Reference objective values, shape (k, M)
+
+    Returns
+    -------
+    output : np.ndarray
+        Binary catalog, shape (N,)
+    """
     delt_l, delt_u = -20.0, 20.0
+    rate = 0.0
+    output = None
 
-    for _ in range(20):
+    while rate > 0.7 or rate < 0.3:
         delt_c = (delt_l + delt_u) / 2
-        if abs(delt_l - delt_u) < 1e-1: break
-
-        curr_output = np.ones(N, dtype=int)
-        my_ref = ref_objs[ref_idx]
-        w = my_ref - Z
-        w_norm = np.linalg.norm(w, axis=1) + 1e-10
-        W = w / w_norm[:, None]
-        vec = pop_objs - Z
-        d1 = np.abs(np.sum(vec * W, axis=1))
-        d2 = np.linalg.norm(vec - d1[:, None] * W, axis=1)
-        g = (d1 + delt_c * d2) / (np.linalg.norm(my_ref - Z, axis=1) + 1e-10)
-
-        curr_output[g > 1] = 0
-        ratio = np.sum(curr_output == 1) / N
-
-        if ratio > 0.7: delt_l = delt_c
-        elif ratio < 0.3: delt_u = delt_c
-        else:
-            output = curr_output
+        if abs(delt_l - delt_u) < 1e-1:
             break
+        output, rate = _split_data(pop_objs, ref_objs, delt_c)
+        if rate > 0.7:
+            delt_l = delt_c
+        elif rate < 0.3:
+            delt_u = delt_c
 
+    if output is None:
+        output = np.ones(pop_objs.shape[0], dtype=int)
     return output
 
-def ref_select(pop_obj, pop_con, k):
+
+# =============================================================================
+# Relation Pairs and Data Processing
+# =============================================================================
+
+def _combvec_pairs(a, b):
     """
-    Select representative solutions from the population using radar-grid diversity maintenance.
+    All ordered pairs [a_i, b_j] laid out in MATLAB ``combvec`` column order.
+
+    Parameters
+    ----------
+    a, b : np.ndarray
+        Decision matrices, shapes (n1, D) and (n2, D)
+
+    Returns
+    -------
+    pairs : np.ndarray
+        Concatenated pairs, shape (n1*n2, 2*D); the index of [a_i, b_j] is j*n1+i
     """
-    N = pop_obj.shape[0]
-    k = min(k, N)
-    front_no, max_f_no = nd_sort(pop_obj, k)
-    next_indices = np.where(front_no <= max_f_no)[0]
+    n1, D = a.shape
+    n2 = b.shape[0]
+    if n1 == 0 or n2 == 0:
+        return np.zeros((0, 2 * D))
+    left = np.tile(a, (n2, 1))              # a varies fastest
+    right = np.repeat(b, n1, axis=0)
+    return np.hstack([left, right])
 
-    pre_selected_mask = front_no[next_indices] < max_f_no
-    choose_mask = pre_selected_mask.copy()
 
-    p_min = np.min(pop_obj, axis=0)
-    p_max = np.max(pop_obj, axis=0)
-    denom = p_max - p_min
-    denom[denom == 0] = 1e-6
-    norm_obj = (pop_obj[next_indices] - p_min) / denom
-
-    if np.sum(choose_mask) == 0:
-        ones_vec = np.ones((1, pop_obj.shape[1]))
-        cosine = 1 - cdist(norm_obj, ones_vec, metric='cosine').flatten()
-        sine = np.sqrt(1 - cosine**2)
-        d2 = np.linalg.norm(norm_obj, axis=1) * sine
-        choose_mask[np.argmin(d2)] = True
-
-    sub_cons = pop_con[next_indices]
-    choose_mask = last_selection_radar(norm_obj, sub_cons, choose_mask, int(np.ceil(np.sqrt(k))), k)
-    return next_indices[choose_mask]
-
-def last_selection_radar(pop_obj, pop_con, choose_mask, div, k):
+def _get_relation_pairs(decs, catalog):
     """
-    Diversity selection helper based on radar grid mapping.
+    Build the ternary relation training set from the catalog of the population.
+
+    Pairs of two class-1 solutions or two class-0 solutions are labelled 0,
+    (class 1, class 0) pairs are labelled 1 and (class 0, class 1) pairs are
+    labelled -1. The intra-class blocks are subsampled to balance the set.
+
+    Parameters
+    ----------
+    decs : np.ndarray
+        Population decision variables, shape (N, D)
+    catalog : np.ndarray
+        Binary catalog from ``_get_output_pbi``, shape (N,)
+
+    Returns
+    -------
+    xxs : np.ndarray
+        Pair features, shape (P, 2*D)
+    ls : np.ndarray
+        Pair labels in {-1, 0, 1}, shape (P,)
     """
-    N, M = pop_obj.shape
-    theta = np.linspace(0, 2*np.pi*(M-1)/M, M)
-    sum_p = np.sum(pop_obj, axis=1, keepdims=True) + 1e-10
-    r_loc = np.column_stack((
-        np.sum(pop_obj * np.cos(theta), axis=1) / sum_p.flatten(),
-        np.sum(pop_obj * np.sin(theta), axis=1) / sum_p.flatten()
-    ))
-    r_loc = (r_loc + 1) / 2
-    gl_min = np.min(r_loc, axis=0)
-    gl_max = np.max(r_loc, axis=0)
+    D = decs.shape[1]
+    c1 = decs[catalog == 1]
+    c2 = decs[catalog != 1]
+    n1, n2 = c1.shape[0], c2.shape[0]
 
-    diff = gl_max - gl_min
-    diff[diff == 0] = 1.0
-    g_loc = np.floor((r_loc - gl_min) / diff * div).astype(int)
-    g_loc = np.clip(g_loc, 0, div-1)
+    c1c1 = _combvec_pairs(c1, c1)
+    c1c2 = _combvec_pairs(c1, c2)
+    c2c1 = _combvec_pairs(c2, c1)
+    c2c2 = _combvec_pairs(c2, c2)
 
-    g_loc_view = np.ascontiguousarray(g_loc).view(np.dtype((np.void, g_loc.dtype.itemsize * g_loc.shape[1])))
-    _, site = np.unique(g_loc_view, return_inverse=True)
-    site = site.flatten()
+    # Drop the self-pairs (index j*n+i with i == j)
+    if n1 > 0:
+        c1c1 = np.delete(c1c1, np.arange(n1) * (n1 + 1), axis=0)
+    if n2 > 0:
+        c2c2 = np.delete(c2c2, np.arange(n2) * (n2 + 1), axis=0)
 
-    r_dis = cdist(r_loc, r_loc)
-    np.fill_diagonal(r_dis, np.inf)
+    def _sample(arr, num):
+        num = int(num)
+        if num <= 0:
+            return arr[:0]
+        if arr.shape[0] > num:
+            return arr[np.random.choice(arr.shape[0], num, replace=False)]
+        return arr
 
-    crowd_g = np.bincount(site[choose_mask], minlength=np.max(site)+1)
-    con_violation = np.sum(np.maximum(0, pop_con), axis=1)
+    t_num = int(np.ceil(c1c2.shape[0] / 2))
+    if c1c1.shape[0] > t_num and c2c2.shape[0] > t_num:
+        c1c1 = _sample(c1c1, t_num)
+        c2c2 = _sample(c2c2, t_num)
+    elif c1c1.shape[0] < t_num:
+        c2c2 = _sample(c2c2, t_num * 2 - c1c1.shape[0])
+    elif c2c2.shape[0] < t_num:
+        c1c1 = _sample(c1c1, t_num * 2 - c2c2.shape[0])
 
-    while np.sum(choose_mask) < k:
-        remain = np.where(~choose_mask)[0]
-        if len(remain) == 0: break
+    blocks = [c1c1, c2c2, c1c2, c2c1]
+    if all(b.shape[0] == 0 for b in blocks):
+        return np.zeros((0, 2 * D)), np.zeros(0)
 
-        remain_grids = site[remain]
-        if len(remain_grids) == 0: break
-
-        unique_remain_grids = np.unique(remain_grids)
-        min_crowd = np.min(crowd_g[unique_remain_grids])
-        best_grids = unique_remain_grids[crowd_g[unique_remain_grids] == min_crowd]
-
-        current_mask = np.isin(site[remain], best_grids)
-        current = remain[current_mask]
-
-        min_dist = np.min(r_dis[current][:, choose_mask], axis=1) if np.sum(choose_mask) > 0 else 0
-        fitness = 0.1 * M * con_violation[current] - min_dist
-
-        best_idx = current[np.argmin(fitness)]
-        choose_mask[best_idx] = True
-        crowd_g[site[best_idx]] += 1
-    return choose_mask
+    xxs = np.vstack([b for b in blocks if b.shape[0] > 0])
+    ls = np.concatenate([np.zeros(c1c1.shape[0]), np.zeros(c2c2.shape[0]),
+                         np.ones(c1c2.shape[0]), -np.ones(c2c1.shape[0])])
+    return xxs, ls
 
 
-def data_process(xxs, yys):
+def _data_process(xxs, yys):
     """
-    Split data into training and testing sets with global shuffling.
+    Class-stratified 3/4 train, 1/4 test split followed by a global shuffle.
+
+    Parameters
+    ----------
+    xxs : np.ndarray
+        Pair features, shape (P, 2*D)
+    yys : np.ndarray
+        Pair labels, shape (P,)
+
+    Returns
+    -------
+    train_in, train_out, test_in, test_out : np.ndarray
+        The shuffled split
     """
     pha = 0.75
     train_idx, test_idx = [], []
-    for label in [0, 1, -1]:
+    for label in (0, 1, -1):
         idx = np.where(yys == label)[0]
-        n_sel = int(np.ceil(pha * len(idx)))
-        perm = np.random.permutation(len(idx))
-        train_idx.extend(idx[perm[:n_sel]])
-        test_idx.extend(idx[perm[n_sel:]])
+        if idx.size == 0:
+            continue
+        n_sel = int(np.ceil(pha * idx.size))
+        perm = np.random.permutation(idx.size)
+        train_idx.append(idx[perm[:n_sel]])
+        test_idx.append(idx[perm[n_sel:]])
 
-    train_idx = np.array(train_idx)
-    test_idx = np.array(test_idx)
+    train_idx = np.concatenate(train_idx) if train_idx else np.zeros(0, dtype=int)
+    test_idx = np.concatenate(test_idx) if test_idx else np.zeros(0, dtype=int)
 
-    perm_train = np.random.permutation(len(train_idx))
-    train_idx = train_idx[perm_train]
-
-    perm_test = np.random.permutation(len(test_idx))
-    test_idx = test_idx[perm_test]
-    # ==========================================
+    train_idx = train_idx[np.random.permutation(train_idx.size)]
+    test_idx = test_idx[np.random.permutation(test_idx.size)]
 
     return xxs[train_idx], yys[train_idx], xxs[test_idx], yys[test_idx]
 
 
-def r_surrogate_assisted_selection(problem, ref_decs, pop_decs, wmax, s_model, task_id):
-    """
-    Surrogate-Assisted Internal Evolution.
+# =============================================================================
+# Relation Model
+# =============================================================================
 
-    Uses the trained relation model to guide a Genetic Algorithm (GA) in searching
-    for promising solutions without performing expensive real evaluations.
+class _MapMinMax:
+    """Per-feature min-max scaling to [-1, 1] (MATLAB ``mapminmax``)."""
 
-    - Limits the final output count to prevent excessive expensive evaluations.
-    """
-    # Initialize Population
-    input_pop = np.vstack((pop_decs, ref_decs))
-    next_pop = ga_generation(input_pop, 15, 5)
-
-    # Internal Evolution Loop
-    i = 0
-    while i < wmax:
-        # Evaluate current generation using the surrogate model
-        sorted_idx, _ = model_select(s_model, next_pop)
-
-        # Select parents
-        n_ref = len(ref_decs)
-        parents_indices = sorted_idx[:min(len(sorted_idx), n_ref)]
-        input_for_ga = next_pop[parents_indices]
-
-        # Generate NEXT generation (Overwriting old generation)
-        mating_pool = np.vstack((input_for_ga, ref_decs))
-        next_pop = ga_generation(mating_pool, 15, 5)
-
-        i += len(next_pop)
-
-    # Final Selection from the last virtual generation
-    _, scores = model_select(s_model, next_pop)
-
-    # Filter solutions with high predicted quality
-    high_quality_mask = scores > 3.9
-    good_indices = np.where(high_quality_mask)[0]
-    sorted_indices = np.argsort(scores)[::-1]
-
-    # Constraints on output size (Min 4, Max 10)
-    min_output = 4
-    max_output = 10
-
-    if len(good_indices) < min_output:
-        final_indices = sorted_indices[:min_output]
-    elif len(good_indices) > max_output:
-
-        final_indices = sorted_indices[:max_output]
-    else:
-        final_indices = good_indices
-
-    return next_pop[final_indices]
-
-
-def model_select(s_model, candidates):
-    """
-    Vectorized Model Selection.
-
-    Batches all candidate-reference pairs into a single tensor for efficient
-    inference
-    """
-    scaler, net, device = s_model['scaler'], s_model['net'], s_model['device']
-    X, Y = s_model['X'], s_model['Y']
-
-    if len(X) == 0: return np.arange(len(candidates)), np.zeros(len(candidates))
-
-    c1 = X[Y == 1]
-    c2 = X[Y != 1]
-    n_c1, n_c2 = len(c1), len(c2)
-    n_cand = len(candidates)
-
-    # 1: Data Preparation
-    all_pairs_list = []
-    slice_indices = [0]
-
-    for xi in candidates:
-        xi_rep = xi.reshape(1, -1)
-
-        if n_c1 > 0:
-            all_pairs_list.append(np.hstack((c1, np.tile(xi_rep, (n_c1, 1)))))
-            all_pairs_list.append(np.hstack((np.tile(xi_rep, (n_c1, 1)), c1)))
-        if n_c2 > 0:
-            all_pairs_list.append(np.hstack((c2, np.tile(xi_rep, (n_c2, 1)))))
-            all_pairs_list.append(np.hstack((np.tile(xi_rep, (n_c2, 1)), c2)))
-
-        count = (2 * n_c1 if n_c1 > 0 else 0) + (2 * n_c2 if n_c2 > 0 else 0)
-        slice_indices.append(slice_indices[-1] + count)
-
-    if not all_pairs_list:
-        return np.arange(n_cand), np.zeros(n_cand)
-
-    # 2: Inference
-    full_batch = np.vstack(all_pairs_list)
-    batch_norm = scaler.transform(full_batch)
-
-    net.eval()
-    with torch.no_grad():
-        tensor_data = torch.tensor(batch_norm, dtype=torch.float32).to(device)
-        all_probs = torch.softmax(net(tensor_data), dim=1).cpu().numpy()
-
-    #3: Scoring
-    scores = np.zeros(n_cand)
-    for i in range(n_cand):
-
-        start, end = slice_indices[i], slice_indices[i + 1]
-        probs = all_probs[start:end]
-
-
-        idx, score_val = 0, 0
-        if n_c1 > 0:
-            p_c1xi = probs[idx: idx + n_c1]
-            p_xic1 = probs[idx + n_c1: idx + 2 * n_c1]
-            idx += 2 * n_c1
-            score_val += np.mean(p_c1xi[:, 1] + p_c1xi[:, 2] + p_xic1[:, 0] + p_xic1[:, 1]) \
-                         - np.mean(p_c1xi[:, 0] + p_xic1[:, 2])
-        if n_c2 > 0:
-            p_c2xi = probs[idx: idx + n_c2]
-            p_xic2 = probs[idx + n_c2: idx + 2 * n_c2]
-            score_val += np.mean(p_c2xi[:, 2] + p_xic2[:, 0]) \
-                         - np.mean(p_c2xi[:, 0] + p_c2xi[:, 1] + p_xic2[:, 1] + p_xic2[:, 2])
-        scores[i] = score_val
-
-    return np.argsort(scores)[::-1], scores
-
-class MapMinMax:
-    """
-    Min-Max normalization utility.
-    """
     def __init__(self):
-        self.min = None
-        self.max = None
-    def fit_transform(self, X):
-        self.min, self.max = np.min(X, axis=0), np.max(X, axis=0)
-        return self.transform(X)
+        self.xmin = None
+        self.xrange = None
+
+    def fit(self, X):
+        self.xmin = np.min(X, axis=0)
+        xmax = np.max(X, axis=0)
+        self.xrange = xmax - self.xmin
+        self.xrange[self.xrange < 1e-12] = 1.0
+        return self
+
     def transform(self, X):
-        if self.min is None: return X
-        denom = self.max - self.min
-        denom[denom==0] = 1.0
-        return (X - self.min) / denom * 2 - 1
+        if self.xmin is None:
+            return X
+        return 2.0 * (X - self.xmin) / self.xrange - 1.0
 
-def onehot_encoding_indices(labels):
-    mapping = {1:0, 0:1, -1:2}
-    return torch.tensor(np.array([mapping[l] for l in labels]), dtype=torch.long)
 
-class RelationNet(nn.Module):
+def _onehot_index(labels):
+    """Map labels {1, 0, -1} to class indices {0, 1, 2} (MATLAB ``onehotconv``)."""
+    idx = np.ones(labels.shape[0], dtype=np.int64)
+    idx[labels == 1] = 0
+    idx[labels == -1] = 2
+    return torch.tensor(idx, dtype=torch.long)
+
+
+class _RelationNet(nn.Module):
     """
-    Feed-forward Neural Network for relationship prediction.
+    Pattern-recognition network ``patternnet([ceil(1.5*xDim), xDim, ceil(xDim/2)])``.
+
+    MATLAB's patternnet uses tansig hidden layers and a softmax output layer; the
+    softmax is folded into ``CrossEntropyLoss`` during training and applied
+    explicitly at prediction time.
     """
+
     def __init__(self, x_dim):
         super().__init__()
-        h1 = int(np.ceil(x_dim*2.5))
-        h2 = int(np.ceil(x_dim * 2))
-        h3 =int(x_dim*1.5)
-        h4 = int(x_dim)
-        h5 =int(np.ceil(x_dim/2))
-
+        h1 = int(np.ceil(x_dim * 1.5))
+        h2 = int(x_dim)
+        h3 = int(np.ceil(x_dim / 2))
         self.net = nn.Sequential(
-            nn.Linear(x_dim, h1), nn.ReLU(),
-            nn.Linear(h1, h2), nn.ReLU(),
-            nn.Linear(h2, h3), nn.ReLU(),
-            nn.Linear(h3, h4), nn.ReLU(),
-            nn.Linear(h4, h5), nn.ReLU(),
-            nn.Linear(h5, h5), nn.ReLU(),
-            nn.Linear(h5, 3)
+            nn.Linear(x_dim, h1), nn.Tanh(),
+            nn.Linear(h1, h2), nn.Tanh(),
+            nn.Linear(h2, h3), nn.Tanh(),
+            nn.Linear(h3, 3)
         )
-    def forward(self, x): return self.net(x)
+
+    def forward(self, x):
+        return self.net(x)
 
 
-def train_model(net, X, y, device, epochs=100, lr=1.0):
+def _train_relation_net(net, X, y, max_epochs=1000, max_fail=6, lr=0.01):
     """
-    Train the network using L-BFGS optimizer.
-    L-BFGS is chosen for its efficiency in handling full-batch optimization.
+    Train the relation network, mirroring the patternnet training defaults.
+
+    MATLAB's ``train`` uses trainscg with a random 70/15/15 split, cross-entropy
+    performance, at most 1000 epochs and early stopping after 6 consecutive
+    validation failures. The optimizer here is full-batch Adam; the schedule,
+    split ratios and stopping rule follow the MATLAB defaults.
+
+    Parameters
+    ----------
+    net : _RelationNet
+        Network to train
+    X : np.ndarray
+        Normalized pair features, shape (n, 2*D)
+    y : torch.Tensor
+        Class indices, shape (n,)
+    max_epochs : int
+        Maximum number of epochs
+    max_fail : int
+        Number of consecutive validation failures before stopping
+    lr : float
+        Adam learning rate
     """
-    X_t = torch.tensor(np.array(X), dtype=torch.float32).to(device)
-    y_t = y.to(device)
+    n = X.shape[0]
+    X_t = torch.tensor(np.asarray(X), dtype=torch.float32)
+    y_t = y
 
-    # L-BFGS configuration
-    optimizer = optim.LBFGS(net.parameters(), lr=lr,
-                            history_size=10,
-                            max_iter=20,
-                            line_search_fn='strong_wolfe')
+    perm = np.random.permutation(n)
+    n_val = max(1, int(round(0.15 * n))) if n >= 4 else 0
+    val_idx = perm[:n_val]
+    tr_idx = perm[n_val:]
+    if tr_idx.size == 0:
+        tr_idx, val_idx = perm, np.zeros(0, dtype=int)
 
+    X_tr, y_tr = X_t[tr_idx], y_t[tr_idx]
+    use_val = val_idx.size > 0
+    if use_val:
+        X_va, y_va = X_t[val_idx], y_t[val_idx]
+
+    optimizer = torch.optim.Adam(net.parameters(), lr=lr)
     loss_fn = nn.CrossEntropyLoss()
+
+    best_val = np.inf
+    best_state = {kk: v.detach().clone() for kk, v in net.state_dict().items()}
+    fails = 0
+
     net.train()
+    for _ in range(max_epochs):
+        optimizer.zero_grad()
+        loss = loss_fn(net(X_tr), y_tr)
+        loss.backward()
+        optimizer.step()
 
-    for epoch in range(epochs):
-        def closure():
-            optimizer.zero_grad()
-            output = net(X_t)
-            loss = loss_fn(output, y_t)
-            loss.backward()
-            return loss
-        optimizer.step(closure)
+        if use_val:
+            with torch.no_grad():
+                val = float(loss_fn(net(X_va), y_va))
+            if val < best_val - 1e-6:
+                best_val = val
+                best_state = {kk: v.detach().clone() for kk, v in net.state_dict().items()}
+                fails = 0
+            else:
+                fails += 1
+                if fails >= max_fail:
+                    break
 
-# Adam optimizer
-# def train_model(net, X, y, device, epochs=1000, lr=0.01):
-#     opt = optim.Adam(net.parameters(), lr=lr)
-#     loss_fn = nn.CrossEntropyLoss()
-#     X_t, y_t = torch.tensor(np.array(X), dtype=torch.float32).to(device), y.to(device)
-#     net.train()
-#     for _ in range(epochs):
-#         opt.zero_grad()
-#         loss_fn(net(X_t), y_t).backward()
-#         opt.step()
+    if use_val:
+        net.load_state_dict(best_state)
+    net.eval()
+
+
+def _model_predict(s_model, pairs):
+    """
+    Softmax class probabilities of the relation model for a block of pairs.
+
+    Parameters
+    ----------
+    s_model : dict
+        Relation model with keys ``net`` and ``scaler``
+    pairs : np.ndarray
+        Pair features, shape (P, 2*D)
+
+    Returns
+    -------
+    probs : np.ndarray
+        Class probabilities, shape (P, 3) ordered as (label 1, label 0, label -1)
+    """
+    net, scaler = s_model['net'], s_model['scaler']
+    if net is None:
+        return np.full((pairs.shape[0], 3), 1.0 / 3.0)
+    with torch.no_grad():
+        x = torch.tensor(scaler.transform(pairs), dtype=torch.float32)
+        return torch.softmax(net(x), dim=1).numpy()
+
+
+def _model_select(s_model, candidates):
+    """
+    Score candidates by their predicted relation to the catalogued population.
+
+    Parameters
+    ----------
+    s_model : dict
+        Relation model with the population ``X`` and its catalog ``Y``
+    candidates : np.ndarray
+        Candidate decision variables, shape (n, D)
+
+    Returns
+    -------
+    ind : np.ndarray
+        Candidate indices in descending score order
+    scores : np.ndarray
+        Relation scores in [-4, 4], shape (n,)
+    """
+    X, Y = s_model['X'], s_model['Y']
+    n_cand = candidates.shape[0]
+    c1 = X[Y == 1]
+    c2 = X[Y != 1]
+    n_c1, n_c2 = c1.shape[0], c2.shape[0]
+
+    if n_cand == 0 or (n_c1 == 0 and n_c2 == 0):
+        return np.arange(n_cand), np.zeros(n_cand)
+
+    block = 2 * (n_c1 + n_c2)
+    all_pairs = np.zeros((block * n_cand, 2 * X.shape[1]))
+    for i in range(n_cand):
+        o = i * block
+        xi = np.tile(candidates[i], (max(n_c1, n_c2), 1))
+        if n_c1 > 0:
+            all_pairs[o:o + n_c1] = np.hstack([c1, xi[:n_c1]])
+            all_pairs[o + n_c1:o + 2 * n_c1] = np.hstack([xi[:n_c1], c1])
+        if n_c2 > 0:
+            o2 = o + 2 * n_c1
+            all_pairs[o2:o2 + n_c2] = np.hstack([c2, xi[:n_c2]])
+            all_pairs[o2 + n_c2:o2 + 2 * n_c2] = np.hstack([xi[:n_c2], c2])
+
+    probs = _model_predict(s_model, all_pairs)
+
+    scores = np.zeros(n_cand)
+    for i in range(n_cand):
+        o = i * block
+        s1 = s2 = 0.0
+        if n_c1 > 0:
+            p_c1xi = probs[o:o + n_c1].mean(axis=0)
+            s1 += p_c1xi[1] + p_c1xi[2]
+            s2 += p_c1xi[0]
+            p_xic1 = probs[o + n_c1:o + 2 * n_c1].mean(axis=0)
+            s1 += p_xic1[1] + p_xic1[0]
+            s2 += p_xic1[2]
+        if n_c2 > 0:
+            o2 = o + 2 * n_c1
+            p_c2xi = probs[o2:o2 + n_c2].mean(axis=0)
+            s1 += p_c2xi[2]
+            s2 += p_c2xi[1] + p_c2xi[0]
+            p_xic2 = probs[o2 + n_c2:o2 + 2 * n_c2].mean(axis=0)
+            s1 += p_xic2[0]
+            s2 += p_xic2[1] + p_xic2[2]
+        scores[i] = s1 - s2
+
+    return np.argsort(-scores, kind='stable'), scores
+
+
+def _r_surrogate_assisted_selection(ref_decs, pop_decs, wmax, s_model):
+    """
+    Relation-model-assisted search for the next expensive evaluations.
+
+    Parameters
+    ----------
+    ref_decs : np.ndarray
+        Reference solutions, shape (k, D)
+    pop_decs : np.ndarray
+        Population decision variables, shape (N, D)
+    wmax : int
+        Budget of relation-model evaluations
+    s_model : dict
+        Relation model
+
+    Returns
+    -------
+    next_decs : np.ndarray
+        Candidate solutions for expensive evaluation
+    """
+    next_decs = _operator_ga(np.vstack([pop_decs, ref_decs]))
+    n_ref = ref_decs.shape[0]
+
+    i = 0
+    while i < wmax and next_decs.shape[0] > 0:
+        sorted_idx, _ = _model_select(s_model, next_decs)
+        parents = next_decs[sorted_idx[:min(n_ref, next_decs.shape[0])]]
+        next_decs = _operator_ga(np.vstack([parents, ref_decs]))
+        i += next_decs.shape[0]
+
+    if next_decs.shape[0] == 0:
+        return next_decs
+
+    _, scores = _model_select(s_model, next_decs)
+    good = scores > 3.9
+    if np.sum(good) < 4:
+        order = np.argsort(-scores, kind='stable')
+        return next_decs[order[:min(4, next_decs.shape[0])]]
+    return next_decs[good]

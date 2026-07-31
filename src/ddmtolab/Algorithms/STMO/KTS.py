@@ -67,7 +67,8 @@ class KTS:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 11*dim-1)
+            Number of initial samples per task. PlatEMO's KTS draws
+            ``Problem.N`` Latin-hypercube samples, so the default is ``n``.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
         n : int or List[int], optional
@@ -125,12 +126,14 @@ class KTS:
         n_objs = problem.n_objs
         n_cons = problem.n_cons if hasattr(problem, 'n_cons') else [0] * nt
 
-        if self.n_initial is None:
-            n_initial_per_task = [11 * dims[i] - 1 for i in range(nt)]
-        else:
-            n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
         n_per_task = par_list(self.n, nt)
+
+        # MATLAB: N = Problem.N; P = UniformPoint(N,Problem.D,'Latin')
+        if self.n_initial is None:
+            n_initial_per_task = list(n_per_task)
+        else:
+            n_initial_per_task = par_list(self.n_initial, nt)
 
         # Initialize with LHS
         decs = initialization(problem, n_initial_per_task, method='lhs')
@@ -147,25 +150,20 @@ class KTS:
             N = n_per_task[i]
             M = n_objs[i]
             p_i = 1.0 / M
+            con_i = cons[i]
 
-            # CA: IBEA-based
-            CA_objs, CA_decs = _update_CA(None, objs[i], decs[i], N)
-            CAs.append((CA_objs, CA_decs))
+            # CA: IBEA-based -- MATLAB: CA = UpdateCA([],Population,CAsize)
+            CAs.append(_update_CA(None, objs[i], decs[i], con_i, N))
 
-            # DA1: ND + diversity
-            DA_objs, DA_decs = _update_DA(None, objs[i], decs[i], N, p_i)
-            DA1s.append((DA_objs, DA_decs))
+            # DA1: ND + diversity -- MATLAB: DA1 = UpdateDA(Population,[],N,p)
+            DA1s.append(_update_DA(None, objs[i], decs[i], con_i, N, p_i))
 
-            # P1: SPEA2 without constraints
-            con_i = cons[i] if cons[i] is not None else None
-            P1_objs, P1_decs, P1_cons = _update_P(
-                objs[i], decs[i], None, N, is_origin=False)
-            P1s.append((P1_objs, P1_decs, P1_cons))
-
-            # P2: SPEA2 with constraints
-            P2_objs, P2_decs, P2_cons = _update_P(
-                objs[i], decs[i], con_i, N, is_origin=True)
-            P2s.append((P2_objs, P2_decs, P2_cons))
+            # MATLAB seeds P1 and P2 with the raw initial population; no
+            # environmental selection is applied before the first iteration.
+            P1s.append((objs[i].copy(), decs[i].copy(),
+                        con_i.copy() if con_i is not None else None))
+            P2s.append((objs[i].copy(), decs[i].copy(),
+                        con_i.copy() if con_i is not None else None))
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
@@ -174,6 +172,7 @@ class KTS:
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_pass = sum(nfes_per_task)
 
             for i in active_tasks:
                 M = n_objs[i]
@@ -187,17 +186,28 @@ class KTS:
                     objs[i], cons[i], self.mu, self.tau, self.phi
                 )
 
-                # ===== Build GP models =====
+                # MATLAB: DA = DA1 (mode 0) or P1 (mode 1)
+                DA_pool = DA1s[i] if search_mode == 0 else P1s[i]
+
+                # ===== Build GP models for the objectives (trained on A1) =====
                 obj_models = []
                 for j in range(M):
                     model = gp_build(decs[i], objs[i][:, j:j + 1], data_type)
                     obj_models.append(model)
 
+                # ===== Build GP models for the constraints =====
+                # MATLAB trains them on the deduplicated union [DA;CA;P2], not on
+                # the full evaluated archive.
                 con_models = []
                 if C > 0 and search_mode == 1:
-                    con_i = cons[i]
+                    con_train_decs = np.vstack([DA_pool[1], CAs[i][1], P2s[i][1]])
+                    con_train_cons = np.vstack([DA_pool[2], CAs[i][2], P2s[i][2]])
+                    _, uniq = np.unique(np.round(con_train_decs * 1e4) / 1e4,
+                                        axis=0, return_index=True)
+                    con_train_decs = con_train_decs[uniq]
+                    con_train_cons = con_train_cons[uniq]
                     for j in range(C):
-                        model = gp_build(decs[i], con_i[:, j:j + 1], data_type)
+                        model = gp_build(con_train_decs, con_train_cons[:, j:j + 1], data_type)
                         con_models.append(model)
 
                 # ===== Inner Loop: Surrogate-based Evolution =====
@@ -205,13 +215,8 @@ class KTS:
                 CCA_decs = CAs[i][1].copy()
                 CCA_mse = np.zeros((CCA_objs.shape[0], M))
 
-                # MATLAB: DA = DA1 (mode 0) or P1 (mode 1)
-                if search_mode == 0:
-                    CDA_objs = DA1s[i][0].copy()
-                    CDA_decs = DA1s[i][1].copy()
-                else:
-                    CDA_objs = P1s[i][0].copy()
-                    CDA_decs = P1s[i][1].copy()
+                CDA_objs = DA_pool[0].copy()
+                CDA_decs = DA_pool[1].copy()
                 CDA_mse = np.zeros((CDA_objs.shape[0], M))
 
                 CP2_objs = P2s[i][0].copy()
@@ -232,8 +237,8 @@ class KTS:
                         # KCCMO-style: full GA on each pool independently
                         fitness_p2 = spea2_fitness(CP2_objs, CP2_cons)
                         fitness_da = spea2_fitness(CDA_objs)
-                        pool1 = _tournament_selection_fitness(fitness_p2, N)
-                        pool2 = _tournament_selection_fitness(fitness_da, N)
+                        pool1 = _platemo_tournament_selection(2, N, fitness_p2)
+                        pool2 = _platemo_tournament_selection(2, N, fitness_da)
                         off1 = _full_ga(CP2_decs[pool1])
                         off2 = _full_ga(CDA_decs[pool2])
                         off_decs = np.vstack([off1, off2])
@@ -288,7 +293,7 @@ class KTS:
                     offspring_decs = _adaptive_sampling(
                         CCA_objs[keep_ca], CDA_objs[keep_da],
                         CCA_decs[keep_ca], CDA_decs[keep_da],
-                        CDA_mse[keep_da], DA1s[i][0], DA1s[i][1],
+                        CDA_mse[keep_da], DA_pool[0], DA_pool[1],
                         self.mu1, p_i, self.phi1
                     )
                 else:
@@ -303,6 +308,11 @@ class KTS:
                 # Remove duplicates
                 offspring_decs = remove_duplicates(offspring_decs, decs[i])
 
+                # Never exceed the remaining budget of this task
+                remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                if offspring_decs.shape[0] > remaining:
+                    offspring_decs = offspring_decs[:remaining]
+
                 if offspring_decs.shape[0] > 0:
                     # Evaluate
                     off_objs, off_cons = evaluation_single(problem, offspring_decs, i)
@@ -314,25 +324,20 @@ class KTS:
                         cons[i] = np.vstack([cons[i], off_cons])
 
                     # Update real archives
-                    CA_objs, CA_decs = _update_CA(
-                        CAs[i], off_objs, offspring_decs, N)
-                    CAs[i] = (CA_objs, CA_decs)
+                    CAs[i] = _update_CA(CAs[i], off_objs, offspring_decs, off_cons, N)
+                    DA1s[i] = _update_DA(DA1s[i], off_objs, offspring_decs, off_cons, N, p_i)
 
-                    DA_objs, DA_decs = _update_DA(
-                        DA1s[i], off_objs, offspring_decs, N, p_i)
-                    DA1s[i] = (DA_objs, DA_decs)
-
-                    off_cons_i = off_cons if off_cons is not None else None
-                    P1_objs, P1_decs, P1_cons = _update_P_real(
-                        P1s[i], off_objs, offspring_decs, None, N, is_origin=False)
-                    P1s[i] = (P1_objs, P1_decs, P1_cons)
-
-                    P2_objs, P2_decs, P2_cons = _update_P_real(
-                        P2s[i], off_objs, offspring_decs, off_cons_i, N, is_origin=True)
-                    P2s[i] = (P2_objs, P2_decs, P2_cons)
+                    P1s[i] = _update_P_real(
+                        P1s[i], off_objs, offspring_decs, off_cons, N, is_origin=False)
+                    P2s[i] = _update_P_real(
+                        P2s[i], off_objs, offspring_decs, off_cons, N, is_origin=True)
 
                     nfes_per_task[i] += offspring_decs.shape[0]
                     pbar.update(offspring_decs.shape[0])
+
+            if sum(nfes_per_task) == nfes_before_pass:
+                # No task could produce a new sample in a full pass; stop
+                break
 
         pbar.close()
         runtime = time.time() - start_time
@@ -422,7 +427,11 @@ def _cal_Q(objs):
     """
     Compute convergence metric Q for each solution using IBEA indicator.
 
-    Q(i) = 1/F(i) where F(i) is the IBEA fitness.
+    Q(i) = 1/F(i) where F(i) is the IBEA fitness (MATLAB: ``Cal_Q``).
+
+    The IBEA fitness is negative by construction (``sum(-exp(...)) + 1``), so the
+    sign must be preserved -- clamping it to a positive floor destroys the
+    ordering that the subsequent correlation test relies on.
 
     Parameters
     ----------
@@ -435,8 +444,9 @@ def _cal_Q(objs):
         Convergence metric, shape (N,)
     """
     fitness, _, _ = ibea_fitness(objs, kappa=0.05)
-    Q = 1.0 / np.maximum(fitness, 1e-10)
-    return Q
+    sign = np.where(fitness < 0, -1.0, 1.0)
+    safe = np.where(np.abs(fitness) < 1e-12, sign * 1e-12, fitness)
+    return 1.0 / safe
 
 
 def _cal_fitness_spea2_ref(pop_objs, pop_cons, ref_objs):
@@ -549,28 +559,46 @@ def _mating_selection(CA_objs, CA_decs, DA_objs, DA_decs, N):
     return parentC_decs, parentM_decs
 
 
-def _tournament_selection_fitness(fitness, n_select, tournament_size=2):
-    """Binary tournament selection (lower fitness is better)."""
-    N = len(fitness)
-    selected = np.zeros(n_select, dtype=int)
-    for k in range(n_select):
-        candidates = np.random.randint(0, N, size=tournament_size)
-        selected[k] = candidates[np.argmin(fitness[candidates])]
-    return selected
+def _platemo_tournament_selection(K, N, *fitness):
+    """
+    Exact port of PlatEMO's ``TournamentSelection``.
+
+    Candidates are compared lexicographically on the given fitness keys (lower is
+    better). Solutions with identical fitness share the same rank, so a tournament
+    among tied candidates is decided by the (random) draw order, i.e. uniformly at
+    random -- unlike a total order that would break ties by index.
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
 
 
-def _update_CA(CA, new_objs, new_decs, max_size):
-    """Update Convergence Archive using IBEA fitness."""
+def _stack_optional(a, b):
+    """Vertically stack two optionally-None arrays."""
+    if a is None:
+        return b.copy() if b is not None else None
+    if b is None:
+        return a.copy()
+    return np.vstack([a, b])
+
+
+def _update_CA(CA, new_objs, new_decs, new_cons, max_size):
+    """Update Convergence Archive using IBEA fitness (MATLAB: ``UpdateCA``)."""
     if CA is None:
         CA_objs = new_objs.copy()
         CA_decs = new_decs.copy()
+        CA_cons = new_cons.copy() if new_cons is not None else None
     else:
         CA_objs = np.vstack([CA[0], new_objs])
         CA_decs = np.vstack([CA[1], new_decs])
+        CA_cons = _stack_optional(CA[2], new_cons)
 
     N = CA_objs.shape[0]
     if N <= max_size:
-        return CA_objs, CA_decs
+        return CA_objs, CA_decs, CA_cons
 
     fitness, I, C = ibea_fitness(CA_objs, kappa=0.05)
 
@@ -585,27 +613,32 @@ def _update_CA(CA, new_objs, new_decs, max_size):
 
         choose.pop(min_idx)
 
-    return CA_objs[choose], CA_decs[choose]
+    return (CA_objs[choose], CA_decs[choose],
+            CA_cons[choose] if CA_cons is not None else None)
 
 
-def _update_DA(DA, new_objs, new_decs, max_size, p):
-    """Update Diversity Archive with non-dominated sorting and Lp truncation."""
+def _update_DA(DA, new_objs, new_decs, new_cons, max_size, p):
+    """Update Diversity Archive with ND sorting and Lp truncation (``UpdateDA``)."""
     if DA is None:
         DA_objs = new_objs.copy()
         DA_decs = new_decs.copy()
+        DA_cons = new_cons.copy() if new_cons is not None else None
     else:
         DA_objs = np.vstack([DA[0], new_objs])
         DA_decs = np.vstack([DA[1], new_decs])
+        DA_cons = _stack_optional(DA[2], new_cons)
 
     N = DA_objs.shape[0]
     front_no, _ = nd_sort(DA_objs, N)
     nd_mask = front_no == 1
     DA_objs = DA_objs[nd_mask]
     DA_decs = DA_decs[nd_mask]
+    if DA_cons is not None:
+        DA_cons = DA_cons[nd_mask]
 
     N = DA_objs.shape[0]
     if N <= max_size:
-        return DA_objs, DA_decs
+        return DA_objs, DA_decs, DA_cons
 
     # Select extreme solutions
     choose = np.zeros(N, dtype=bool)
@@ -631,7 +664,8 @@ def _update_DA(DA, new_objs, new_decs, max_size, p):
             best = np.argmax(min_dists)
             choose[remaining[best]] = True
 
-    return DA_objs[choose], DA_decs[choose]
+    return (DA_objs[choose], DA_decs[choose],
+            DA_cons[choose] if DA_cons is not None else None)
 
 
 def _update_P(pop_objs, pop_decs, pop_cons, N, is_origin):
@@ -677,20 +711,18 @@ def _update_P(pop_objs, pop_decs, pop_cons, N, is_origin):
     else:
         selected = np.where(next_mask)[0]
 
+    # MATLAB's Update_P sorts the surviving population by ascending fitness
+    selected = np.asarray(selected)[np.argsort(fitness[selected], kind='stable')]
+
     out_cons = pop_cons[selected] if pop_cons is not None else None
     return pop_objs[selected], pop_decs[selected], out_cons
 
 
 def _update_P_real(P, new_objs, new_decs, new_cons, N, is_origin):
-    """Update real population P with new solutions."""
+    """Update real population P with new solutions (MATLAB: ``Update_P``)."""
     P_objs = np.vstack([P[0], new_objs])
     P_decs = np.vstack([P[1], new_decs])
-    if is_origin and P[2] is not None and new_cons is not None:
-        P_cons = np.vstack([P[2], new_cons])
-    elif is_origin and P[2] is not None:
-        P_cons = np.vstack([P[2], np.zeros((new_objs.shape[0], P[2].shape[1]))])
-    else:
-        P_cons = None
+    P_cons = _stack_optional(P[2], new_cons)
 
     return _update_P(P_objs, P_decs, P_cons, N, is_origin)
 
@@ -800,7 +832,11 @@ def _adaptive_sampling(CA_objs, DA_objs, CA_decs, DA_decs, DA_mse,
     combined_objs = np.vstack([CA_objs, DA_objs])
     ideal_point = np.min(combined_objs, axis=0)
 
-    flag = _cal_convergence(CA_objs, DA_objs, ideal_point)
+    # MATLAB: a diversity archive no larger than mu forces convergence sampling
+    if DA_decs.shape[0] <= mu:
+        flag = 1
+    else:
+        flag = _cal_convergence(CA_objs, DA_objs, ideal_point)
 
     if flag == 1:
         # Convergence sampling from CA
@@ -823,6 +859,9 @@ def _adaptive_sampling(CA_objs, DA_objs, CA_decs, DA_decs, DA_mse,
 
         return CA_decs[choose]
     else:
+        if DA_decs.shape[0] <= mu:
+            return DA_decs.copy()
+
         pd_pred = _pure_diversity(DA_objs)
         pd_real = _pure_diversity(real_DA_objs)
 
@@ -1055,35 +1094,45 @@ def _pure_diversity(pop_obj):
 
 
 def _crossover_only(parents, muc=20):
-    """SBX crossover only (no mutation)."""
+    """
+    SBX crossover only -- MATLAB ``OperatorGA(Problem,Parent,{1,20,0,0})``.
+
+    PlatEMO splits the parent matrix into ``Parent(1:floor(N/2))`` and
+    ``Parent(floor(N/2)+1:2*floor(N/2))`` without shuffling, so in mode 0 the
+    ``[CA-selected ; DA-random]`` layout of ParentCdec crosses a CA parent with a
+    DA parent. That structure must be preserved.
+    """
     n, d = parents.shape
-    offdecs = np.zeros((0, d))
-    parents = parents.copy()
-    np.random.shuffle(parents)
     num_pairs = n // 2
+    if num_pairs == 0:
+        return np.zeros((0, d))
 
+    off1 = np.zeros((num_pairs, d))
+    off2 = np.zeros((num_pairs, d))
     for j in range(num_pairs):
-        offdec1, offdec2 = crossover(parents[j, :], parents[num_pairs + j, :], mu=muc)
-        offdecs = np.vstack((offdecs, offdec1, offdec2))
-
-    if n % 2 == 1:
-        offdec1, _ = crossover(parents[-1, :], parents[np.random.randint(0, n - 1), :], mu=muc)
-        offdecs = np.vstack((offdecs, offdec1))
-
-    return offdecs
+        c1, c2 = crossover(parents[j, :], parents[num_pairs + j, :], mu=muc)
+        off1[j] = c1
+        off2[j] = c2
+    return np.vstack([off1, off2])
 
 
 def _mutation_only(parents, mum=20):
-    """Polynomial mutation only (no crossover)."""
+    """
+    Polynomial mutation only -- MATLAB ``OperatorGA(Problem,Parent,{0,0,1,20})``.
+
+    With ``proC = 0`` the SBX step returns the parents unchanged and PlatEMO keeps
+    only the first ``2*floor(N/2)`` of them.
+    """
     n, d = parents.shape
-    offdecs = np.zeros((n, d))
-    for j in range(n):
-        offdecs[j] = mutation(parents[j, :], mu=mum)
+    n_off = 2 * (n // 2)
+    offdecs = np.zeros((n_off, d))
+    for j in range(n_off):
+        offdecs[j] = mutation(np.clip(parents[j, :], 0.0, 1.0), mu=mum)
     return offdecs
 
 
 def _full_ga(parents, muc=20, mum=20):
-    """Full GA: SBX crossover followed by polynomial mutation."""
+    """Full GA (MATLAB ``OperatorGA`` defaults {1,20,1,20}) on a mating pool."""
     off = _crossover_only(parents, muc=muc)
     for j in range(off.shape[0]):
         off[j] = mutation(off[j], mu=mum)

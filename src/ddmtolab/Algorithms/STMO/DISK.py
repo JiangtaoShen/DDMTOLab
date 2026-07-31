@@ -1,15 +1,16 @@
 """
-Distribution-Informed Surrogate-assisted Kriging (DISK)
+Distribution-based Kriging-assisted evolutionary algorithm (DISK)
 
-This module implements DISK for computationally expensive multi-objective optimization.
-It uses Distribution-Informed Probabilistic Dominance (DIPD) that combines prediction
-uncertainty from Kriging with the probability distribution learned from Pareto-optimal
-solutions. It features adaptive local search guided by weight vector identification
-to fill gaps in the Pareto front.
+This module implements DISK for computationally expensive multi/many-objective
+optimization. It uses Distribution-based Probabilistic Dominance (DIPD) that combines
+prediction uncertainty from Kriging with the Gaussian density fitted on the currently
+non-dominated decision vectors. It features an adaptive local search, triggered when
+the newly evaluated candidates fail to dominate the archive front, that is guided by
+the reference vector pointing at the widest gap of the current front.
 
 References
 ----------
-    [1] Z. Song, H. Wang, and H. Xu. DISK: A Kriging-Assisted Multi-Objective Optimization Algorithm with Distribution-Informed Probabilistic Dominance. IEEE Transactions on Evolutionary Computation, 2024.
+    [1] Z. Zhang, Y. Wang, G. Sun, and T. Pang. A distribution information based Kriging-assisted evolutionary algorithm for expensive many-objective optimization problems. IEEE Transactions on Evolutionary Computation, 2024.
 
 Notes
 -----
@@ -54,7 +55,7 @@ class DISK:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n=100,
+    def __init__(self, problem, n_initial=None, max_nfes=None,
                  wmax=60, alpha=5,
                  save_data=True, save_path='./Data', name='DISK', disable_tqdm=True):
         """
@@ -65,11 +66,12 @@ class DISK:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 11*dim-1)
+            Number of initial samples per task (default: 11*dim-1). This is
+            MATLAB's ``NI = Problem.N``: it is simultaneously the size of the
+            initial Latin hypercube design, the size of the archive A1 kept by
+            ``EnvironmentalSelection`` and the size of the surrogate population.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
-        n : int or List[int], optional
-            Population/archive size per task (default: 100)
         wmax : int, optional
             Surrogate evolution generations (default: 60)
         alpha : int, optional
@@ -86,7 +88,6 @@ class DISK:
         self.problem = problem
         self.n_initial = n_initial
         self.max_nfes = max_nfes if max_nfes is not None else 200
-        self.n = n
         self.wmax = wmax
         self.alpha = alpha
         self.save_data = save_data
@@ -115,7 +116,8 @@ class DISK:
         else:
             n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
-        n_per_task = par_list(self.n, nt)
+        # MATLAB: NI = Problem.N is both the DoE size and the archive size
+        n_per_task = list(n_initial_per_task)
 
         # Initialize with LHS
         decs = initialization(problem, n_initial_per_task, method='lhs')
@@ -135,10 +137,15 @@ class DISK:
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
+        # Safety guard: MATLAB loops forever if NewSelect never returns a
+        # candidate (no expensive evaluation is consumed in that case).
+        stagnation = 0
+
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_sweep = sum(nfes_per_task)
 
             for i in active_tasks:
                 M = n_objs[i]
@@ -180,7 +187,7 @@ class DISK:
                 # ===== Candidate selection =====
                 n_budget = min(self.alpha, max_nfes_per_task[i] - nfes_per_task[i])
                 if n_budget <= 0:
-                    break
+                    continue
 
                 cand_decs, cand_objs = _new_select(
                     OP_decs, OP_objs, OP_mse,
@@ -226,6 +233,13 @@ class DISK:
                 # ===== Update working population =====
                 idx = _env_selection_real(objs[i], N)
                 pop_indices[i] = np.where(idx)[0]
+
+            if sum(nfes_per_task) == nfes_before_sweep:
+                stagnation += 1
+                if stagnation >= 50:
+                    break
+            else:
+                stagnation = 0
 
         pbar.close()
         runtime = time.time() - start_time
@@ -483,8 +497,10 @@ def _truncation_angle(pop_objs, K):
         remaining = np.where(~deleted)[0]
         sub_dist = dist[np.ix_(remaining, remaining)]
         sorted_d = np.sort(sub_dist, axis=1)
-        # Sort by nearest-neighbor distance (least diverse first)
-        order = np.lexsort(sorted_d.T)
+        # MATLAB: [~,Rank] = sortrows(Temp) -> column 1 (the nearest-neighbour
+        # distance) is the primary key, np.lexsort takes the LAST key as
+        # primary, hence the column reversal.
+        order = np.lexsort(sorted_d[:, ::-1].T)
         deleted[remaining[order[0]]] = True
 
     return np.where(~deleted)[0]
@@ -497,29 +513,23 @@ def _dist_selection_angle(selected_objs, candidate_objs, n_select):
     if N2 <= n_select:
         return np.arange(N2)
 
-    all_objs = np.vstack([selected_objs, candidate_objs])
-    dist = _angle_distance(all_objs, all_objs)
-    np.fill_diagonal(dist, np.inf)
-
-    chosen_set = list(range(N1))
-    remaining = list(range(N1, N1 + N2))
+    dist = _angle_distance(candidate_objs, selected_objs)
+    min_dist = np.min(dist, axis=1)
+    remaining = np.ones(N2, dtype=bool)
     chosen = []
 
     for _ in range(n_select):
-        if not remaining:
+        avail = np.where(remaining)[0]
+        if len(avail) == 0:
             break
-        best_idx = None
-        best_min_d = -1.0
-        for idx in remaining:
-            min_d = np.min([dist[idx, c] for c in chosen_set])
-            if min_d > best_min_d:
-                best_min_d = min_d
-                best_idx = idx
-        chosen_set.append(best_idx)
-        remaining.remove(best_idx)
-        chosen.append(best_idx - N1)
+        pos = int(avail[int(np.argmax(min_dist[avail]))])
+        chosen.append(pos)
+        remaining[pos] = False
+        # the newly selected candidate joins the reference set
+        new_d = _angle_distance(candidate_objs, candidate_objs[pos:pos + 1]).ravel()
+        min_dist = np.minimum(min_dist, new_d)
 
-    return chosen
+    return np.array(chosen, dtype=int)
 
 
 # =============================================================================
@@ -656,8 +666,8 @@ def _identify_w(db_objs, N, M):
     ideal : np.ndarray
         Adjusted ideal point, shape (M,)
     """
-    # Generate candidate weight vectors
-    V, _ = uniform_point(max(10 * N, 100), M)
+    # Generate candidate weight vectors (MATLAB: UniformPoint(10*N,M))
+    V, _ = uniform_point(10 * N, M)
 
     # Extract Pareto front
     n_all = db_objs.shape[0]
@@ -679,9 +689,11 @@ def _identify_w(db_objs, N, M):
     # Compute angles between weight vectors and PF solutions
     angle_dist = _angle_distance(V, shifted_pf)
 
-    # Find vector with max min-angle to any PF solution
+    # Find vector with max min-angle to any PF solution (ties broken at random,
+    # matching MATLAB's index(randperm(length(index),1)))
     min_angles = np.min(angle_dist, axis=1)
-    best = np.argmax(min_angles)
+    tied = np.where(min_angles == np.max(min_angles))[0]
+    best = tied[np.random.randint(len(tied))] if len(tied) > 1 else tied[0]
 
     W = V[best]
     return W, ideal
@@ -714,9 +726,10 @@ def _local_search(OP_decs, OP_objs, OP_mse, W, ideal, obj_models, M, N,
         off3 = _de_rand_1(pop_decs)
         off4 = _de_current_rand_1(pop_decs)
 
+        # MATLAB: P.decs = unique(P.decs,'rows') - exact row deduplication,
+        # the decision values themselves must not be perturbed by rounding
         pop_decs = np.vstack([pop_decs, off1, off2, off3, off4])
-        pop_decs = np.unique(np.round(pop_decs, 10), axis=0)
-        pop_decs = np.clip(pop_decs, 0, 1)
+        pop_decs = np.unique(pop_decs, axis=0)
 
         pop_objs, pop_mse = _gp_predict_all(pop_decs, obj_models, M, data_type)
         pop_std = np.sqrt(np.maximum(pop_mse, 0))

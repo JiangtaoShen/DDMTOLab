@@ -20,6 +20,7 @@ import time
 import torch
 import numpy as np
 from scipy.stats import norm
+from scipy.stats import qmc
 from scipy.spatial.distance import pdist, squareform
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Methods.Algo_Methods.bo_utils import mo_gp_build, mo_gp_predict
@@ -154,19 +155,29 @@ class DirHV_EI:
                     m, dim, models, train_y_nds, actual_batch, data_type
                 )
 
-                # Remove duplicates
+                # Remove duplicates, then top up so that exactly `actual_batch`
+                # points are evaluated per cycle (the greedy subset selection
+                # may return the same candidate index more than once)
                 new_decs = remove_duplicates(new_decs, decs[i])
+                if new_decs.shape[0] > actual_batch:
+                    new_decs = new_decs[:actual_batch]
+                while new_decs.shape[0] < actual_batch:
+                    pad = np.random.rand(actual_batch - new_decs.shape[0], dim)
+                    pad = remove_duplicates(pad, np.vstack([decs[i], new_decs])
+                                            if new_decs.shape[0] > 0 else decs[i])
+                    if pad.shape[0] == 0:
+                        continue
+                    new_decs = np.vstack([new_decs, pad]) if new_decs.shape[0] > 0 else pad
 
-                if new_decs.shape[0] > 0:
-                    # Expensive evaluation
-                    new_objs, _ = evaluation_single(problem, new_decs, i)
+                # Expensive evaluation
+                new_objs, _ = evaluation_single(problem, new_decs, i)
 
-                    # Update dataset
-                    decs[i] = np.vstack([decs[i], new_decs])
-                    objs[i] = np.vstack([objs[i], new_objs])
+                # Update dataset
+                decs[i] = np.vstack([decs[i], new_decs])
+                objs[i] = np.vstack([objs[i], new_objs])
 
-                    nfes_per_task[i] += new_decs.shape[0]
-                    pbar.update(new_decs.shape[0])
+                nfes_per_task[i] += new_decs.shape[0]
+                pbar.update(new_decs.shape[0])
 
         pbar.close()
         runtime = time.time() - start_time
@@ -181,6 +192,11 @@ class DirHV_EI:
 
 
 # ==================== Core DirHV-EI Functions ====================
+
+def _lhs(n, d):
+    """Latin hypercube sample in [0, 1]^d (MATLAB ``lhsdesign`` equivalent)."""
+    return qmc.LatinHypercube(d=d).random(n=n)
+
 
 def _opt_dirhvei(M, D, models, train_y_nds, batch_size, data_type):
     """
@@ -329,8 +345,8 @@ def _moead_gr(D, models, dir_vecs, xis, data_type):
     dist_mat = squareform(pdist(dir_vecs))
     B = np.argsort(dist_mat, axis=1)[:, :T]
 
-    # Initial population via LHS in [0, 1]^D
-    pop_x = np.random.rand(pop_size, D)  # LHS approx
+    # Initial population via LHS in [0, 1]^D (lhsdesign in MATLAB)
+    pop_x = _lhs(pop_size, D)
 
     # GP prediction for initial population
     pop_mean, pop_std = _gp_evaluate(pop_x, models, data_type)

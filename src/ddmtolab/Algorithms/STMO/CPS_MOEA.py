@@ -42,7 +42,7 @@ class CPS_MOEA:
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'False',
-        'n': 'unequal',
+        'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -50,8 +50,8 @@ class CPS_MOEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, M=3, CR=1.0, F=0.5, proM=1.0, disM=20.0,
-                 k_neighbors=5, save_data=True, save_path='./Data', name='CPS-MOEA',
+    def __init__(self, problem, n_initial=None, max_nfes=None, M=3, CR=1.0, F=0.5, proM=1.0,
+                 disM=20.0, k_neighbors=5, save_data=True, save_path='./Data', name='CPS-MOEA',
                  disable_tqdm=True):
         """
         Initialize CPS-MOEA algorithm.
@@ -60,10 +60,13 @@ class CPS_MOEA:
         ----------
         problem : MTOP
             Multi-task optimization problem instance
-        n : int or List[int], optional
-            Population size per task (default: 100)
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 100). This is also the
+            population size N, because PlatEMO's CPS-MOEA draws N random solutions
+            in ``Problem.Initialization()`` and re-evaluates N offsprings per
+            generation.
         max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 10000)
+            Maximum number of function evaluations per task (default: 200)
         M : int, optional
             Number of candidate offsprings generated per solution (default: 3)
         CR : float, optional
@@ -86,8 +89,8 @@ class CPS_MOEA:
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n = n if n is not None else 100
-        self.max_nfes = max_nfes if max_nfes is not None else 10000
+        self.n_initial = n_initial if n_initial is not None else 100
+        self.max_nfes = max_nfes if max_nfes is not None else 200
         self.M = M
         self.CR = CR
         self.F = F
@@ -114,10 +117,13 @@ class CPS_MOEA:
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks
-        n_per_task = par_list(self.n, nt)
+        # Population size N is also the number of initial samples and the number of
+        # expensive evaluations consumed by one generation (PlatEMO Operator.m)
+        n_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
         # Initialize population and evaluate for each task
+        # (PlatEMO Problem.Initialization() draws uniformly random solutions)
         decs = initialization(problem, n_per_task)
         objs, cons = evaluation(problem, decs)
         nfes_per_task = n_per_task.copy()
@@ -159,6 +165,12 @@ class CPS_MOEA:
             for i in active_tasks:
                 # Generate offsprings using DE and KNN-based classification
                 off_decs = self._generate_offspring(i, decs[i], n_per_task[i])
+
+                # Never exceed the task budget (PlatEMO terminates mid-generation)
+                remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                if off_decs.shape[0] > remaining:
+                    off_decs = off_decs[:remaining]
+
                 off_objs, off_cons = evaluation_single(problem, off_decs, i)
                 db_decs[i] = np.vstack([db_decs[i], off_decs])
                 db_objs[i] = np.vstack([db_objs[i], off_objs])
@@ -203,13 +215,16 @@ class CPS_MOEA:
                 # Update KNN model
                 self._train_knn(i, Pgood_decs[i], Pbad_decs[i])
 
-                nfes_per_task[i] += n_per_task[i]
-                pbar.update(n_per_task[i])
+                nfes_per_task[i] += off_decs.shape[0]
+                pbar.update(off_decs.shape[0])
 
         pbar.close()
         runtime = time.time() - start_time
 
-        all_decs, all_objs, all_cons = build_staircase_history(db_decs, db_objs, k=self.n, db_cons=db_cons)
+        # One history entry per generation (each generation costs N evaluations)
+        hist_k = n_per_task[0] if len(set(n_per_task)) == 1 else 1
+        all_decs, all_objs, all_cons = build_staircase_history(db_decs, db_objs, k=hist_k,
+                                                               db_cons=db_cons)
         # Save results
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,

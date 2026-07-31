@@ -126,8 +126,6 @@ class ADSAPSO:
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        stall_counter = [0] * nt
-        max_stall = 20  # Break if no new solutions found for this many consecutive iterations
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
@@ -143,15 +141,12 @@ class ADSAPSO:
                     n_per_task[i], M, D, nfes_per_task[i], max_nfes_per_task[i]
                 )
 
-                # Remove duplicates against existing evaluated solutions
-                offspring_decs = remove_duplicates(offspring_decs, decs[i])
-
-                if offspring_decs.shape[0] == 0:
-                    stall_counter[i] += 1
-                    if stall_counter[i] >= max_stall:
-                        nfes_per_task[i] = max_nfes_per_task[i]  # Force exit
-                    continue
-                stall_counter[i] = 0
+                # Drop points already evaluated; PlatEMO does not deduplicate, so keep
+                # the raw candidates when the filter would empty the batch (the PSO
+                # inner loop is deterministic given the archive and can repeat points)
+                filtered = remove_duplicates(offspring_decs, decs[i])
+                if filtered.shape[0] > 0:
+                    offspring_decs = filtered
 
                 if offspring_decs.shape[0] > 0:
                     # Limit to remaining budget

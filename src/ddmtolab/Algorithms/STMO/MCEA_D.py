@@ -43,7 +43,7 @@ class MCEA_D:
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'False',
-        'n': 'unequal',
+        'n_initial': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -51,7 +51,7 @@ class MCEA_D:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem,  n=None, max_nfes=None, delta=0.9, nr=2, r_max=10,
+    def __init__(self, problem, n_initial=None, max_nfes=None, delta=0.9, nr=2, r_max=10,
                  save_data=True, save_path='./Data', name='MCEA-D', disable_tqdm=True):
         """
         Initialize MCEAD algorithm.
@@ -60,10 +60,13 @@ class MCEA_D:
         ----------
         problem : MTOP
             Problem instance.
-        n : int or List[int], optional
-            Population size per task (default: 100)
+        n_initial : int or List[int], optional
+            Number of initial Latin-hypercube samples per task (default: 100). In
+            MCEA/D this is also the population size and the number of weight
+            vectors, so it is adjusted upwards by ``uniform_point`` exactly as
+            ``[W, Problem.N] = UniformPoint(Problem.N, Problem.M)`` does in PlatEMO.
         max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 10000)
+            Maximum number of function evaluations per task (default: 200)
         delta : float, optional
             Probability of choosing parents from neighborhood (default: 0.9).
         nr : int, optional
@@ -80,8 +83,8 @@ class MCEA_D:
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n = n if n is not None else 50
-        self.max_nfes = max_nfes if max_nfes is not None else 500
+        self.n_initial = n_initial if n_initial is not None else 100
+        self.max_nfes = max_nfes if max_nfes is not None else 200
         self.delta = delta
         self.nr = nr
         self.r_max = r_max
@@ -103,7 +106,7 @@ class MCEA_D:
         problem = self.problem
 
         nt = problem.n_tasks
-        n_per_task = par_list(self.n, nt)
+        n_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
         W_list = []
@@ -269,18 +272,17 @@ class SVM:
         self.task_id = task_id
         self.model = None
         self.C = 1.0
+        # MATLAB: sigma = sqrt(1/(2*gamma)) is passed as 'KernelScale', and MATLAB's
+        # rbf kernel is exp(-||x-y||^2 / sigma^2) = exp(-2*gamma*||x-y||^2), whereas
+        # sklearn's is exp(-gamma_sk*||x-y||^2). Hence gamma_sk = 2*gamma.
         self.gamma_matlab = 1.0
-        self.gamma_sklearn = self.gamma_matlab
+        self.gamma_sklearn = 2.0 * self.gamma_matlab
 
-        # Access bounds from MTOP bounds list [(lb, ub), ...]
-        self.lower = problem.bounds[task_id][0].flatten()
-        self.upper = problem.bounds[task_id][1].flatten()
-        self.n_vars = len(self.lower)
+        self.n_vars = problem.dims[task_id]
 
     def uniform_input(self, x):
-        denom = self.upper - self.lower
-        denom[denom == 0] = 1e-10
-        return (x - self.lower) / denom
+        """MATLAB's UniformInput maps decisions to [0,1]; DDMTOLab decisions already are."""
+        return x
 
     def model_construction(self, archive_decs, archive_objs, neighbor_indices, W, Z):
         """
@@ -304,7 +306,7 @@ class SVM:
                     labels[best_idx] = 1
                     break
 
-        X_train = np.array([self.uniform_input(x) for x in archive_decs])
+        X_train = self.uniform_input(np.asarray(archive_decs, dtype=float))
         y_train = labels
 
         if len(np.unique(y_train)) > 1:
@@ -336,6 +338,11 @@ def operator_de(problem, parent1, parent2, parent3, task_id, params=None):
     """
     Perform Differential Evolution (DE) crossover and Polynomial Mutation.
 
+    Port of PlatEMO ``OperatorDE`` for a single parent triple. DDMTOLab keeps all
+    decision variables in the normalized [0,1] box, so the lower/upper bounds used
+    by the mutation are 0 and 1 (the affine map to the real bounds is applied by
+    ``evaluation_single``).
+
     Returns
     -------
     offspring : np.ndarray
@@ -347,42 +354,34 @@ def operator_de(problem, parent1, parent2, parent3, task_id, params=None):
     else:
         CR, F, proM, disM = params
 
-    lower = problem.bounds[task_id][0].flatten()
-    upper = problem.bounds[task_id][1].flatten()
-    D = len(lower)
+    D = parent1.shape[0]
 
     offspring = parent1.copy()
     site_de = np.random.rand(D) < CR
     diff = F * (parent2 - parent3)
     offspring[site_de] = offspring[site_de] + diff[site_de]
 
-    # Polynomial Mutation
+    # Polynomial Mutation (bounds are 0 and 1 in the normalized space)
     site_pm = np.random.rand(D) < (proM / D)
     mu = np.random.rand(D)
 
-    offspring = np.clip(offspring, lower, upper)
+    offspring = np.clip(offspring, 0.0, 1.0)
 
     temp = site_pm & (mu <= 0.5)
-    l_temp, u_temp = lower[temp], upper[temp]
-    o_temp, m_temp = offspring[temp], mu[temp]
-
     if np.any(temp):
-        val = 2.0 * m_temp + (1.0 - 2.0 * m_temp) * \
-              (1.0 - (o_temp - l_temp) / (u_temp - l_temp)) ** (disM + 1)
+        o_temp, m_temp = offspring[temp], mu[temp]
+        val = 2.0 * m_temp + (1.0 - 2.0 * m_temp) * (1.0 - o_temp) ** (disM + 1)
         delta = val ** (1.0 / (disM + 1)) - 1.0
-        offspring[temp] = o_temp + (u_temp - l_temp) * delta
+        offspring[temp] = o_temp + delta
 
     temp = site_pm & (mu > 0.5)
-    l_temp, u_temp = lower[temp], upper[temp]
-    o_temp, m_temp = offspring[temp], mu[temp]
-
     if np.any(temp):
-        val = 2.0 * (1.0 - m_temp) + 2.0 * (m_temp - 0.5) * \
-              (1.0 - (u_temp - o_temp) / (u_temp - l_temp)) ** (disM + 1)
+        o_temp, m_temp = offspring[temp], mu[temp]
+        val = 2.0 * (1.0 - m_temp) + 2.0 * (m_temp - 0.5) * o_temp ** (disM + 1)
         delta = 1.0 - val ** (1.0 / (disM + 1))
-        offspring[temp] = o_temp + (u_temp - l_temp) * delta
+        offspring[temp] = o_temp + delta
 
-    offspring = np.clip(offspring, lower, upper)
+    offspring = np.clip(offspring, 0.0, 1.0)
     return offspring
 
 

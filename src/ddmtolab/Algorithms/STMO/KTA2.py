@@ -67,7 +67,8 @@ class KTA2:
         problem : MTOP
             Multi-task optimization problem instance
         n_initial : int or List[int], optional
-            Number of initial samples per task (default: 11*dim-1)
+            Number of initial samples per task. PlatEMO's KTA2 draws
+            ``Problem.N`` Latin-hypercube samples, so the default is ``n``.
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
         n : int or List[int], optional
@@ -118,13 +119,14 @@ class KTA2:
         dims = problem.dims
         n_objs = problem.n_objs
 
-        # Set default initial samples: 11*dim - 1
-        if self.n_initial is None:
-            n_initial_per_task = [11 * dims[i] - 1 for i in range(nt)]
-        else:
-            n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
         n_per_task = par_list(self.n, nt)
+
+        # MATLAB: N = Problem.N; P = UniformPoint(N,Problem.D,'Latin')
+        if self.n_initial is None:
+            n_initial_per_task = list(n_per_task)
+        else:
+            n_initial_per_task = par_list(self.n_initial, nt)
 
         # Initialize with LHS
         decs = initialization(problem, n_initial_per_task, method='lhs')
@@ -149,6 +151,7 @@ class KTA2:
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_pass = sum(nfes_per_task)
 
             for i in active_tasks:
                 M = n_objs[i]
@@ -224,7 +227,13 @@ class KTA2:
                 )
 
                 # Remove duplicates against existing evaluated data
+                # (MATLAB: unique(...,'rows') then the min-distance > 1e-5 filter)
                 offspring_decs = remove_duplicates(offspring_decs, decs[i])
+
+                # Never exceed the remaining budget of this task
+                remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                if offspring_decs.shape[0] > remaining:
+                    offspring_decs = offspring_decs[:remaining]
 
                 if offspring_decs.shape[0] > 0:
                     # Evaluate with real function
@@ -246,6 +255,10 @@ class KTA2:
 
                     nfes_per_task[i] += offspring_decs.shape[0]
                     pbar.update(offspring_decs.shape[0])
+
+            if sum(nfes_per_task) == nfes_before_pass:
+                # No task could produce a new sample in a full pass; stop
+                break
 
         pbar.close()
         runtime = time.time() - start_time
@@ -858,7 +871,12 @@ def _crossover_only(parents, muc=20):
     """
     Generate offspring using SBX crossover only (no mutation).
 
-    Matches MATLAB OperatorGA with {proC=1, disC=20, proM=0, disM=0}.
+    Exact port of MATLAB ``OperatorGA(Problem,Parent,{1,20,0,0})``: the parent
+    matrix is split into two halves ``P1 = Parent(1:floor(N/2))`` and
+    ``P2 = Parent(floor(N/2)+1:2*floor(N/2))`` **without shuffling**, and each
+    pair (P1_j, P2_j) produces two children. The pairing is load bearing in
+    KTA2 because ParentCdec is ``[CA-selected ; DA-random]``, so the structured
+    split crosses a CA parent with a DA parent.
 
     Parameters
     ----------
@@ -870,30 +888,32 @@ def _crossover_only(parents, muc=20):
     Returns
     -------
     offdecs : np.ndarray
-        Offspring decision variables, shape (n, d)
+        Offspring decision variables, shape (2*floor(n/2), d)
     """
     n, d = parents.shape
-    offdecs = np.zeros((0, d))
-    parents = parents.copy()
-    np.random.shuffle(parents)
     num_pairs = n // 2
+    if num_pairs == 0:
+        return np.zeros((0, d))
 
+    off1 = np.zeros((num_pairs, d))
+    off2 = np.zeros((num_pairs, d))
     for j in range(num_pairs):
-        offdec1, offdec2 = crossover(parents[j, :], parents[num_pairs + j, :], mu=muc)
-        offdecs = np.vstack((offdecs, offdec1, offdec2))
+        c1, c2 = crossover(parents[j, :], parents[num_pairs + j, :], mu=muc)
+        off1[j] = c1
+        off2[j] = c2
 
-    if n % 2 == 1:
-        offdec1, _ = crossover(parents[-1, :], parents[np.random.randint(0, n - 1), :], mu=muc)
-        offdecs = np.vstack((offdecs, offdec1))
-
-    return offdecs
+    # MATLAB stacks all first children then all second children
+    return np.vstack([off1, off2])
 
 
 def _mutation_only(parents, mum=20):
     """
     Generate offspring using polynomial mutation only (no crossover).
 
-    Matches MATLAB OperatorGA with {proC=0, disC=0, proM=1, disM=20}.
+    Exact port of MATLAB ``OperatorGA(Problem,Parent,{0,0,1,20})``. With
+    ``proC = 0`` every SBX beta is forced to 1, so the crossover step returns the
+    parents unchanged; PlatEMO then keeps only the first ``2*floor(N/2)`` parents
+    and mutates them.
 
     Parameters
     ----------
@@ -905,10 +925,11 @@ def _mutation_only(parents, mum=20):
     Returns
     -------
     offdecs : np.ndarray
-        Offspring decision variables, shape (n, d)
+        Offspring decision variables, shape (2*floor(n/2), d)
     """
     n, d = parents.shape
-    offdecs = np.zeros((n, d))
-    for j in range(n):
-        offdecs[j] = mutation(parents[j, :], mu=mum)
+    n_off = 2 * (n // 2)
+    offdecs = np.zeros((n_off, d))
+    for j in range(n_off):
+        offdecs[j] = mutation(np.clip(parents[j, :], 0.0, 1.0), mu=mum)
     return offdecs

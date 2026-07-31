@@ -56,7 +56,7 @@ class CSEA:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n_initial=None, max_nfes=None, n=None, k=6, gmax=3000,
+    def __init__(self, problem, n_initial=None, max_nfes=None, n=100, k=6, gmax=3000,
                  save_data=True, save_path='./Data', name='CSEA', disable_tqdm=True):
         """
         Initialize CSEA algorithm.
@@ -70,7 +70,7 @@ class CSEA:
         max_nfes : int or List[int], optional
             Maximum number of function evaluations per task (default: 200)
         n : int or List[int], optional
-            Population size per task (default: same as n_initial)
+            Population size per task (MATLAB Problem.N, default: 100)
         k : int, optional
             Number of reference solutions (default: 6)
         gmax : int, optional
@@ -117,11 +117,8 @@ class CSEA:
             n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Population size defaults to n_initial
-        if self.n is None:
-            n_per_task = n_initial_per_task.copy()
-        else:
-            n_per_task = par_list(self.n, nt)
+        # Population size (MATLAB Problem.N)
+        n_per_task = par_list(self.n, nt)
 
         # Generate initial samples using Latin Hypercube Sampling
         decs = initialization(problem, n_initial_per_task, method='lhs')
@@ -131,6 +128,11 @@ class CSEA:
         # Archive: all evaluated solutions
         arc_decs = [d.copy() for d in decs]
         arc_objs = [o.copy() for o in objs]
+
+        # MATLAB: Population is the raw initial design on the first iteration and
+        # is refreshed with RefSelect(Arc, Problem.N) at the end of every iteration
+        pop_decs_list = [d.copy() for d in decs]
+        pop_objs_list = [o.copy() for o in objs]
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
@@ -142,11 +144,9 @@ class CSEA:
 
             for i in active_tasks:
                 dim = dims[i]
-                k = min(self.k, len(arc_decs[i]))
-                n_pop = n_per_task[i]
-
-                # Current population: select best n_pop from archive via RefSelect
-                pop_decs, pop_objs = _ref_select(arc_decs[i], arc_objs[i], n_pop)
+                pop_decs = pop_decs_list[i]
+                pop_objs = pop_objs_list[i]
+                k = min(self.k, pop_decs.shape[0])
 
                 # Select k reference solutions
                 ref_decs, ref_objs = _ref_select(pop_decs, pop_objs, k)
@@ -173,26 +173,32 @@ class CSEA:
                 )
 
                 if next_decs is not None and len(next_decs) > 0:
-                    # Remove duplicates
-                    next_decs = remove_duplicates(next_decs, decs[i])
+                    # Drop points already evaluated; PlatEMO does not deduplicate, so
+                    # fall back to the raw candidates when the filter empties the batch
+                    filtered = remove_duplicates(next_decs, decs[i])
+                    if filtered.shape[0] > 0:
+                        next_decs = filtered
 
-                    if next_decs.shape[0] > 0:
-                        # Limit evaluations to remaining budget
-                        remaining = max_nfes_per_task[i] - nfes_per_task[i]
-                        if next_decs.shape[0] > remaining:
-                            next_decs = next_decs[:remaining]
+                    # Limit evaluations to remaining budget
+                    remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                    if next_decs.shape[0] > remaining:
+                        next_decs = next_decs[:remaining]
 
-                        # Evaluate with expensive function
-                        next_objs, _ = evaluation_single(problem, next_decs, i)
+                    # Evaluate with expensive function
+                    next_objs, _ = evaluation_single(problem, next_decs, i)
 
-                        # Update archive
-                        arc_decs[i] = np.vstack([arc_decs[i], next_decs])
-                        arc_objs[i] = np.vstack([arc_objs[i], next_objs])
-                        decs[i] = np.vstack([decs[i], next_decs])
-                        objs[i] = np.vstack([objs[i], next_objs])
+                    # Update archive
+                    arc_decs[i] = np.vstack([arc_decs[i], next_decs])
+                    arc_objs[i] = np.vstack([arc_objs[i], next_objs])
+                    decs[i] = np.vstack([decs[i], next_decs])
+                    objs[i] = np.vstack([objs[i], next_objs])
 
-                        nfes_per_task[i] += next_decs.shape[0]
-                        pbar.update(next_decs.shape[0])
+                    nfes_per_task[i] += next_decs.shape[0]
+                    pbar.update(next_decs.shape[0])
+
+                # Population = RefSelect(Arc, Problem.N)
+                pop_decs_list[i], pop_objs_list[i] = _ref_select(
+                    arc_decs[i], arc_objs[i], n_per_task[i])
 
         pbar.close()
         runtime = time.time() - start_time
@@ -208,6 +214,73 @@ class CSEA:
                                      save_data=self.save_data)
 
         return results
+
+
+# =============================================================================
+# PlatEMO OperatorGA (local copy)
+# =============================================================================
+
+def _operator_ga(parent, pro_c=1.0, dis_c=15.0, pro_m=1.0, dis_m=5.0):
+    """
+    Exact port of PlatEMO ``OperatorGA`` for real variables on [0, 1].
+
+    The shared ``ga_generation`` helper shuffles the parent matrix before pairing
+    and emits one extra child for odd population sizes. CSEA relies on the
+    deterministic PlatEMO pairing (first half x second half, i.e. promising
+    solutions crossed with the reference solutions), so a local copy is used.
+
+    Parameters
+    ----------
+    parent : np.ndarray
+        Parent decision variables, shape (N, D)
+    pro_c, dis_c : float
+        Crossover probability and SBX distribution index
+    pro_m, dis_m : float
+        Expected number of mutated variables and PM distribution index
+
+    Returns
+    -------
+    offspring : np.ndarray
+        Offspring decision variables, shape (2*floor(N/2), D)
+    """
+    parent = np.asarray(parent, dtype=float)
+    half = parent.shape[0] // 2
+    if half == 0:
+        return np.zeros((0, parent.shape[1]))
+
+    p1 = parent[:half]
+    p2 = parent[half:2 * half]
+    N, D = p1.shape
+
+    # Simulated binary crossover
+    mu = np.random.rand(N, D)
+    beta = np.zeros((N, D))
+    low = mu <= 0.5
+    beta[low] = (2 * mu[low]) ** (1.0 / (dis_c + 1))
+    beta[~low] = (2 - 2 * mu[~low]) ** (-1.0 / (dis_c + 1))
+    beta = beta * (-1.0) ** np.random.randint(0, 2, size=(N, D))
+    beta[np.random.rand(N, D) < 0.5] = 1
+    beta[np.repeat(np.random.rand(N, 1) > pro_c, D, axis=1)] = 1
+    offspring = np.vstack([(p1 + p2) / 2 + beta * (p1 - p2) / 2,
+                           (p1 + p2) / 2 - beta * (p1 - p2) / 2])
+
+    # Polynomial mutation with lower = 0, upper = 1 (clip before mutating)
+    n2 = offspring.shape[0]
+    site = np.random.rand(n2, D) < pro_m / D
+    mu = np.random.rand(n2, D)
+    offspring = np.clip(offspring, 0.0, 1.0)
+
+    temp = site & (mu <= 0.5)
+    offspring[temp] = offspring[temp] + (
+            (2 * mu[temp] + (1 - 2 * mu[temp]) * (1 - offspring[temp]) ** (dis_m + 1))
+            ** (1.0 / (dis_m + 1)) - 1)
+
+    temp = site & (mu > 0.5)
+    offspring[temp] = offspring[temp] + (
+            1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) * offspring[temp] ** (dis_m + 1))
+            ** (1.0 / (dis_m + 1)))
+
+    return offspring
 
 
 # =============================================================================
@@ -256,7 +329,6 @@ def _train_network(net, train_X, train_Y, epochs=100, batch_size=32):
     """
     device = torch.device('cpu')
     net = net.to(device)
-    net.train()
 
     # Z-score normalization (matching MATLAB featureInputLayer 'zscore')
     mean = train_X.mean(axis=0)
@@ -268,11 +340,20 @@ def _train_network(net, train_X, train_Y, epochs=100, batch_size=32):
     net._input_mean = mean
     net._input_std = std
 
+    # BatchNorm needs at least two samples per batch
+    if train_X.shape[0] < 2:
+        return
+
+    net.train()
+
     X_tensor = torch.tensor(train_X_norm, dtype=torch.float32, device=device)
     Y_tensor = torch.tensor(train_Y, dtype=torch.float32, device=device).unsqueeze(1)
 
     dataset = TensorDataset(X_tensor, Y_tensor)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=False)
+    # BatchNorm1d cannot process a singleton batch; drop it when the tail would be 1
+    n_train = X_tensor.shape[0]
+    drop_last = n_train > batch_size and n_train % batch_size == 1
+    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True, drop_last=drop_last)
 
     optimizer = torch.optim.Adam(net.parameters())
     criterion = nn.MSELoss()
@@ -523,9 +604,9 @@ def _radar_grid(pop_obj, div):
     gloc = np.floor(nrloc * div).astype(int)
     gloc = np.clip(gloc, 0, div - 1)
 
-    # Map grid locations to unique site indices
+    # Map grid locations to unique site indices (sortrows(unique(GLoc,'rows')) in MATLAB)
     unique_gloc, inverse = np.unique(gloc, axis=0, return_inverse=True)
-    site = inverse
+    site = np.asarray(inverse).ravel()
 
     return site, rloc
 
@@ -640,9 +721,9 @@ def _surrogate_assisted_selection(net, p0, p1, ref_decs, pop_decs, gmax, tr):
     a = tr
     b = 1 - tr
 
-    # Generate initial candidates via GA operators
+    # Generate initial candidates via GA operators (OperatorGA with {1,15,1,5})
     combined = np.vstack([pop_decs, ref_decs])
-    next_decs = ga_generation(combined, muc=15, mum=5)
+    next_decs = _operator_ga(combined, pro_c=1.0, dis_c=15.0, pro_m=1.0, dis_m=5.0)
     label = _predict(net, next_decs)
 
     i = 0
@@ -654,11 +735,14 @@ def _surrogate_assisted_selection(net, p0, p1, ref_decs, pop_decs, gmax, tr):
             sorted_idx = np.argsort(label)[::-1]  # descending
             input_decs = next_decs[sorted_idx[:n_ref]]
             combined = np.vstack([input_decs, ref_decs])
-            next_decs = ga_generation(combined, muc=15, mum=5)
+            next_decs = _operator_ga(combined, pro_c=1.0, dis_c=15.0, pro_m=1.0, dis_m=5.0)
             label = _predict(net, next_decs)
             i += next_decs.shape[0]
         # Select solutions predicted as good
-        next_decs = next_decs[label > 0.9]
+        selected = next_decs[label > 0.9]
+        # PlatEMO can return an empty batch here, which stalls the outer loop;
+        # fall back to the single most promising candidate
+        next_decs = selected if selected.shape[0] > 0 else next_decs[[np.argmax(label)]]
 
     elif p0 > b and p1 < a:
         # Strategy 2: Classifier unreliable, random selection
@@ -671,11 +755,12 @@ def _surrogate_assisted_selection(net, p0, p1, ref_decs, pop_decs, gmax, tr):
             sorted_idx = np.argsort(label)  # ascending
             input_decs = next_decs[sorted_idx[:n_ref]]
             combined = np.vstack([input_decs, ref_decs])
-            next_decs = ga_generation(combined, muc=15, mum=5)
+            next_decs = _operator_ga(combined, pro_c=1.0, dis_c=15.0, pro_m=1.0, dis_m=5.0)
             label = _predict(net, next_decs)
             i += next_decs.shape[0]
         # Select solutions predicted as bad (but likely good due to reversed classifier)
-        next_decs = next_decs[label < 0.1]
+        selected = next_decs[label < 0.1]
+        next_decs = selected if selected.shape[0] > 0 else next_decs[[np.argmin(label)]]
 
     else:
         # Fallback: random selection

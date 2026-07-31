@@ -20,6 +20,7 @@ from tqdm import tqdm
 import time
 import numpy as np
 from scipy.stats import norm
+from scipy.stats import qmc
 from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Methods.Algo_Methods.bo_utils import gp_build, gp_predict
@@ -120,6 +121,14 @@ class MultiObjectiveEGO:
         objs, _ = evaluation(problem, decs)
         nfes_per_task = n_initial_per_task.copy()
 
+        # Step 2: generate the reference direction set (once, as in MATLAB)
+        R_per_task, N_R_per_task = [], []
+        for i in range(nt):
+            R_i, N_R_i = uniform_point(self.H, n_objs[i])
+            R_i = R_i / np.sqrt(np.sum(R_i ** 2, axis=1, keepdims=True))
+            R_per_task.append(R_i)
+            N_R_per_task.append(N_R_i)
+
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
@@ -129,12 +138,8 @@ class MultiObjectiveEGO:
                 break
 
             for i in active_tasks:
-                M = n_objs[i]
                 D = dims[i]
-
-                # Generate normalized reference directions
-                R, N_R = uniform_point(self.H, M)
-                R = R / np.sqrt(np.sum(R ** 2, axis=1, keepdims=True))
+                R, N_R = R_per_task[i], N_R_per_task[i]
 
                 # Iterate over each reference direction
                 for r_idx in range(N_R):
@@ -156,8 +161,7 @@ class MultiObjectiveEGO:
                         dist_b = norm_p * np.sqrt(np.maximum(1 - cosine_p ** 2, 0))
 
                         sorted_idx = np.argsort(dist_b)
-                        N_sub = max(3, int(np.ceil(self.alpha * N_pop)))
-                        N_sub = min(N_sub, N_pop)
+                        N_sub = min(int(np.ceil(self.alpha * N_pop)), N_pop)
                         sub_idx = sorted_idx[:N_sub]
 
                         pop_dec = decs[i][sub_idx]
@@ -180,12 +184,16 @@ class MultiObjectiveEGO:
                         try:
                             kriging_model = gp_build(pop_dec, pop_smetric.reshape(-1, 1))
                         except Exception:
-                            continue
+                            # Guarantee progress: fall back to the space-filling
+                            # infill criterion used by MATLAB for degenerate cases
+                            kriging_model = None
 
-                        f_min = pop_smetric.min()
-
-                        # Maximize EI using GA
-                        best_x = _rga_ei(kriging_model, f_min, D)
+                        if kriging_model is None:
+                            best_x = _rga_max_distance(decs[i], D)
+                        else:
+                            f_min = pop_smetric.min()
+                            # Maximize EI using GA
+                            best_x = _rga_ei(kriging_model, f_min, D)
 
                         # If too close to existing points, maximize distance
                         if np.min(cdist(best_x.reshape(1, -1), decs[i])) < 1e-8:
@@ -215,6 +223,78 @@ class MultiObjectiveEGO:
 
 
 # =============================================================================
+# GA operators (local ports of PlatEMO's OperatorGA / UniformPoint 'Latin')
+# =============================================================================
+
+def _lhs(n, d):
+    """Latin hypercube sample in [0, 1]^d (UniformPoint(N,D,'Latin'))."""
+    return qmc.LatinHypercube(d=d).random(n=n)
+
+
+def _operator_ga(parent, proC=1.0, disC=20.0, proM=1.0, disM=20.0):
+    """PlatEMO ``OperatorGA``/``GAreal`` for real variables in [0, 1]^D.
+
+    A local port is used instead of the shared ``ga_generation`` helper because
+    ``rGA.m`` relies on the explicit parameter tuple ``{0.9,2,1/D,20}`` for the
+    second half of the offspring (per-variable mutation probability ``proM/D``)
+    and on the un-shuffled first-half/second-half pairing of the sorted parents.
+
+    Parameters
+    ----------
+    parent : np.ndarray
+        Parent population, shape (N, D)
+    proC : float, optional
+        Crossover probability (default: 1.0)
+    disC : float, optional
+        Distribution index of simulated binary crossover (default: 20.0)
+    proM : float, optional
+        Expected number of mutated variables; the per-variable mutation
+        probability is ``proM / D`` (default: 1.0)
+    disM : float, optional
+        Distribution index of polynomial mutation (default: 20.0)
+
+    Returns
+    -------
+    offspring : np.ndarray
+        Offspring population, shape (2*floor(N/2), D)
+    """
+    n_half = parent.shape[0] // 2
+    parent1 = parent[:n_half]
+    parent2 = parent[n_half:2 * n_half]
+    N, D = parent1.shape
+
+    # Simulated binary crossover
+    mu = np.random.rand(N, D)
+    beta = np.zeros((N, D))
+    lo = mu <= 0.5
+    beta[lo] = (2 * mu[lo]) ** (1 / (disC + 1))
+    beta[~lo] = (2 - 2 * mu[~lo]) ** (-1 / (disC + 1))
+    beta = beta * (-1.0) ** np.random.randint(0, 2, size=(N, D))
+    beta[np.random.rand(N, D) < 0.5] = 1
+    beta[np.tile(np.random.rand(N, 1) > proC, (1, D))] = 1
+    offspring = np.vstack([
+        (parent1 + parent2) / 2 + beta * (parent1 - parent2) / 2,
+        (parent1 + parent2) / 2 - beta * (parent1 - parent2) / 2
+    ])
+
+    # Polynomial mutation (bounds are [0, 1] in DDMTOLab's unified space)
+    site = np.random.rand(2 * N, D) < proM / D
+    mu = np.random.rand(2 * N, D)
+    offspring = np.clip(offspring, 0, 1)
+
+    temp = site & (mu <= 0.5)
+    offspring[temp] = offspring[temp] + (
+        (2 * mu[temp] + (1 - 2 * mu[temp]) * (1 - offspring[temp]) ** (disM + 1))
+        ** (1 / (disM + 1)) - 1)
+    temp = site & (mu > 0.5)
+    offspring[temp] = offspring[temp] + (
+        1 - (2 * (1 - mu[temp]) + 2 * (mu[temp] - 0.5) * offspring[temp] ** (disM + 1))
+        ** (1 / (disM + 1)))
+
+    return offspring
+
+
+# =============================================================================
 # GA-based Infill Optimization
 # =============================================================================
 
@@ -240,15 +320,13 @@ def _rga_ei(kriging_model, f_min, D, ga_pop_size=None, ga_generations=100):
         Best candidate decision vector
     """
     if ga_pop_size is None:
-        ga_pop_size = max(20, 10 * D)
+        ga_pop_size = 10 * D
 
     best = None
     obj_max = np.inf
 
-    # Initial population (LHS)
-    from scipy.stats import qmc
-    sampler = qmc.LatinHypercube(d=D)
-    offspring = sampler.random(n=ga_pop_size)
+    # The first GA generation, randomly generated (LHS)
+    offspring = _lhs(ga_pop_size, D)
 
     for gen in range(ga_generations):
         # Predict and compute EI
@@ -261,7 +339,7 @@ def _rga_ei(kriging_model, f_min, D, ga_pop_size=None, ga_generations=100):
         diff = f_min - pred
         z = diff / s
         ei = diff * norm.cdf(z) + s * norm.pdf(z)
-        neg_ei = -ei  # Minimize negative EI
+        neg_ei = -ei  # the genetic algorithm tries to minimize the objective
 
         # Track best
         sorted_idx = np.argsort(neg_ei)
@@ -270,19 +348,18 @@ def _rga_ei(kriging_model, f_min, D, ga_pop_size=None, ga_generations=100):
             obj_max = neg_ei[sorted_idx[0]]
 
         # Select top half as parents
-        half = max(2, int(np.ceil(ga_pop_size / 2)))
+        half = int(np.ceil(ga_pop_size / 2))
         parents = offspring[sorted_idx[:half]]
         parent_fitness = neg_ei[sorted_idx[:half]]
 
-        # First half: tournament selection + SBX(muc=20) + mutation(mum=20)
+        # OperatorGA(Problem, Parent(TournamentSelection(2,...),:)) -> {1,20,1,20}
         t_idx = _tournament_selection(parent_fitness, parents.shape[0])
-        offspring1 = ga_generation(parents[t_idx], muc=20, mum=20)
+        offspring1 = _operator_ga(parents[t_idx], 1.0, 20.0, 1.0, 20.0)
 
-        # Second half: SBX(muc=2) + mutation(mum=20, prob=1/D)
-        offspring2 = ga_generation(parents, muc=2, mum=20)
+        # OperatorGA(Problem, Parent, {0.9,2,1/D,20})
+        offspring2 = _operator_ga(parents, 0.9, 2.0, 1.0 / D, 20.0)
 
-        offspring = np.vstack([offspring1, offspring2])[:ga_pop_size]
-        offspring = np.clip(offspring, 0, 1)
+        offspring = np.vstack([offspring1, offspring2])
 
     return best
 
@@ -303,17 +380,15 @@ def _rga_max_distance(existing_decs, D, ga_pop_size=None, ga_generations=100):
         Candidate maximizing distance to existing points
     """
     if ga_pop_size is None:
-        ga_pop_size = max(20, 10 * D)
+        ga_pop_size = 10 * D
 
     best = None
     obj_max = np.inf
 
-    from scipy.stats import qmc
-    sampler = qmc.LatinHypercube(d=D)
-    offspring = sampler.random(n=ga_pop_size)
+    offspring = _lhs(ga_pop_size, D)
 
     for gen in range(ga_generations):
-        # Compute negative minimum distance (to minimize)
+        # Infill_Maximal_Distance: -min(pdist2(x, sample_x), [], 2)
         dists = cdist(offspring, existing_decs)
         neg_min_dist = -np.min(dists, axis=1)
 
@@ -322,16 +397,15 @@ def _rga_max_distance(existing_decs, D, ga_pop_size=None, ga_generations=100):
             best = offspring[sorted_idx[0]].copy()
             obj_max = neg_min_dist[sorted_idx[0]]
 
-        half = max(2, int(np.ceil(ga_pop_size / 2)))
+        half = int(np.ceil(ga_pop_size / 2))
         parents = offspring[sorted_idx[:half]]
         parent_fitness = neg_min_dist[sorted_idx[:half]]
 
         t_idx = _tournament_selection(parent_fitness, parents.shape[0])
-        offspring1 = ga_generation(parents[t_idx], muc=20, mum=20)
-        offspring2 = ga_generation(parents, muc=2, mum=20)
+        offspring1 = _operator_ga(parents[t_idx], 1.0, 20.0, 1.0, 20.0)
+        offspring2 = _operator_ga(parents, 0.9, 2.0, 1.0 / D, 20.0)
 
-        offspring = np.vstack([offspring1, offspring2])[:ga_pop_size]
-        offspring = np.clip(offspring, 0, 1)
+        offspring = np.vstack([offspring1, offspring2])
 
     return best
 

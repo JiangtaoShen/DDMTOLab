@@ -147,11 +147,21 @@ class PIEA:
                 break
 
             for i in active_tasks:
-                NI = n_per_task[i]
                 indicators = indicators_per_task[i]
+                n_arc_now = arc_decs[i].shape[0]
+                # PlatEMO's PIEA uses NI = Problem.N and generates exactly NI
+                # initial samples, so the mating-pool size, the DE donor sets and
+                # the random archive samples all share the same size.  `Arc` and
+                # the donor sets are drawn from the archive *without* replacement
+                # (randperm(end,NI)), so NI can never exceed the archive size.
+                # When the caller supplies n_initial < n the archive is smaller
+                # than n for the first iterations; deriving NI from the archive
+                # keeps every operand of the DE operator consistent and
+                # reproduces the reference exactly whenever n_initial >= n.
+                NI = min(n_per_task[i], n_arc_now)
 
-                # Estimate Pareto front shape
-                Lp = _shape_estimate(arc_objs[i], NI)
+                # Estimate Pareto front shape (Shape_Estimate(A,Problem.N))
+                Lp = _shape_estimate(arc_objs[i], n_per_task[i])
 
                 # Choose the working indicator based on adaptive probabilities
                 rand_val = np.random.rand()
@@ -177,8 +187,11 @@ class PIEA:
                 Arc = Dec[perm].copy()
 
                 for r in range(1, self.r_max + 1):
-                    # Tournament selection (higher fitness is better)
-                    mating_pool = tournament_selection(2, NI, fitness)
+                    # Tournament selection.  PlatEMO calls
+                    # TournamentSelection(2,N,-Fitness); the shared helper (like
+                    # PlatEMO) treats *smaller* values as better, so the fitness
+                    # must be negated because larger PIEA fitness is better.
+                    mating_pool = tournament_selection(2, NI, -fitness)
                     # DE generation: parents selected from Dec, mutants from Arc and Dec
                     offspring_dec = _de_operator(Dec[mating_pool], Arc, Dec[np.random.permutation(n_arc)[:NI]])
                     # Predict fitness with surrogate
@@ -543,7 +556,19 @@ def _train_svr(decs, fitness):
     """
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(decs)
-    model = SVR(kernel='rbf', gamma='auto')
+    # MATLAB's fitrsvm(...,'KernelFunction','rbf','KernelScale','auto',
+    # 'Standardize',true) scales the box constraint and the epsilon-insensitive
+    # band with the spread of the responses (BoxConstraint = iqr(Y)/1.349,
+    # Epsilon = iqr(Y)/13.49).  sklearn's fixed defaults (C=1, epsilon=0.1) are
+    # meaningless here because the three PIEA indicators live on very different
+    # scales (tanh in [-1,1], -distance, and an I_epsilon+ sum of order N).
+    q1, q3 = np.percentile(fitness, [25, 75])
+    iqr = q3 - q1
+    if not np.isfinite(iqr) or iqr <= 0:
+        iqr = np.std(fitness)
+    if not np.isfinite(iqr) or iqr <= 0:
+        iqr = 1.0
+    model = SVR(kernel='rbf', gamma='scale', C=iqr / 1.349, epsilon=iqr / 13.49)
     model.fit(X_scaled, fitness)
     return model, scaler
 
@@ -574,11 +599,16 @@ def _predict_svr(model, scaler, decs):
 # DE Operator (matching MATLAB OperatorDE)
 # =============================================================================
 
-def _de_operator(parents, donors1, donors2, CR=0.9, F=0.5):
+def _de_operator(parents, donors1, donors2, CR=1.0, F=0.5, pro_m=1.0, dis_m=20.0):
     """
-    Generate offspring using DE/current-to-rand/1 operator.
+    Generate offspring with PlatEMO's ``OperatorDE``.
 
-    Matches the behavior of MATLAB's OperatorDE(Problem, parents, donors1, donors2).
+    Exact port of ``OperatorDE(Problem,P1,P2,P3)`` with its default parameter
+    set ``{CR,F,proM,disM} = {1,0.5,1,20}``: a differential mutation
+    ``P1 + F*(P2-P3)`` applied on the sites selected with probability ``CR``,
+    followed by polynomial mutation (expected ``proM`` mutated variables,
+    distribution index ``disM``).  Decision variables live in the normalized
+    ``[0,1]`` box, so ``lower = 0`` and ``upper = 1``.
 
     Parameters
     ----------
@@ -589,9 +619,13 @@ def _de_operator(parents, donors1, donors2, CR=0.9, F=0.5):
     donors2 : np.ndarray
         Second donor population, shape (N, D)
     CR : float
-        Crossover rate
+        Crossover rate of differential evolution
     F : float
         Differential weight
+    pro_m : float
+        Expectation of the number of mutated variables
+    dis_m : float
+        Distribution index of the polynomial mutation
 
     Returns
     -------
@@ -600,20 +634,27 @@ def _de_operator(parents, donors1, donors2, CR=0.9, F=0.5):
     """
     N, D = parents.shape
 
-    # DE/rand/1 mutation
-    mutant = parents + F * (donors1 - donors2)
+    # --- Differential evolution ---
+    site = np.random.rand(N, D) < CR
+    offspring = parents.copy()
+    offspring[site] = offspring[site] + F * (donors1[site] - donors2[site])
 
-    # Binomial crossover
-    mask = np.random.rand(N, D) < CR
-    # Ensure at least one dimension is taken from mutant
-    j_rand = np.random.randint(0, D, size=N)
-    for idx in range(N):
-        mask[idx, j_rand[idx]] = True
-
-    offspring = np.where(mask, mutant, parents)
-
-    # Clip to [0, 1]
+    # --- Polynomial mutation (lower = 0, upper = 1) ---
+    site = np.random.rand(N, D) < pro_m / D
+    mu = np.random.rand(N, D)
     offspring = np.clip(offspring, 0.0, 1.0)
+
+    temp = site & (mu <= 0.5)
+    if np.any(temp):
+        x = offspring[temp]
+        m = mu[temp]
+        offspring[temp] = x + ((2 * m + (1 - 2 * m) * (1 - x) ** (dis_m + 1)) ** (1 / (dis_m + 1)) - 1)
+
+    temp = site & (mu > 0.5)
+    if np.any(temp):
+        x = offspring[temp]
+        m = mu[temp]
+        offspring[temp] = x + (1 - (2 * (1 - m) + 2 * (m - 0.5) * x ** (dis_m + 1)) ** (1 / (dis_m + 1)))
 
     return offspring
 

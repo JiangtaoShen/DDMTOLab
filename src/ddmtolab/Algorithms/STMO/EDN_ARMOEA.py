@@ -121,9 +121,10 @@ class EDN_ARMOEA:
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)
 
-        # Per-task state: nets and ratio_old
+        # Per-task state: nets, ratio_old and the size of the last infill batch
         nets = [None] * nt
         ratio_olds = [None] * nt
+        n_new_last = [0] * nt
 
         while sum(nfes_per_task) < sum(max_nfes_per_task):
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
@@ -138,10 +139,10 @@ class EDN_ARMOEA:
                 # Generate reference vectors
                 W, _ = uniform_point(popsize, M)
 
-                # Prepare training data: select from archive
-                if decs[i].shape[0] > 11 * D - 1:
+                # Prepare training data: SelectTrainData(A, 11*D-1, length(New))
+                if n_new_last[i] > 0:
                     tr_x, tr_y = _select_train_data(decs[i], objs[i], 11 * D - 1,
-                                                    min(self.ke, decs[i].shape[0]))
+                                                    n_new_last[i])
                 else:
                     tr_x, tr_y = decs[i].copy(), objs[i].copy()
 
@@ -149,11 +150,11 @@ class EDN_ARMOEA:
                 tr_xx, ps = _mapminmax(tr_x)
                 tr_yy, qs = _mapminmax(tr_y)
 
-                # Train or update the dropout neural network
+                # MATLAB trains the net once before the loop (80000 steps) and then
+                # calls updatemodel (8000 steps) at the top of every iteration
                 if nets[i] is None:
                     nets[i] = _train_model(tr_xx, tr_yy, D, M, n_iter=80000)
-                else:
-                    _update_model(nets[i], tr_xx, tr_yy, D, n_iter=8000)
+                _update_model(nets[i], tr_xx, tr_yy, D, n_iter=8000)
 
                 # Generate random population and estimate
                 pop_dec = np.random.rand(popsize, D)
@@ -189,8 +190,11 @@ class EDN_ARMOEA:
                 pop_new = _individual_select(pop_dec, pop_obj, pop_mse, self.ke, flag)
                 ratio_olds[i] = ratio
 
-                # Remove duplicates
-                pop_new = remove_duplicates(pop_new, decs[i])
+                # Drop points already evaluated; PlatEMO does not deduplicate, so keep
+                # the raw candidates when the filter would empty the batch
+                filtered = remove_duplicates(pop_new, decs[i])
+                if filtered.shape[0] > 0:
+                    pop_new = filtered
 
                 if pop_new.shape[0] > 0:
                     remaining = max_nfes_per_task[i] - nfes_per_task[i]
@@ -201,6 +205,7 @@ class EDN_ARMOEA:
                     decs[i] = np.vstack([decs[i], pop_new])
                     objs[i] = np.vstack([objs[i], new_objs])
                     nfes_per_task[i] += pop_new.shape[0]
+                    n_new_last[i] = pop_new.shape[0]
                     pbar.update(pop_new.shape[0])
 
         pbar.close()
@@ -418,13 +423,12 @@ def _update_ref_point(archive_obj, W, range_val):
     """Adaptive reference point management."""
     # Delete dominated solutions and duplicates
     if archive_obj.shape[0] > 0:
-        front_no, _ = nd_sort(archive_obj, archive_obj.shape[0])
+        front_no, _ = nd_sort(archive_obj, 1)
         nd_mask = front_no == 1
         archive_obj = archive_obj[nd_mask]
-        # Remove duplicate rows
+        # MATLAB unique(...,'rows') both deduplicates and sorts rows lexicographically
         if archive_obj.shape[0] > 1:
-            _, unique_idx = np.unique(archive_obj, axis=0, return_index=True)
-            archive_obj = archive_obj[np.sort(unique_idx)]
+            archive_obj = np.unique(archive_obj, axis=0)
 
     NA = archive_obj.shape[0]
     NW = W.shape[0]
@@ -523,6 +527,57 @@ def _environmental_selection(obj, ref_point, range_val, N):
     return indices, range_val
 
 
+def _igd_ns_fitness(rank, dis, convergence, noncontributing, N):
+    """
+    IGD-NS metric contribution of every solution (shared by mating/environmental
+    selection). Vectorized transcription of the per-solution MATLAB loop.
+
+    Parameters
+    ----------
+    rank : np.ndarray
+        Solution indices sorted per reference point, shape (n_rows, NR)
+    dis : np.ndarray
+        Corresponding sorted distances, shape (n_rows, NR)
+    convergence : np.ndarray
+        Minimum distance of each solution to any reference point, shape (N,)
+    noncontributing : np.ndarray
+        Boolean mask of solutions that are nearest to no reference point
+    N : int
+        Total number of solutions the indices refer to
+
+    Returns
+    -------
+    metric : np.ndarray
+        Metric value of each solution (inf for solutions that are not evaluated)
+    METRIC : float
+        Metric value of the whole set
+    """
+    METRIC = np.sum(dis[0, :]) + np.sum(convergence[noncontributing])
+    metric = np.full(N, np.inf)
+
+    # Noncontributing solutions
+    metric[noncontributing] = METRIC - convergence[noncontributing]
+
+    # Contributing solutions: aggregate the reference points each of them owns
+    owners = rank[0, :]
+    seconds = rank[1, :] if rank.shape[0] > 1 else rank[0, :]
+    s0 = np.bincount(owners, weights=dis[0, :], minlength=N)
+    s1 = np.bincount(owners, weights=dis[1, :] if dis.shape[0] > 1 else dis[0, :],
+                     minlength=N)
+
+    # Set (not multiset) of runners-up per owner, restricted to noncontributing
+    second_mat = np.zeros((N, N), dtype=bool)
+    second_mat[owners, seconds] = True
+    second_mat &= noncontributing[np.newaxis, :]
+    conv_sum = second_mat @ convergence
+
+    contributing = np.zeros(N, dtype=bool)
+    contributing[owners] = True
+    metric[contributing] = (METRIC - s0[contributing] + s1[contributing]
+                            - conv_sum[contributing])
+    return metric, METRIC
+
+
 def _last_selection(pop_obj, ref_point, range_val, K):
     """Select K solutions from the last front based on IGD-NS metric contribution."""
     N = pop_obj.shape[0]
@@ -540,48 +595,23 @@ def _last_selection(pop_obj, ref_point, range_val, K):
     remain = np.ones(N, dtype=bool)
 
     while np.sum(remain) > K:
-        remain_idx = np.where(remain)[0]
-        n_remain = len(remain_idx)
-
         # Identify noncontributing solutions
-        noncontributing = np.ones(N, dtype=bool)
+        noncontributing = remain.copy()
         noncontributing[rank[0, :]] = False
-        noncontributing &= remain
 
-        METRIC = np.sum(dis[0, :]) + np.sum(convergence[noncontributing])
-        metric = np.full(N, np.inf)
-
-        # Fitness of noncontributing
-        nc_idx = np.where(noncontributing & remain)[0]
-        for p in nc_idx:
-            metric[p] = METRIC - convergence[p]
-
-        # Fitness of contributing
-        contributing = remain & ~noncontributing
-        for p in np.where(contributing)[0]:
-            temp = rank[0, :] == p
-            nc_new = np.zeros(N, dtype=bool)
-            nc_new[rank[1, temp]] = True
-            nc_new &= noncontributing
-            metric[p] = METRIC - np.sum(dis[0, temp]) + np.sum(dis[1, temp]) - np.sum(
-                convergence[nc_new])
+        metric, _ = _igd_ns_fitness(rank, dis, convergence, noncontributing, N)
 
         # Delete worst
         metric[~remain] = np.inf
-        delete = np.argmin(metric)
+        delete = int(np.argmin(metric))
         remain[delete] = False
 
-        # Update dis and rank: remove deleted solution
-        keep_mask = rank != delete
-        n_now = np.sum(remain)
-        new_dis = np.zeros((n_now, NR))
-        new_rank = np.zeros((n_now, NR), dtype=int)
-        for j in range(NR):
-            col_keep = keep_mask[:, j]
-            new_dis[:, j] = dis[col_keep, j][:n_now]
-            new_rank[:, j] = rank[col_keep, j][:n_now]
-        dis = new_dis
-        rank = new_rank
+        # Update dis and rank: remove the deleted solution from every column
+        # (MATLAB reshapes in column-major order, hence the transposes)
+        n_now = int(np.sum(remain))
+        keep = (rank != delete).T
+        dis = dis.T[keep].reshape(NR, n_now).T
+        rank = rank.T[keep].reshape(NR, n_now).T
 
     return np.where(remain)[0]
 
@@ -589,7 +619,6 @@ def _last_selection(pop_obj, ref_point, range_val, K):
 def _mating_selection(obj, ref_point, range_val):
     """AR-MOEA mating selection based on IGD-NS fitness."""
     N = obj.shape[0]
-    NR = ref_point.shape[0]
 
     translated = obj - range_val[0]
     distance = _cal_distance(translated, ref_point)
@@ -601,23 +630,10 @@ def _mating_selection(obj, ref_point, range_val):
     noncontributing = np.ones(N, dtype=bool)
     noncontributing[rank[0, :]] = False
 
-    METRIC = np.sum(dis[0, :]) + np.sum(convergence[noncontributing])
+    fitness, _ = _igd_ns_fitness(rank, dis, convergence, noncontributing, N)
 
-    fitness = np.full(N, np.inf)
-    nc_idx = np.where(noncontributing)[0]
-    for p in nc_idx:
-        fitness[p] = METRIC - convergence[p]
-
-    for p in np.where(~noncontributing)[0]:
-        temp = rank[0, :] == p
-        nc_new = np.zeros(N, dtype=bool)
-        nc_new[rank[1, temp]] = True
-        nc_new &= noncontributing
-        fitness[p] = METRIC - np.sum(dis[0, temp]) + np.sum(dis[1, temp]) - np.sum(
-            convergence[nc_new])
-
-    # Binary tournament selection (higher fitness = worse, so select by -fitness)
-    n_select = (N // 2) * 2
+    # Binary tournament selection on -Fitness, i.e. keep the larger IGD-NS metric
+    n_select = int(np.ceil(N / 2)) * 2
     if n_select < 2:
         n_select = 2
     pool = np.zeros(n_select, dtype=int)

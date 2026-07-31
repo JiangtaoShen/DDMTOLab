@@ -146,6 +146,7 @@ class K_RVEA:
             active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
             if not active_tasks:
                 break
+            nfes_before_pass = sum(nfes_per_task)
 
             for i in active_tasks:
                 m = n_objs[i]
@@ -195,6 +196,11 @@ class K_RVEA:
                 # Remove duplicates against all previously evaluated solutions
                 new_decs = remove_duplicates(new_decs, decs[i])
 
+                # Never exceed the remaining budget of this task
+                remaining = max_nfes_per_task[i] - nfes_per_task[i]
+                if new_decs.shape[0] > remaining:
+                    new_decs = new_decs[:remaining]
+
                 if new_decs.shape[0] > 0:
                     # Evaluate new solutions with expensive objective function
                     new_objs, _ = evaluation_single(problem, new_decs, i)
@@ -211,6 +217,10 @@ class K_RVEA:
 
                     nfes_per_task[i] += new_decs.shape[0]
                     pbar.update(new_decs.shape[0])
+
+            if sum(nfes_per_task) == nfes_before_pass:
+                # No task could produce a new sample in a full pass; stop
+                break
 
         pbar.close()
         runtime = time.time() - start_time
@@ -331,14 +341,13 @@ def _kriging_select(pop_decs, pop_objs, pop_mse, V, V0, num_v1, delta, mu, theta
     # Translate objectives
     objs_translated = pop_objs - pop_objs.min(axis=0)
 
-    # Compute gamma: smallest angle between each active vector and others
-    if Va.shape[0] > 1:
-        cosine = 1 - cdist(Va, Va, metric='cosine')
-        np.fill_diagonal(cosine, 0)
-        gamma = np.min(np.arccos(np.clip(cosine, -1, 1)), axis=1)
-        gamma = np.maximum(gamma, 1e-6)
-    else:
-        gamma = np.array([1.0])
+    # Compute gamma: smallest angle between each active vector and others.
+    # MATLAB zeroes the diagonal of the cosine matrix before taking acos, so a
+    # single active vector yields gamma = acos(0) = pi/2.
+    cosine = 1 - cdist(Va, Va, metric='cosine')
+    np.fill_diagonal(cosine, 0)
+    gamma = np.min(np.arccos(np.clip(cosine, -1, 1)), axis=1)
+    gamma = np.maximum(gamma, 1e-6)
 
     # Associate each solution to its nearest active reference vector
     angle = np.arccos(np.clip(1 - cdist(objs_translated, Va, metric='cosine'), -1, 1))
@@ -419,43 +428,75 @@ def _update_archive(arc_decs, arc_objs, new_decs, new_objs, V, mu, NI):
         Updated archive decision variables
     updated_objs : np.ndarray
         Updated archive objective values
+
+    Notes
+    -----
+    Faithful port of PlatEMO's ``UpdataArchive.m``. In the first branch PlatEMO
+    clusters the *inactive reference vectors* ``Via`` but then uses the
+    within-cluster member positions as indices into ``Total`` (the solutions).
+    That index mixing is reproduced here so the archive contents match the
+    reference implementation.
     """
-    # Merge and deduplicate
-    merged_decs = np.vstack([arc_decs, new_decs])
-    merged_objs = np.vstack([arc_objs, new_objs])
-    _, unique_idx = np.unique(merged_decs, axis=0, return_index=True)
-    unique_idx = np.sort(unique_idx)
-    merged_decs = merged_decs[unique_idx]
-    merged_objs = merged_objs[unique_idx]
+    # MATLAB: All = [A1.decs;New.decs]; [~,index] = unique(All,'rows');
+    # numpy's unique(axis=0) also returns lexicographically sorted rows with the
+    # index of the first occurrence, matching MATLAB's default behaviour.
+    all_decs = np.vstack([arc_decs, new_decs])
+    all_objs = np.vstack([arc_objs, new_objs])
+    _, unique_idx = np.unique(all_decs, axis=0, return_index=True)
+    total_decs = all_decs[unique_idx]
+    total_objs = all_objs[unique_idx]
 
-    if len(merged_decs) <= NI:
-        return merged_decs, merged_objs
+    if total_decs.shape[0] <= NI:
+        return total_decs, total_objs
 
-    # Separate new solutions from old in the merged (deduplicated) set
-    n_old_original = len(arc_decs)
-    new_mask = unique_idx >= n_old_original
-    old_mask = ~new_mask
+    # Reference vectors that are NOT associated with any newly evaluated solution
+    _, active = _get_active_info(new_objs, V)
+    inactive = np.setdiff1d(np.arange(V.shape[0]), active)
+    Vi = V[inactive]
 
-    old_decs = merged_decs[old_mask]
-    old_objs = merged_objs[old_mask]
-    kept_new_decs = merged_decs[new_mask]
-    kept_new_objs = merged_objs[new_mask]
+    # Remove the newly evaluated solutions from Total (they are appended later)
+    keep = ~_rows_in(total_decs, new_decs)
+    total_decs = total_decs[keep]
+    total_objs = total_objs[keep]
 
-    n_select = NI - len(kept_new_decs)
+    K = NI - mu
+    if total_decs.shape[0] <= K:
+        return np.vstack([total_decs, new_decs]), np.vstack([total_objs, new_objs])
 
-    if n_select <= 0:
-        return kept_new_decs[:NI], kept_new_objs[:NI]
+    n_via = 0
+    if Vi.shape[0] > 0:
+        objs_translated = total_objs - total_objs.min(axis=0)
+        angle = np.arccos(np.clip(1 - cdist(objs_translated, Vi, metric='cosine'), -1, 1))
+        associate = np.argmin(angle, axis=1)
+        Via = Vi[np.unique(associate)]
+        n_via = Via.shape[0]
 
-    if len(old_decs) <= n_select:
-        return np.vstack([old_decs, kept_new_decs]), np.vstack([old_objs, kept_new_objs])
+    if n_via > K:
+        # Cluster the inactive reference vectors
+        labels = kmeans_clustering(Via, K)
+    else:
+        # Cluster the solutions when too few active reference vectors remain
+        labels = kmeans_clustering(total_objs, K)
 
-    # Select n_select diverse solutions from old using clustering
-    n_clusters = min(n_select, len(old_decs))
-    labels = kmeans_clustering(old_objs, n_clusters)
     selected = []
     for c in np.unique(labels):
-        cluster_idx = np.where(labels == c)[0]
-        selected.append(cluster_idx[np.random.randint(len(cluster_idx))])
-    selected = np.array(selected)
+        current = np.where(labels == c)[0]
+        best = np.random.randint(len(current)) if len(current) > 1 else 0
+        selected.append(current[best])
+    selected = np.array(selected, dtype=int)
+    selected = selected[selected < total_decs.shape[0]]
 
-    return np.vstack([old_decs[selected], kept_new_decs]), np.vstack([old_objs[selected], kept_new_objs])
+    return (np.vstack([total_decs[selected], new_decs]),
+            np.vstack([total_objs[selected], new_objs]))
+
+
+def _rows_in(decs, ref_decs):
+    """
+    Boolean mask of rows of ``decs`` that occur exactly in ``ref_decs``.
+
+    Equivalent to MATLAB's ``ismember(decs, ref_decs, 'rows')``.
+    """
+    if decs.shape[0] == 0 or ref_decs.shape[0] == 0:
+        return np.zeros(decs.shape[0], dtype=bool)
+    ref = {row.tobytes() for row in np.ascontiguousarray(ref_decs)}
+    return np.array([row.tobytes() in ref for row in np.ascontiguousarray(decs)], dtype=bool)

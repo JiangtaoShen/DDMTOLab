@@ -123,10 +123,6 @@ class EM_SAEA:
         n_objs = problem.n_objs
         n_cons = problem.n_cons
 
-        if self.n_initial is None:
-            n_initial_per_task = [11 * dims[i] - 1 for i in range(nt)]
-        else:
-            n_initial_per_task = par_list(self.n_initial, nt)
         max_nfes_per_task = par_list(self.max_nfes, nt)
         n_per_task = par_list(self.n, nt)
 
@@ -137,6 +133,15 @@ class EM_SAEA:
             W_list.append(w_i)
             V0_list.append(w_i.copy())
             n_per_task[i] = actual_n
+
+        # [V0,NI] = UniformPoint(Problem.N,Problem.M): the size of the initial
+        # Latin hypercube design equals the (adjusted) number of reference
+        # vectors, so the very first CDP environmental selection receives
+        # exactly Problem.N solutions.
+        if self.n_initial is None:
+            n_initial_per_task = n_per_task.copy()
+        else:
+            n_initial_per_task = par_list(self.n_initial, nt)
 
         # Cluster weight vectors for local constraint models
         ClW_list, lc_num_list = [], []
@@ -195,6 +200,8 @@ class EM_SAEA:
 
                 if new_decs is not None and len(new_decs) > 0:
                     new_decs = remove_duplicates(new_decs, decs[i])
+                    # Respect the remaining budget
+                    new_decs = new_decs[:max_nfes_per_task[i] - nfes_per_task[i]]
 
                 if new_decs is not None and len(new_decs) > 0:
                     new_objs, new_cons = evaluation_single(problem, new_decs, i)
@@ -213,10 +220,13 @@ class EM_SAEA:
         pbar.close()
         runtime = time.time() - start_time
 
+        # Stage 1 infills a single solution (mu1 = 1) while stage 2 infills up to
+        # mu, so the number of new evaluations per iteration is not constant and
+        # the history must be built with a unit step.
         if has_cons:
-            all_decs, all_objs, all_cons = build_staircase_history(decs, objs, k=self.mu, db_cons=cons)
+            all_decs, all_objs, all_cons = build_staircase_history(decs, objs, k=1, db_cons=cons)
         else:
-            all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu)
+            all_decs, all_objs = build_staircase_history(decs, objs, k=1)
             all_cons = None
         kwargs = {}
         if has_cons:
@@ -295,10 +305,10 @@ def _stage1_objective(train_decs, train_objs, obj_models, V0, N, M, wmax, alpha,
             add_idx = not_selected[np.random.permutation(len(not_selected))[:n_add]]
             V1 = np.vstack([V1, V_1[add_idx]])
 
-    # Evolve sub-population 1 with V1
+    # Evolve sub-population 1 with V1 (mating pool always resampled)
     pop1_decs, pop1_objs, pop1_mse = _surrogate_evolve(
         train_decs, obj_models, V1, N, M, wmax, alpha, kk, data_type,
-        scale.copy(), train_decs, accumulate=False
+        scale.copy(), train_decs, accumulate=False, always_resample=True
     )
 
     # --- Sub-population 2: V (full reference vectors) ---
@@ -313,7 +323,8 @@ def _stage1_objective(train_decs, train_objs, obj_models, V0, N, M, wmax, alpha,
 
 
 def _surrogate_evolve(init_decs, obj_models, V, N, M, wmax, alpha, kk, data_type,
-                       scale, archive_decs, accumulate=False, V0=None):
+                       scale, archive_decs, accumulate=False, V0=None,
+                       always_resample=False):
     """
     Run GA evolution on surrogate models with K-RVEA environmental selection.
 
@@ -345,6 +356,11 @@ def _surrogate_evolve(init_decs, obj_models, V, N, M, wmax, alpha, kk, data_type
         If True, accumulate solutions from all generations
     V0 : np.ndarray or None
         Original reference vectors (needed if accumulate=True for V init)
+    always_resample : bool
+        If True the mating pool is always drawn with replacement
+        (``randi(size(PopDec,1),1,Problem.N)``), as done for the first
+        sub-population; otherwise the population itself is mated whenever it
+        already holds at least N solutions.
 
     Returns
     -------
@@ -352,11 +368,13 @@ def _surrogate_evolve(init_decs, obj_models, V, N, M, wmax, alpha, kk, data_type
         Evolved population (filtered: unique, not in archive)
     """
     pop_decs = init_decs.copy()
+    if V0 is not None:
+        V0 = V0.copy()
     all_gen_decs, all_gen_objs, all_gen_mse = [], [], []
 
     for w in range(1, wmax + 1):
         # Generate offspring
-        if pop_decs.shape[0] < N:
+        if always_resample or pop_decs.shape[0] < N:
             pool = np.random.randint(0, pop_decs.shape[0], N)
             off_decs = ga_generation(pop_decs[pool], muc=20, mum=20)
         else:
@@ -389,9 +407,21 @@ def _surrogate_evolve(init_decs, obj_models, V, N, M, wmax, alpha, kk, data_type
             fno, _ = nd_sort(pop_objs_aug, pop_objs_aug.shape[0])
             nd_objs = pop_objs_aug[fno == 1]
             if nd_objs.shape[0] > 0:
-                w_scale = np.maximum(nd_objs.max(axis=0) - nd_objs.min(axis=0), 1e-6)
+                w_scale = nd_objs.max(axis=0) - nd_objs.min(axis=0)
+                w_scale[w_scale == 0] = 1e-6
                 V = V0 * w_scale
                 scale = w_scale
+
+                # Augment V0 with normalized non-dominated directions whenever
+                # fewer than N reference vectors are active.
+                ang = np.arccos(np.clip(1 - cdist(nd_objs, V, 'cosine'), -1, 1))
+                active = np.unique(np.argmin(ang, axis=1))
+                if active.shape[0] < N:
+                    nd_norm = (nd_objs - nd_objs.min(axis=0)) / w_scale
+                    n_add = min(N - active.shape[0], nd_norm.shape[0])
+                    add_idx = np.random.permutation(nd_norm.shape[0])[:n_add]
+                    V0 = np.vstack([V0, nd_norm[add_idx]])
+                    V = V0 * w_scale
 
         # K-RVEA environmental selection
         cons_zero = np.zeros((pop_decs.shape[0], 1))
@@ -487,23 +517,17 @@ def _stage2_constraint(train_decs, train_objs, train_cons, obj_models,
     n_train = train_decs.shape[0]
 
     # --- CDP environmental selection to get initial population ---
+    # Zmin = min objs of the feasible part of the archive (ArcFZ)
+    if train_cons is not None and train_cons.shape[1] > 0:
+        feasible_arc = np.all(train_cons <= 0, axis=1)
+    else:
+        feasible_arc = np.ones(n_train, dtype=bool)
+    arc_fz = train_objs[feasible_arc].min(axis=0) if np.any(feasible_arc) else None
+
     if n_train <= N:
         pop_decs = train_decs.copy()
-        pop_idx = np.arange(n_train)
     else:
-        if train_cons is not None:
-            front_no, max_fno = nd_sort(train_objs, train_cons, N)
-        else:
-            front_no, max_fno = nd_sort(train_objs, N)
-        mask = front_no < max_fno
-        last_front = np.where(front_no == max_fno)[0]
-        n_needed = N - np.sum(mask)
-        if n_needed > 0 and len(last_front) > 0:
-            cd = crowding_distance(train_objs[last_front])
-            sorted_idx = np.argsort(-cd)
-            selected_last = last_front[sorted_idx[:n_needed]]
-            mask[selected_last] = True
-        pop_idx = np.where(mask)[0][:N]
+        pop_idx = _cdp_environmental_selection(train_objs, train_cons, N, W, arc_fz)
         pop_decs = train_decs[pop_idx]
 
     # --- Build constraint models ---
@@ -698,6 +722,129 @@ def _stage2_constraint(train_decs, train_objs, train_cons, obj_models,
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+def _cdp_environmental_selection(pop_obj, pop_con, N, Z, Zmin):
+    """
+    NSGA-III environmental selection with the constrained-dominance principle.
+
+    Port of ``CDPEnvironmentalSelection``: constrained non-dominated sorting
+    followed by the NSGA-III reference-point niching on the last front.
+
+    Parameters
+    ----------
+    pop_obj : np.ndarray
+        Objective values, shape (n, M)
+    pop_con : np.ndarray or None
+        Constraint values, shape (n, C)
+    N : int
+        Number of solutions to keep
+    Z : np.ndarray
+        Reference points, shape (NZ, M)
+    Zmin : np.ndarray or None
+        Ideal point of the feasible archive; ``ones(1,M)`` when empty
+
+    Returns
+    -------
+    index : np.ndarray
+        Ascending indices of the selected solutions
+    """
+    n = pop_obj.shape[0]
+    if Zmin is None:
+        Zmin = np.ones(Z.shape[1])
+
+    if pop_con is not None and pop_con.shape[1] > 0:
+        front_no, max_fno = nd_sort(pop_obj, pop_con, N)
+    else:
+        front_no, max_fno = nd_sort(pop_obj, N)
+
+    next_mask = front_no < max_fno
+    last = np.where(front_no == max_fno)[0]
+    K = N - int(np.sum(next_mask))
+    if K > 0 and len(last) > 0:
+        choose = _nsga3_last_selection(pop_obj[next_mask], pop_obj[last], K, Z, Zmin)
+        next_mask[last[choose]] = True
+
+    index = np.where(next_mask)[0]
+    if index.shape[0] > N:
+        index = index[:N]
+    elif index.shape[0] < N:
+        # Numerical fallback (never triggered by the reference, which always
+        # has enough solutions in the last front)
+        rest = np.setdiff1d(np.arange(n), index)
+        index = np.sort(np.concatenate([index, rest[:N - index.shape[0]]]))
+    return index
+
+
+def _nsga3_last_selection(objs_before, objs_last, K, Z, Zmin):
+    """
+    NSGA-III niching on the last front (``LastSelection``).
+
+    Parameters
+    ----------
+    objs_before : np.ndarray
+        Objectives already selected, shape (N1, M)
+    objs_last : np.ndarray
+        Objectives of the last front, shape (N2, M)
+    K : int
+        Number of solutions to pick from the last front
+    Z : np.ndarray
+        Reference points, shape (NZ, M)
+    Zmin : np.ndarray
+        Ideal point, shape (M,)
+
+    Returns
+    -------
+    choose : np.ndarray
+        Boolean mask over the last front, shape (N2,)
+    """
+    pop_obj = np.vstack([objs_before, objs_last]) - Zmin
+    n, M = pop_obj.shape
+    N1 = objs_before.shape[0]
+    N2 = objs_last.shape[0]
+    NZ = Z.shape[0]
+
+    # --- Normalization ---
+    extreme = np.zeros(M, dtype=int)
+    w = np.eye(M) + 1e-6
+    for i in range(M):
+        extreme[i] = np.argmin(np.max(pop_obj / w[i], axis=1))
+    try:
+        hyperplane = np.linalg.solve(pop_obj[extreme, :], np.ones(M))
+        with np.errstate(divide='ignore'):
+            a = 1.0 / hyperplane
+        if np.any(~np.isfinite(a)):
+            a = np.max(pop_obj, axis=0)
+    except np.linalg.LinAlgError:
+        a = np.max(pop_obj, axis=0)
+    a = np.where(np.abs(a) < 1e-12, 1e-12, a)
+    pop_obj = pop_obj / a
+
+    # --- Association ---
+    cosine = 1 - cdist(pop_obj, Z, metric='cosine')
+    cosine = np.clip(np.nan_to_num(cosine), -1, 1)
+    distance = np.linalg.norm(pop_obj, axis=1, keepdims=True) * np.sqrt(np.maximum(1 - cosine ** 2, 0))
+    pi = np.argmin(distance, axis=1)
+    d = np.min(distance, axis=1)
+
+    rho = np.bincount(pi[:N1], minlength=NZ)
+
+    choose = np.zeros(N2, dtype=bool)
+    zchoose = np.ones(NZ, dtype=bool)
+    while np.sum(choose) < K:
+        temp = np.where(zchoose)[0]
+        if len(temp) == 0:
+            break
+        jmin = temp[rho[temp] == np.min(rho[temp])]
+        j = jmin[np.random.randint(len(jmin))]
+        I = np.where((~choose) & (pi[N1:] == j))[0]
+        if len(I) > 0:
+            s = int(np.argmin(d[N1 + I])) if rho[j] == 0 else np.random.randint(len(I))
+            choose[I[s]] = True
+            rho[j] += 1
+        else:
+            zchoose[j] = False
+    return choose
+
 
 def _k_env_selection(pop_obj, V, theta):
     """
@@ -968,10 +1115,13 @@ def _rvmm_select(pop2_dec, pop2_obj, pop1_dec, pop1_obj, A2Obj, scale, V0):
             dominates = np.any(sol < A2Obj[nearest_id]) and not np.any(sol > A2Obj[nearest_id])
             cd[idx] = dist_to_archive[nearest_id] if dominates else 0.0
 
-        if np.max(cd) > 0:
-            cbest = np.argmax(cd)
-            cbest_dec = pop1_dec[cbest:cbest + 1]
-            cbest_obj = pop1_obj[cbest]
+        # flagMu == 1: cbest = a uniformly random index among the maxima of cd
+        # (cid = find(cd == cd(cbest)); cbest = cid(randperm(end,1))).  The tie
+        # is resolved randomly even when every cd is zero.
+        ties = np.where(cd == np.max(cd))[0]
+        cbest = int(ties[np.random.randint(len(ties))])
+        cbest_dec = pop1_dec[cbest:cbest + 1]
+        cbest_obj = pop1_obj[cbest]
 
     # --- Diversity metric (dd) from sub-pop 2 ---
     dbest_dec = None

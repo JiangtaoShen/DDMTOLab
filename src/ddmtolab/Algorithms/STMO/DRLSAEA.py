@@ -124,34 +124,39 @@ class DDQN:
     def store(self, state, action, reward, next_state):
         self.memory.insert(state, action, reward, next_state)
 
-    def experience_replay(self, batch_size):
-        if self.memory.size < batch_size:
+    def experience_replay(self, batch_size, epochs=20):
+        # Experience_Replay.get_batch samples the stored transitions *with*
+        # replacement, so a replay is performed even before the buffer holds
+        # `batch_size` entries (the very first replay happens at step 8 with a
+        # batch of 16).
+        if self.memory.size == 0:
             return
         S, A, R, Sn = self.memory.get_batch(batch_size)
         S_t = torch.FloatTensor(S)
         Sn_t = torch.FloatTensor(Sn)
         R_t = torch.FloatTensor(R)
 
-        # Current Q values
-        q_current = self.agent(S_t)
-
         # DDQN: use agent to select best next action, target to evaluate it
         with torch.no_grad():
+            q_current = self.agent(S_t)
             q_next_agent = self.agent(Sn_t)
             q_next_target = self.target(Sn_t)
             next_best_actions = q_next_agent.argmax(dim=1)
-            q_next_vals = q_next_target[torch.arange(batch_size), next_best_actions]
+            q_next_vals = q_next_target[torch.arange(q_next_agent.shape[0]), next_best_actions]
 
-        # Build target Q values
-        q_target = q_current.clone().detach()
-        for i in range(batch_size):
-            q_target[i, A[i]] = R_t[i] + self.discount * q_next_vals[i]
+            # Build target Q values
+            q_target = q_current.clone()
+            for i in range(q_target.shape[0]):
+                q_target[i, A[i]] = R_t[i] + self.discount * q_next_vals[i]
 
-        # Train
-        self.optimizer.zero_grad()
-        loss = self.loss_fn(q_current, q_target)
-        loss.backward()
-        self.optimizer.step()
+        # Train.  MATLAB calls train(net,S',Q_target), i.e. a full supervised
+        # fit of the batch; a single gradient step is far too weak an analogue,
+        # so a short optimisation run is performed instead.
+        for _ in range(epochs):
+            self.optimizer.zero_grad()
+            loss = self.loss_fn(self.agent(S_t), q_target)
+            loss.backward()
+            self.optimizer.step()
 
 
 def _env_selection(pop_dec, pop_obj, NI, M, status):
@@ -216,32 +221,90 @@ def _env_selection(pop_dec, pop_obj, NI, M, status):
 # State and Reward Generation
 # ============================================================================
 
-def _compute_hv(objs, ref_point):
-    """Compute hypervolume for 2D objectives (fast exact computation)."""
-    if objs.shape[0] == 0:
-        return 0.0
-    # Filter dominated and above ref
-    valid = np.all(objs < ref_point, axis=1)
-    objs = objs[valid]
+def _compute_hv(objs, optimum):
+    """
+    Hypervolume of a solution set, following PlatEMO's ``HV`` metric.
+
+    ``HV.m`` normalizes the (feasible non-dominated) objectives with
+    ``fmin = min(min(PopObj,[],1),0)`` and ``fmax = max(optimum,[],1)``, divides
+    by ``(fmax-fmin)*1.1``, discards every point outside the unit box and
+    measures the volume dominating the reference point ``(1,...,1)``.  Note that
+    ``fmin`` is taken from the set being measured, so the two hypervolumes of
+    ``GenerateSample`` use slightly different normalizations - this is
+    reproduced verbatim.
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective values, shape (N, M)
+    optimum : np.ndarray
+        Upper reference (``max([Last.objs;Cur.objs])``), shape (M,)
+
+    Returns
+    -------
+    hv : float
+    """
     if objs.shape[0] == 0:
         return 0.0
 
-    M = objs.shape[1]
+    # Only the non-dominated subset contributes (Population.best)
+    front_no, _ = nd_sort(objs, objs.shape[0])
+    objs = objs[front_no == 1]
+    if objs.shape[0] == 0:
+        return 0.0
+
+    fmin = np.minimum(np.min(objs, axis=0), 0.0)
+    denom = (np.asarray(optimum, dtype=float) - fmin) * 1.1
+    denom[denom <= 0] = 1e-12
+    P = (objs - fmin) / denom
+    P = P[~np.any(P > 1, axis=1)]
+    if P.shape[0] == 0:
+        return 0.0
+
+    ref = np.ones(P.shape[1])
+    if P.shape[1] < 4:
+        return _exact_hv(P, ref)
+    # PlatEMO switches to Monte-Carlo sampling for M >= 4
+    n_samples = 100000
+    samples = np.random.uniform(0.0, 1.0, size=(n_samples, P.shape[1]))
+    dominated = np.zeros(n_samples, dtype=bool)
+    for i in range(P.shape[0]):
+        dominated |= np.all(samples >= P[i], axis=1)
+    return float(np.mean(dominated))
+
+
+def _exact_hv(objs, ref):
+    """
+    Exact hypervolume by recursive slicing (hypervolume-by-slicing-objectives).
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective values, shape (N, M), all dominating ``ref``
+    ref : np.ndarray
+        Reference point, shape (M,)
+
+    Returns
+    -------
+    hv : float
+    """
+    n, M = objs.shape
+    if n == 0:
+        return 0.0
+    if M == 1:
+        return float(max(ref[0] - np.min(objs[:, 0]), 0.0))
     if M == 2:
-        return _exact_hv_2d(objs, ref_point)
-    else:
-        # Monte Carlo approximation for M>=3
-        n_samples = 10000
-        samples = np.random.uniform(
-            np.min(objs, axis=0),
-            ref_point,
-            size=(n_samples, M)
-        )
-        dominated = np.zeros(n_samples, dtype=bool)
-        for i in range(objs.shape[0]):
-            dominated |= np.all(samples >= objs[i], axis=1)
-        vol = np.prod(ref_point - np.min(objs, axis=0))
-        return vol * np.mean(dominated)
+        return _exact_hv_2d(objs, ref)
+
+    order = np.argsort(objs[:, -1])
+    sorted_objs = objs[order]
+    hv = 0.0
+    for k in range(n):
+        z = sorted_objs[k, -1]
+        z_next = sorted_objs[k + 1, -1] if k + 1 < n else ref[-1]
+        if z_next > z:
+            hv += _exact_hv(sorted_objs[:k + 1, :-1], ref[:-1]) * (z_next - z)
+    return hv
 
 
 def _exact_hv_2d(objs, ref_point):
@@ -249,9 +312,9 @@ def _exact_hv_2d(objs, ref_point):
     N = objs.shape[0]
     if N == 0:
         return 0.0
-    # Non-dominated filter
-    sorted_idx = np.argsort(objs[:, 0])
-    sorted_objs = objs[sorted_idx]
+    # Keep the non-dominated staircase (ties on f1 resolved by the smaller f2)
+    order = np.lexsort((objs[:, 1], objs[:, 0]))
+    sorted_objs = objs[order]
     nd = [sorted_objs[0]]
     for i in range(1, N):
         if sorted_objs[i, 1] < nd[-1][1]:
@@ -262,14 +325,18 @@ def _exact_hv_2d(objs, ref_point):
     for i in range(len(nd)):
         x_width = (nd[i + 1, 0] if i + 1 < len(nd) else ref_point[0]) - nd[i, 0]
         y_height = ref_point[1] - nd[i, 1]
-        hv += x_width * y_height
+        hv += max(x_width, 0.0) * max(y_height, 0.0)
     return hv
 
 
-def _generate_sample(last_objs, last_cons, curr_objs, curr_cons,
-                      last_fe_ratio, curr_fe_ratio):
+def _generate_sample(last_objs, last_cons, curr_objs, curr_cons, fe_ratio):
     """
-    Generate state/reward for DDQN.
+    Generate the state/reward pair for the DDQN (``GenerateSample``).
+
+    Note that ``GenerateSample`` uses the *current* ``Problem.FE/Problem.maxFE``
+    for both the returned state and next state, and the returned ``state``
+    overwrites the state that was used to pick the action, so the stored
+    transition carries the up-to-date evaluation ratio in both entries.
 
     Parameters
     ----------
@@ -277,8 +344,7 @@ def _generate_sample(last_objs, last_cons, curr_objs, curr_cons,
     last_cons : np.ndarray, shape (N1, C), last archive constraints
     curr_objs : np.ndarray, shape (N2, M), current archive objectives
     curr_cons : np.ndarray, shape (N2, C), current archive constraints
-    last_fe_ratio : float, previous FE / maxFE
-    curr_fe_ratio : float, current FE / maxFE
+    fe_ratio : float, FE / maxFE at the time of the call
 
     Returns
     -------
@@ -286,20 +352,20 @@ def _generate_sample(last_objs, last_cons, curr_objs, curr_cons,
     curr_state : np.ndarray, shape (4,)
     reward : float
     """
-    M = last_objs.shape[1]
-
-    # Compute HV with shared reference point
+    # Compute HV with the shared upper reference
     all_objs = np.vstack([last_objs, curr_objs])
-    ref_point = np.max(all_objs, axis=0)
+    optimum = np.max(all_objs, axis=0)
 
-    last_hv = _compute_hv(last_objs, ref_point)
-    curr_hv = _compute_hv(curr_objs, ref_point)
+    last_hv = _compute_hv(last_objs, optimum)
+    curr_hv = _compute_hv(curr_objs, optimum)
 
     # Reward 1: HV improvement ratio
     if last_hv == 0 or np.isnan(last_hv):
+        # MATLAB only guards the 0/0 NaN case; the 0-denominator guard is kept
+        # here so that an all-zero initial HV cannot inject Inf into the net.
         reward1 = 0.0
     else:
-        reward1 = (curr_hv - last_hv) / abs(last_hv)
+        reward1 = (curr_hv - last_hv) / last_hv
     if np.isnan(reward1):
         reward1 = 0.0
 
@@ -315,18 +381,18 @@ def _generate_sample(last_objs, last_cons, curr_objs, curr_cons,
 
     reward = reward1 + reward2
 
-    # States
+    # States (MATLAB's var() is the unbiased sample variance)
     last_state = np.array([
-        np.sum(np.var(last_objs, axis=0)),
+        np.sum(np.var(last_objs, axis=0, ddof=1)) if last_objs.shape[0] > 1 else 0.0,
         np.sum(last_objs),
         last_cv_total,
-        last_fe_ratio
+        fe_ratio
     ])
     curr_state = np.array([
-        np.sum(np.var(curr_objs, axis=0)),
+        np.sum(np.var(curr_objs, axis=0, ddof=1)) if curr_objs.shape[0] > 1 else 0.0,
         np.sum(curr_objs),
         curr_cv_total,
-        curr_fe_ratio
+        fe_ratio
     ])
 
     return last_state, curr_state, reward
@@ -602,26 +668,15 @@ class DRLSAEA:
             pop_objs = objs[task_i].copy()
             pop_cons = cons[task_i].copy() if nc > 0 else np.zeros((NI, 0))
 
-            # Initialize archive
-            arc_decs = pop_decs.copy()
-            arc_objs = pop_objs.copy()
-            arc_cons = pop_cons.copy()
-            if nc > 0:
-                arc_decs, arc_objs, arc_cons = _update_archive(
-                    arc_decs, arc_objs, arc_cons, N_archive
-                )
-            else:
-                # For unconstrained: just keep non-dominated
-                front_no, _ = nd_sort(arc_objs, arc_objs.shape[0])
-                nd_mask = front_no == 1
-                if np.sum(nd_mask) > N_archive:
-                    fitness = spea2_fitness(arc_objs)
-                    rank = np.argsort(fitness)
-                    nd_mask = np.zeros(arc_decs.shape[0], dtype=bool)
-                    nd_mask[rank[:N_archive]] = True
-                arc_decs = arc_decs[nd_mask]
-                arc_objs = arc_objs[nd_mask]
-                arc_cons = arc_cons[nd_mask] if nc > 0 else np.zeros((np.sum(nd_mask), 0))
+            # Initialize archive: Archive = UpdateArchive(Population,Problem.N)
+            # is applied unconditionally, i.e. the archive is only trimmed when
+            # it exceeds N and dominated solutions are otherwise retained.
+            arc_decs, arc_objs, arc_cons_full = _update_archive(
+                pop_decs.copy(), pop_objs.copy(),
+                pop_cons.copy() if nc > 0 else np.zeros((NI, 1)),
+                N_archive
+            )
+            arc_cons = arc_cons_full if nc > 0 else np.zeros((arc_decs.shape[0], 0))
 
             last_arc_objs = arc_objs.copy()
             last_arc_cons = arc_cons.copy() if nc > 0 else np.zeros((arc_objs.shape[0], 1))
@@ -639,7 +694,7 @@ class DRLSAEA:
             fe_ratio = nfes_per_task[task_i] / max_nfes_per_task[task_i]
             cv_total = np.sum(np.maximum(0, last_arc_cons)) if nc > 0 else 0.0
             state = np.array([
-                np.sum(np.var(arc_objs, axis=0)),
+                np.sum(np.var(arc_objs, axis=0, ddof=1)) if arc_objs.shape[0] > 1 else 0.0,
                 np.sum(arc_objs),
                 cv_total,
                 fe_ratio
@@ -713,8 +768,11 @@ class DRLSAEA:
                 inner_fitness = fitness.copy()
 
                 for w in range(self.wmax):
-                    # Tournament selection and GA generation
-                    mating_pool = tournament_selection(2, NI, -inner_fitness)
+                    # Tournament selection and GA generation.  TournamentSelection
+                    # picks the *minimum* SPEA2 fitness, which is also the
+                    # convention of the shared helper, so the fitness is passed
+                    # unchanged.
+                    mating_pool = tournament_selection(2, NI, inner_fitness)
                     off_decs = ga_generation(inner_decs[mating_pool], muc=20.0, mum=20.0)
                     inner_decs = np.vstack([inner_decs, off_decs])
 
@@ -735,12 +793,14 @@ class DRLSAEA:
                 # Select mu best for expensive evaluation
                 sel_decs, _, _ = _env_selection(inner_decs, inner_objs, self.mu, m, status)
 
-                # Remove duplicates
+                # Remove duplicates and respect the remaining budget
                 sel_decs = remove_duplicates(sel_decs, decs[task_i])
+                sel_decs = sel_decs[:max_nfes_per_task[task_i] - nfes_per_task[task_i]]
                 if sel_decs.shape[0] == 0:
                     # If all duplicates, generate random solutions
                     sel_decs = np.random.rand(self.mu, dim)
                     sel_decs = remove_duplicates(sel_decs, decs[task_i])
+                    sel_decs = sel_decs[:max_nfes_per_task[task_i] - nfes_per_task[task_i]]
                     if sel_decs.shape[0] == 0:
                         continue
 
@@ -779,7 +839,6 @@ class DRLSAEA:
                 else:
                     arc_cons = arc_cons_full
 
-                prev_fe_ratio = nfes_per_task[task_i] / max_nfes_per_task[task_i]
                 nfes_per_task[task_i] += n_new
                 pbar.update(n_new)
 
@@ -791,10 +850,12 @@ class DRLSAEA:
                 last_state, curr_state, reward = _generate_sample(
                     last_arc_objs, last_cons_for_state,
                     arc_objs, curr_cons_for_state,
-                    prev_fe_ratio, fe_ratio
+                    fe_ratio
                 )
 
-                ddqn.store(state, action, reward, curr_state)
+                # GenerateSample also returns the state, which overwrites the
+                # state used for the action before it is stored.
+                ddqn.store(last_state, action, reward, curr_state)
                 state = curr_state
                 last_arc_objs = arc_objs.copy()
                 last_arc_cons = arc_cons.copy() if nc > 0 else np.zeros((arc_objs.shape[0], 1))
