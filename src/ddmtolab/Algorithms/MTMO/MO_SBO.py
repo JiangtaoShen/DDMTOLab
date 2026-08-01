@@ -23,50 +23,6 @@ import time
 import numpy as np
 from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Offspring are NOT clipped here: the MATLAB reference clips once at the end
-    of ``Generation``, after polynomial mutation.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
 def _ga_generation_matlab(parents, muc, mum):
     """
     Offspring generation matching MToP ``MO_SBO.Generation``.
@@ -101,9 +57,9 @@ def _ga_generation_matlab(parents, muc, mum):
     for i in range(n_pairs):
         p1 = parents[order[i], :]
         p2 = parents[order[i + half], :]
-        c1, c2 = _sbx_crossover_unclipped(p1, p2, muc)
-        c1 = _poly_mutation_unclipped(c1, mum)
-        c2 = _poly_mutation_unclipped(c2, mum)
+        c1, c2 = sbx_crossover_unclipped(p1, p2, muc)
+        c1 = poly_mutation_unclipped(c1, mum)
+        c2 = poly_mutation_unclipped(c2, mum)
         offdecs[count] = np.clip(c1, 0, 1)
         offdecs[count + 1] = np.clip(c2, 0, 1)
         count += 2

@@ -6,7 +6,10 @@
 # -- Path setup --------------------------------------------------------------
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../..'))
+
+# The package lives under src/, so point autodoc at the checkout rather than
+# relying on ddmtolab happening to be installed in the build environment.
+sys.path.insert(0, os.path.abspath('../../src'))
 
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
@@ -35,6 +38,11 @@ extensions = [
 
 templates_path = ['_templates']
 exclude_patterns = []
+
+# Render numpydoc "Attributes" sections as :ivar: fields. Without this, Napoleon
+# emits a second .. attribute:: entry for every field autodoc already documented,
+# which Sphinx reports as a duplicate object description.
+napoleon_use_ivar = True
 
 
 

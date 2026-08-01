@@ -29,66 +29,6 @@ def _lhsdesign(n, d):
         np.random.shuffle(samples)
         matrix[:, j] = samples
     return matrix
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Offspring are NOT clipped here: the MATLAB reference clips once at the end
-    of ``Generation``, after polynomial mutation.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
-def _platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO / MToP ``TournamentSelection``.
-
-    Draws from the global NumPy RNG (the shared ``tournament_selection`` helper
-    builds its own ``default_rng``, which ignores ``np.random.seed``) and gives
-    tied candidates the same rank.
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
 class MO_MTEA_PAE:
     """
     Multi-objective Multi-task Evolutionary Algorithm with Progressive Auto-Encoding.
@@ -467,7 +407,7 @@ class MO_MTEA_PAE:
 
         # Tournament order for the GA branch (fitness = positional rank 1..N)
         rank_vals = np.arange(1, N + 1)
-        ind_order = _platemo_tournament_selection(2, 2 * N, rank_vals)
+        ind_order = platemo_tournament_selection(2, 2 * N, rank_vals)
 
         denom = pG[0] + pG[1]
         p_de = pG[0] / denom if denom > 0 else 0.5
@@ -490,8 +430,8 @@ class MO_MTEA_PAE:
                 # GA: SBX crossover + polynomial mutation, single clip below
                 p1 = ind_order[i]
                 p2 = ind_order[i + N // 2]
-                child, _ = _sbx_crossover_unclipped(pop_decs[p1], pop_decs[p2], self.MuC)
-                off_decs[i] = _poly_mutation_unclipped(child, self.MuM)
+                child, _ = sbx_crossover_unclipped(pop_decs[p1], pop_decs[p2], self.MuC)
+                off_decs[i] = poly_mutation_unclipped(child, self.MuM)
                 op_flags[i] = 2
 
             off_decs[i] = np.clip(off_decs[i], 0, 1)

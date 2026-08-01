@@ -30,6 +30,15 @@ warnings.filterwarnings("ignore")
 
 
 class ParEGO_KT:
+    """
+    ParEGO with knowledge transfer for expensive multitask multiobjective optimization.
+
+    Attributes
+    ----------
+    algorithm_information : dict
+        Dictionary containing algorithm capabilities and requirements
+    """
+
     algorithm_information = {
         'n_tasks': '[2, K]',
         'dims': 'unequal',
@@ -40,7 +49,6 @@ class ParEGO_KT:
         'expensive': 'True',
         'knowledge_transfer': 'True',
         'n_initial': 'unequal',
-        'n_weights': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -68,9 +76,9 @@ class ParEGO_KT:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'ParEGO_KT_test')
+            Name for the experiment (default: 'ParEGO-KT')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -322,49 +330,3 @@ class ParEGO_KT:
         scalar_objs = max_term + aug_term
 
         return scalar_objs.reshape(-1, 1)
-
-def nsga2_sort(objs, cons=None):
-    """
-    Sort solutions based on NSGA-II criteria using non-dominated sorting and crowding distance.
-
-    Parameters
-    ----------
-    objs : np.ndarray
-        Objective value matrix of shape (pop_size, n_obj)
-    cons : np.ndarray, optional
-        Constraint matrix of shape (pop_size, n_con). If None, no constraints are considered (default: None)
-
-    Returns
-    -------
-    rank : np.ndarray
-        Ranking of each solution (0-based index after sorting) of shape (pop_size,).
-        rank[i] indicates the position of solution i in the sorted order
-    front_no : np.ndarray
-        Non-dominated front number of each solution of shape (pop_size,)
-    crowd_dis : np.ndarray
-        Crowding distance of each solution of shape (pop_size,)
-
-    Notes
-    -----
-    Solutions are sorted first by front number (ascending), then by crowding distance (descending).
-    Larger crowding distance values indicate better diversity preservation.
-    """
-    pop_size = objs.shape[0]
-
-    # Perform non-dominated sorting
-    if cons is not None:
-        front_no, _ = nd_sort(objs, cons, pop_size)
-    else:
-        front_no, _ = nd_sort(objs, pop_size)
-
-    # Calculate crowding distance for diversity preservation
-    crowd_dis = crowding_distance(objs, front_no)
-
-    # Sort by front number (ascending), then by crowding distance (descending)
-    sorted_indices = np.lexsort((-crowd_dis, front_no))
-
-    # Create rank array: rank[i] gives the sorted position of solution i
-    rank = np.empty(pop_size, dtype=int)
-    rank[sorted_indices] = np.arange(pop_size)
-
-    return rank, front_no, crowd_dis

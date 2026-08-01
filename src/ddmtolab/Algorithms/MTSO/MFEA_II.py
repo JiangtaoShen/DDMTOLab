@@ -20,51 +20,6 @@ from scipy.stats import norm
 from scipy.optimize import minimize_scalar
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Algorithms.MTSO.MFEA import mfea_selection
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper, the offspring are NOT clipped to
-    [0, 1] here: MFEA-II applies polynomial mutation and the variable swap on
-    the raw crossover output and clips only once, at the end of Generation.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
 class MFEA_II:
     """
     Multifactorial Evolutionary Algorithm With Online Transfer Parameter Estimation
@@ -115,9 +70,9 @@ class MFEA_II:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MFEA_test')
+            Name for the experiment (default: 'MFEA-II')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -200,9 +155,9 @@ class MFEA_II:
 
                 # Cross-task transfer: crossover if same task or the learned rmp fires
                 if sf1 == sf2 or np.random.rand() < rmp_value:
-                    off_dec1, off_dec2 = _sbx_crossover_unclipped(pop_decs[p1, :], pop_decs[p2, :], self.muc)
-                    off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
-                    off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                    off_dec1, off_dec2 = sbx_crossover_unclipped(pop_decs[p1, :], pop_decs[p2, :], self.muc)
+                    off_dec1 = poly_mutation_unclipped(off_dec1, self.mum)
+                    off_dec2 = poly_mutation_unclipped(off_dec2, self.mum)
                     # Variable swap (uniform crossover) between the two children
                     swap_mask = np.random.rand(d_max) >= self.swap
                     tmp = off_dec2[swap_mask].copy()
@@ -224,10 +179,10 @@ class MFEA_II:
                         same_sf_indices = same_sf_indices[same_sf_indices != p]
                         idx = np.random.choice(same_sf_indices) if same_sf_indices.size > 0 else p
 
-                        off_dec_curr, off_dec_temp = _sbx_crossover_unclipped(
+                        off_dec_curr, off_dec_temp = sbx_crossover_unclipped(
                             pop_decs[p, :], pop_decs[idx, :], self.muc)
-                        off_dec_curr = _poly_mutation_unclipped(off_dec_curr, self.mum)
-                        off_dec_temp = _poly_mutation_unclipped(off_dec_temp, self.mum)
+                        off_dec_curr = poly_mutation_unclipped(off_dec_curr, self.mum)
+                        off_dec_temp = poly_mutation_unclipped(off_dec_temp, self.mum)
                         # One-way variable swap: the discarded sibling donates its genes
                         swap_mask = np.random.rand(d_max) >= self.swap
                         off_dec_curr[swap_mask] = off_dec_temp[swap_mask]

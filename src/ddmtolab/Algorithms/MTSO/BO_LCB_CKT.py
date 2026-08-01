@@ -68,7 +68,7 @@ class BO_LCB_CKT:
     def __init__(self, problem, n_initial=None, max_nfes=None,
                  gen_gap=20, ada_flag=False,
                  save_data=True, save_path='./Data',
-                 name='BO-LCB-CKT', disable_tqdm=False):
+                 name='BO-LCB-CKT', disable_tqdm=True):
         """
         Initialize BO-LCB-CKT algorithm.
 
@@ -93,11 +93,11 @@ class BO_LCB_CKT:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'BO_LCB_CKT_test')
+            Name for the experiment (default: 'BO-LCB-CKT')
         disable_tqdm : bool, optional
-            Whether to disable progress bar (default: False)
+            Whether to disable progress bar (default: True)
         """
         self.problem = problem
         self.nt = problem.n_tasks

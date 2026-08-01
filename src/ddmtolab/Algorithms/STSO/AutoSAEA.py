@@ -74,6 +74,26 @@ class AutoSAEA:
 
     def __init__(self, problem, n_initial=None, max_nfes=None, save_data=True,
                  save_path='./Data', name='AutoSAEA', disable_tqdm=True):
+        """
+        Initialize AutoSAEA algorithm.
+
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n_initial : int or List[int], optional
+            Number of initial samples per task (default: 50)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 300)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'AutoSAEA')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
+        """
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
         self.max_nfes = max_nfes if max_nfes is not None else 300
@@ -83,6 +103,14 @@ class AutoSAEA:
         self.disable_tqdm = disable_tqdm
 
     def optimize(self):
+        """
+        Execute the AutoSAEA algorithm.
+
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         start_time = time.time()
         problem = self.problem
         nt = problem.n_tasks

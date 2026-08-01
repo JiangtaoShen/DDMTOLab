@@ -78,15 +78,15 @@ class SELF:
         'expensive': 'True',
         'knowledge_transfer': 'True',
         'n_initial': 'equal',
-        'max_nfes': 'unequal, controlled by SELF'
+        'max_nfes': 'equal'
     }
 
     @classmethod
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, max_nfes=None, np=None, F=0.6, CR=0.7, ng=50, nl=50, save_data=True, save_path='./Data',
-                 name='SELF', disable_tqdm=True):
+    def __init__(self, problem, n_initial=None, max_nfes=None, F=0.6, CR=0.7, ng=50, nl=50, save_data=True,
+                 save_path='./Data', name='SELF', disable_tqdm=True):
         """
         Initialize SELF algorithm.
 
@@ -94,11 +94,14 @@ class SELF:
         ----------
         problem : MTOP
             Multi-task optimization problem instance
-        max_nfes : int or List[int], optional
-            Maximum number of function evaluations per task (default: 200,
+        n_initial : int, optional
+            Number of initial LHS samples per task, which also fixes the
+            population size NP kept throughout the run (default: 10, paper
+            setting)
+        max_nfes : int, optional
+            Maximum number of function evaluations per task, shared as a single
+            budget of ``max_nfes * n_tasks`` across tasks (default: 200,
             the paper's setting of MaxFEs = 400 for two tasks)
-        np : int, optional
-            Population size NP per task (default: 10, paper setting)
         F : float, optional
             Mutation factor for DE (default: 0.6, paper setting)
         CR : float, optional
@@ -121,7 +124,7 @@ class SELF:
         """
         self.problem = problem
         self.max_nfes = max_nfes if max_nfes is not None else 200
-        self.np = np if np is not None else 10
+        self.n_initial = n_initial if n_initial is not None else 10
         self.F = F
         self.CR = CR
         self.ng = ng
@@ -149,11 +152,11 @@ class SELF:
         max_nfes = self.max_nfes * nt
 
         # Line 1-4: initialize populations by LHS, evaluate, fill databases
-        decs = initialization(problem, self.np, method='lhs')
+        decs = initialization(problem, self.n_initial, method='lhs')
         objs, _ = evaluation(problem, decs)
-        nfes = self.np * nt
+        nfes = self.n_initial * nt
         for i in range(nt):
-            nfes_per_task[i] += self.np
+            nfes_per_task[i] += self.n_initial
 
         # Working populations P_m (databases are decs/objs)
         pop_decs = copy.deepcopy(decs)
@@ -171,7 +174,7 @@ class SELF:
 
             # Lines 8-10: DE_MTGP per task (Algorithm 2)
             for i in range(nt):
-                for j in range(self.np):
+                for j in range(self.n_initial):
                     # DE/rand/1 + binomial crossover vs the current individual
                     # (Eqs. 19-20): lambda trial vectors
                     off_decs = de_rand_1_bin_trials(pop_decs[i], pop_decs[i][j],

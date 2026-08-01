@@ -33,14 +33,14 @@ Algorithms must be implemented as **classes** and include the following core com
 .. code-block:: python
 
     class AlgorithmName:
-        # Component 1: Algorithm metadata (required)
+        # Component 1: Algorithm metadata (required, exactly these ten keys in this order)
         algorithm_information = {
-            'n_tasks': '1-K',               # Supported task number types
+            'n_tasks': '[1, K]',            # Supported task number types
             'dims': 'unequal',              # Decision variable dimension constraint
-            'objs': 'unequal',              # Objective number constraint
-            'n_objs': '1-M',                # Objective quantity type
+            'objs': 'equal',                # Objective number constraint
+            'n_objs': '1',                  # Objective quantity type
             'cons': 'unequal',              # Constraint number constraint
-            'n_cons': '0-C',                # Constraint quantity type
+            'n_cons': '[0, C]',             # Constraint quantity type
             'expensive': 'False',           # Whether expensive optimization
             'knowledge_transfer': 'False',  # Whether knowledge transfer involved
             'n': 'unequal',                 # Population size constraint
@@ -53,7 +53,9 @@ Algorithms must be implemented as **classes** and include the following core com
             return get_algorithm_information(cls, print_info)
 
         # Component 3: Initialization method (required)
-        def __init__(self, problem, n=None, max_nfes=None, ...):
+        def __init__(self, problem, n=None, max_nfes=None, ...,
+                     save_data=True, save_path='./Data', name='AlgorithmName',
+                     disable_tqdm=True):
             self.problem = problem
             # Other parameter initialization
 
@@ -61,6 +63,13 @@ Algorithms must be implemented as **classes** and include the following core com
         def optimize(self):
             # Algorithm implementation
             return results
+
+The ninth key is ``n`` for purely population-based algorithms and ``n_initial`` for
+algorithms with a design-of-experiments phase; the constructor must expose a parameter
+of that same name. ``__init__`` always ends with the four standard parameters
+``save_data``, ``save_path``, ``name`` and ``disable_tqdm``, whose defaults are
+``True``, ``'./Data'``, the algorithm's display name (file name with underscores
+replaced by hyphens) and ``True``.
 
 Rule 2: Algorithm Input
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -113,10 +122,10 @@ Algorithms must return a result object conforming to the ``Results`` dataclass s
      - Description
    * - ``best_decs``
      - ``List[np.ndarray]``
-     - **Best decision variables**. List length is the number of tasks K. ``best_decs[i]`` is the best decision variable for task i. Shape is :math:`(n, D^i)`, where n is the number of optimal solutions (n=1 for single-objective; n≥2 for multiobjective)
+     - **Best decision variables**. List length is the number of tasks K. ``best_decs[i]`` is the best decision variable for task i. For single-objective tasks this is the single best row, shape :math:`(D^i,)`; for multiobjective tasks it is the whole final population, shape :math:`(n, D^i)`
    * - ``best_objs``
      - ``List[np.ndarray]``
-     - **Best objective values**. List length is K. ``best_objs[i]`` is the best objective value for task i. Shape is :math:`(n, M^i)`
+     - **Best objective values**. List length is K. ``best_objs[i]`` is the best objective value for task i. Shape :math:`(M^i,)` for single-objective tasks and :math:`(n, M^i)` for multiobjective tasks
    * - ``all_decs``
      - ``List[List[np.ndarray]]``
      - **Decision variable history**. ``all_decs[i][g]`` represents all decision variables of task i at generation g. Shape is :math:`(n, D^i)`
@@ -131,10 +140,10 @@ Algorithms must return a result object conforming to the ``Results`` dataclass s
      - **Maximum function evaluations**. List length is K. ``max_nfes[i]`` is the maximum number of function evaluations for task i
    * - ``best_cons``
      - ``Optional[List[np.ndarray]]``
-     - **Best constraint values** (optional). Used only in constrained optimization. ``best_cons[i]`` is the constraint value corresponding to the best solution of task i. Shape is :math:`(n, C^i)`. None for unconstrained problems
+     - **Best constraint values** (optional). ``best_cons[i]`` is the constraint value corresponding to the best solution of task i, shape :math:`(n, C^i)`. It is ``None`` when the algorithm does not pass ``all_cons`` to ``build_save_results``; algorithms that declare ``n_cons: '[0, C]'`` must pass it
    * - ``all_cons``
      - ``Optional[List[List[np.ndarray]]]``
-     - **Constraint evolution history** (optional). ``all_cons[i][g]`` represents all constraint values of task i at generation g. Shape is :math:`(n, C^i)`. None for unconstrained problems
+     - **Constraint evolution history** (optional). ``all_cons[i][g]`` represents all constraint values of task i at generation g. Shape is :math:`(n, C^i)`. ``None`` when constraints are not tracked
 
 The input/output structure is straightforward: **input must include an MTOP instance, and output must follow the specified data structure**.
 
@@ -152,23 +161,31 @@ Algorithms must declare their basic characteristics through the ``algorithm_info
    * - Field
      - Description
    * - ``n_tasks``
-     - Supported task numbers. ``1`` means single-task only, ``K`` means multitask only (K≥2), ``1-K`` means both single and multitask supported
+     - Supported task numbers. ``'[1, K]'`` means both single-task and multitask are supported, ``'[2, K]'`` means multitask only (K≥2)
    * - ``dims``
      - Decision variable dimension constraint. ``equal`` requires same dimensions across tasks, ``unequal`` supports unequal-dimension tasks
    * - ``objs``
      - Objective number constraint. ``equal`` requires same number of objectives across tasks, ``unequal`` supports unequal objective numbers
    * - ``n_objs``
-     - Objective quantity type. ``1`` means single-objective only, ``M`` means multiobjective only (M≥2), ``1-M`` means both supported
+     - Objective quantity type. ``'1'`` means single-objective only, ``'[2, M]'`` means multiobjective (M≥2), ``'[2, 3]'`` restricts to two or three objectives
    * - ``cons``
-     - Constraint number constraint. ``equal`` requires same number of constraints across tasks, ``unequal`` supports unequal constraint numbers
+     - Constraint number constraint. ``equal`` requires same number of constraints across tasks, ``unequal`` supports unequal constraint numbers. Pairs with ``n_cons``: ``'0'`` implies ``equal``, ``'[0, C]'`` implies ``unequal``
    * - ``n_cons``
-     - Constraint quantity type. ``0`` means unconstrained, ``C`` means constrained only (C≥1), ``0-C`` means both supported
+     - Constraint quantity type. ``'0'`` means unconstrained only, ``'[0, C]'`` means constraints are supported and threaded through selection and into the returned ``Results``
    * - ``expensive``
      - Whether expensive optimization (involving surrogate models). ``True`` uses surrogate models, ``False`` does not
    * - ``knowledge_transfer``
      - Whether inter-task knowledge transfer involved. ``True`` means the algorithm includes knowledge transfer mechanisms, ``False`` means tasks are optimized independently
-   * - ``param``
-     - Algorithm parameter constraint. ``equal`` requires same parameters (e.g., population size, evaluation count) across tasks, ``unequal`` allows different parameters per task
+   * - ``n`` / ``n_initial``
+     - Sizing parameter constraint. Use ``n`` (population size) for population-based algorithms and ``n_initial`` (initial sample count) for algorithms with a design-of-experiments phase. ``equal`` requires the same value across tasks, ``unequal`` allows a per-task list
+   * - ``max_nfes``
+     - Evaluation budget constraint. ``equal`` requires a single shared budget, ``unequal`` allows a per-task list
+
+.. note::
+
+   The bracketed forms are parsed literally by the platform's compatibility checker
+   (``ui/utils/compat.py``). Writing ``'1-K'`` or ``'0-C'`` instead of ``'[1, K]'`` or
+   ``'[0, C]'`` makes the check silently skip that field.
 
 **Example: GA Metadata Declaration**:
 
@@ -176,12 +193,12 @@ Algorithms must declare their basic characteristics through the ``algorithm_info
 
     class GA:
         algorithm_information = {
-            'n_tasks': '1-K',           # Supports single and multitask
+            'n_tasks': '[1, K]',        # Supports single and multitask
             'dims': 'unequal',          # Supports unequal dimensions
-            'objs': 'unequal',          # Supports unequal objectives
+            'objs': 'equal',            # Requires the same objective count
             'n_objs': '1',              # Single-objective only
             'cons': 'unequal',          # Supports unequal constraints
-            'n_cons': '0',              # Unconstrained only
+            'n_cons': '[0, C]',         # Constraints supported
             'expensive': 'False',       # Not expensive (no surrogate)
             'knowledge_transfer': 'False',  # No knowledge transfer
             'n': 'unequal',             # Different population sizes
@@ -200,7 +217,7 @@ Viewing Algorithm Metadata
 
 .. code-block:: python
 
-    from Algorithms.STSO.GA import GA
+    from ddmtolab.Algorithms.STSO.GA import GA
 
     # Call class method to view GA metadata
     GA.get_algorithm_information()
@@ -211,15 +228,16 @@ Viewing Algorithm Metadata
 
     🤖️ GA
     Algorithm Information:
-      - n_tasks: 1-K
+      - n_tasks: [1, K]
       - dims: unequal
-      - objs: unequal
+      - objs: equal
       - n_objs: 1
       - cons: unequal
-      - n_cons: 0
+      - n_cons: [0, C]
       - expensive: False
       - knowledge_transfer: False
-      - param: unequal
+      - n: unequal
+      - max_nfes: unequal
 
 This method prints the algorithm name and all metadata fields in a structured format, helping users quickly understand the algorithm's scope and characteristic constraints. By viewing the metadata, users can determine whether an algorithm is suitable for their optimization problem.
 
@@ -227,7 +245,7 @@ The method also supports returning metadata as a dictionary for programmatic pro
 
 .. code-block:: python
 
-    from Algorithms.STSO.GA import GA
+    from ddmtolab.Algorithms.STSO.GA import GA
     info = GA.get_algorithm_information(print_info=False)
     print(info)
 
@@ -235,8 +253,8 @@ The method also supports returning metadata as a dictionary for programmatic pro
 
 .. code-block:: python
 
-    {'n_tasks': '1-K', 'dims': 'unequal', 'objs': 'unequal', 'n_objs': '1',
-     'cons': 'unequal', 'n_cons': '0', 'expensive': 'False',
+    {'n_tasks': '[1, K]', 'dims': 'unequal', 'objs': 'equal', 'n_objs': '1',
+     'cons': 'unequal', 'n_cons': '[0, C]', 'expensive': 'False',
      'knowledge_transfer': 'False', 'n': 'unequal', 'max_nfes': 'unequal'}
 
 Using Algorithms
@@ -266,8 +284,8 @@ Basic Usage
         problem=problem,
         n=100,             # Population size
         max_nfes=10000,    # Max function evaluations
-        pc=0.9,            # Crossover probability
-        pm=0.1             # Mutation probability
+        muc=2.0,           # SBX crossover distribution index
+        mum=5.0            # Polynomial mutation distribution index
     )
 
     # Run optimization
@@ -323,15 +341,16 @@ Advanced Configuration
 
 .. code-block:: python
 
-    # Configure algorithm with custom parameters
+    # Configure algorithm with custom parameters. Sizing parameters accept either a
+    # scalar (shared by every task) or a per-task list when the metadata says 'unequal'.
     algorithm = GA(
         problem=problem,
-        n=[200],              # Larger population
-        max_nfes=[50000],     # More evaluations
-        pc=0.85,              # Custom crossover rate
-        pm=0.15,              # Custom mutation rate
-        selection='tournament',  # Selection method
-        tournament_size=3     # Tournament size
+        n=[200],              # Larger population, per task
+        max_nfes=[50000],     # More evaluations, per task
+        muc=15.0,             # Custom crossover distribution index
+        mum=20.0,             # Custom mutation distribution index
+        save_path='./Data',   # Where the .pkl result file is written
+        name='GA-large'       # File name stem for the saved results
     )
 
 **Accessing Optimization History**:
@@ -365,7 +384,7 @@ You can easily implement custom algorithms by following the three construction r
     import numpy as np
     import time
     from ddmtolab.Methods.Algo_Methods.algo_utils import (
-        Results, get_algorithm_information,
+        Results, get_algorithm_information, par_list,
         initialization, evaluation,
         init_history, append_history, build_save_results
     )
@@ -373,11 +392,11 @@ You can easily implement custom algorithms by following the three construction r
     class MyCustomAlgorithm:
         # Rule 1: Algorithm metadata
         algorithm_information = {
-            'n_tasks': '1',
+            'n_tasks': '[1, K]',
             'dims': 'unequal',
-            'objs': 'unequal',
+            'objs': 'equal',
             'n_objs': '1',
-            'cons': 'unequal',
+            'cons': 'equal',
             'n_cons': '0',
             'expensive': 'False',
             'knowledge_transfer': 'False',
@@ -390,14 +409,16 @@ You can easily implement custom algorithms by following the three construction r
             return get_algorithm_information(cls, print_info)
 
         # Rule 2: Accept MTOP instance
-        def __init__(self, problem, n=100, max_nfes=10000,
-                     save_data=True, save_path='./Data', name='MyAlgo'):
+        def __init__(self, problem, n=None, max_nfes=None,
+                     save_data=True, save_path='./Data', name='MyAlgo',
+                     disable_tqdm=True):
             self.problem = problem
-            self.n = n
-            self.max_nfes = max_nfes
+            self.n = n if n is not None else 100
+            self.max_nfes = max_nfes if max_nfes is not None else 10000
             self.save_data = save_data
             self.save_path = save_path
             self.name = name
+            self.disable_tqdm = disable_tqdm
 
         # Rule 3: Return Results object
         def optimize(self):
@@ -416,23 +437,27 @@ You can easily implement custom algorithms by following the three construction r
                 # Your optimization logic here
                 # Generate new solutions, evaluate, select...
 
-                # Track history
-                append_history(all_decs, all_objs, all_cons, decs, objs, cons)
+                # Track history. append_history takes (history, new_value) PAIRS,
+                # not all histories followed by all values.
+                append_history(all_decs, decs, all_objs, objs, all_cons, cons)
                 nfes += self.n
 
             runtime = time.time() - start_time
 
-            # Build and save results using utility function
+            # Build and save results using utility function. Note the parameter is
+            # `filename`, not `name`: build_save_results accepts **kwargs, so a wrong
+            # keyword is stored as extra payload instead of raising, and the file is
+            # then silently not written.
             return build_save_results(
-                problem=self.problem,
                 all_decs=all_decs,
                 all_objs=all_objs,
                 all_cons=all_cons,
                 runtime=runtime,
-                max_nfes=self.max_nfes,
-                save_data=self.save_data,
+                max_nfes=par_list(self.max_nfes, self.problem.n_tasks),
+                bounds=self.problem.bounds,
                 save_path=self.save_path,
-                name=self.name
+                filename=self.name,
+                save_data=self.save_data
             )
 
 Available Algorithms
@@ -495,17 +520,17 @@ Classical evolutionary algorithms and surrogate-assisted methods for single-obje
    * - ``BO``
      - Bayesian Optimization
    * - ``EEI_BO``
-     - Expected Exploration Improvement BO
+     - Evolutionary Expected Improvement based Bayesian Optimization
    * - ``ESAO``
-     - Efficient Surrogate-Assisted Optimization
+     - Exploration-exploitation Switching Assisted Optimization
    * - ``SHPSO``
-     - Self-adaptive Hierarchical PSO
+     - Surrogate-assisted Hierarchical Particle Swarm Optimization
    * - ``SA_COSO``
-     - Surrogate-Assisted Competitive Swarm Optimizer
+     - Surrogate-Assisted Cooperative Swarm Optimization
    * - ``TLRBF``
-     - Two-Layer RBF Surrogate-Assisted Optimization
+     - Three-Level Radial Basis Function Method
    * - ``GL_SADE``
-     - Gaussian Local Search with Self-adaptive DE
+     - Global-Local Surrogate-Assisted Differential Evolution
    * - ``AutoSAEA``
      - Surrogate-Assisted EA with Auto-Configuration
    * - ``DDEA_MESS``
@@ -531,13 +556,13 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``NSGA_III``
      - Non-dominated Sorting Genetic Algorithm III
    * - ``NSGA_II_SDR``
-     - NSGA-II with Stochastic Dominance Ranking
+     - NSGA-II with Strengthened Dominance Relation
    * - ``SPEA2``
      - Strength Pareto Evolutionary Algorithm 2
    * - ``MOEA_D``
      - Multiobjective Evolutionary Algorithm based on Decomposition
    * - ``MOEA_DD``
-     - MOEA/D with Diversity Enhancement
+     - MOEA Based on Decomposition and Dominance
    * - ``MOEA_D_FRRMAB``
      - MOEA/D with Fitness-Rate-Rank Multi-Armed Bandit
    * - ``MOEA_D_STM``
@@ -549,7 +574,7 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``TwoArch2``
      - Two-Archive Algorithm 2
    * - ``MSEA``
-     - Multi-Surrogate Evolutionary Algorithm
+     - Multistage Evolutionary Algorithm
    * - ``C_TAEA``
      - Constrained Two-Archive Evolutionary Algorithm
    * - ``CCMO``
@@ -566,13 +591,13 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``ParEGO``
      - Pareto Efficient Global Optimization
    * - ``K_RVEA``
-     - Kriging-assisted RVEA
+     - Kriging-assisted Reference Vector Guided Evolutionary Algorithm
    * - ``DSAEA_PS``
-     - Data-driven Surrogate-Assisted EA with Pareto Selection
+     - Dual-Surrogate Assisted EA with Portfolio Strategy
    * - ``KTA2``
-     - Kriging-assisted Two-Archive Algorithm
+     - Kriging-Assisted Two-Archive Evolutionary Algorithm 2
    * - ``REMO``
-     - Reference-based Multiobjective Optimization
+     - Expensive Multiobjective Optimization by Relation Learning and Prediction
    * - ``ADSAPSO``
      - Adaptive Dropout Surrogate-Assisted PSO
    * - ``CSEA``
@@ -582,7 +607,7 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``DRLSAEA``
      - Deep Reinforcement Learning Surrogate-Assisted EA
    * - ``DirHV_EI``
-     - Direction-based Hypervolume Expected Improvement
+     - Expected Direction-based Hypervolume Improvement
    * - ``EDN_ARMOEA``
      - Efficient Dropout Neural Network based AR-MOEA
    * - ``EIM_EGO``
@@ -606,15 +631,15 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
    * - ``PIEA``
      - Performance Indicator-based EA
    * - ``SAEA_DBLL``
-     - Surrogate-Assisted EA with Direction-Based Local Learning
+     - Surrogate-Assisted EA with Decomposition-Based Local Learning
    * - ``SSDE``
      - Self-Organizing Surrogate-Assisted Non-Dominated Sorting DE
    * - ``TEA``
-     - Two-phase EA with Probabilistic Dominance
+     - Two-phase Evolutionary Algorithm
    * - ``CPS_MOEA``
-     - Constrained Push and Search MOEA
+     - Classification and Pareto Domination Based MOEA
    * - ``MCEA_D``
-     - Multi-Criteria Evolutionary Algorithm based on Decomposition
+     - Multiple Classifiers-assisted EA based on Decomposition
 
 MTSO (Multitask Single-Objective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -634,17 +659,17 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
    * - ``MFEA_II``
      - Multi-Factorial Evolutionary Algorithm II
    * - ``EMEA``
-     - Evolutionary Multitask Evolutionary Algorithm
+     - Evolutionary Multitasking via Explicit Autoencoding
    * - ``EBS``
-     - Evolution by Similarity
+     - Evolutionary Biocoenosis-based Symbiosis
    * - ``G_MFEA``
      - Generalized MFEA
    * - ``MTEA_AD``
-     - Multitask Evolutionary Algorithm with Adaptive Distribution
+     - Multitask EA with Adaptive Knowledge Transfer via Anomaly Detection
    * - ``MKTDE``
-     - Multi-Knowledge Transfer Differential Evolution
+     - Meta-Knowledge Transfer-based Differential Evolution
    * - ``MTEA_SaO``
-     - Multitask EA with Surrogate-assisted Optimization
+     - Multitask EA with Self-adaptive Solvers
    * - ``SREMTO``
      - Self-Regulated Evolutionary Multitask Optimization
    * - ``LCB_EMT``
@@ -668,7 +693,7 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
    * - ``MTEA_PAE``
      - Multitask EA with Progressive Auto-Encoding
    * - ``MTES_KG``
-     - Multitask Evolution Strategy with Knowledge-Guided Sampling
+     - Multitask Evolution Strategy with Knowledge-Guided External Sampling
    * - ``SSLT_DE``
      - Scenario-based Self-Learning Transfer DE
    * - ``TNG_SNES``
@@ -687,15 +712,15 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
    * - ``RAMTEA``
      - Radial Basis Function-Assisted Multitask Evolutionary Algorithm
    * - ``SELF``
-     - Self-adaptive Evolutionary Learning Framework
+     - Surrogate-Assisted Evolutionary Framework for Expensive Multitask Optimization
    * - ``EEI_BO_plus``
-     - Enhanced EEI-BO for Multitask Optimization
+     - Evolutionary Expected Improvement based BO for MTOPs
    * - ``MUMBO``
      - Multitask Max-value Bayesian Optimization
    * - ``BO_LCB_CKT``
-     - BO with LCB and Curriculum Knowledge Transfer
+     - BO with LCB and Competitive Knowledge Transfer
    * - ``BO_LCB_BCKT``
-     - BO with LCB and Bidirectional Curriculum Knowledge Transfer
+     - BO with LCB and Bayesian Competitive Knowledge Transfer
    * - ``MFEA_SSG``
      - MFEA with Single-Step Generative Model
    * - ``SaEF_AKT``
@@ -719,17 +744,17 @@ Multitask multiobjective evolutionary algorithms with knowledge transfer.
    * - ``MO_MFEA_II``
      - Multiobjective MFEA II
    * - ``MO_EMEA``
-     - Multiobjective Evolutionary Multitask EA
+     - Multiobjective Evolutionary Multitasking via Explicit Autoencoding
    * - ``MO_MTEA_SaO``
-     - Multiobjective MTEA with Surrogate-assisted Optimization
+     - Multiobjective Multitask EA with Self-adaptive Solvers
    * - ``MTDE_MKTA``
-     - Multitask DE with Multi-Knowledge Transfer Adaptation
+     - Multiobjective Multitask DE with Multiple Knowledge Types and Transfer Adaptation
    * - ``MTEA_D_DN``
      - Multitask EA/D with Dynamic Neighborhood
    * - ``EMT_ET``
-     - Evolutionary Multitasking with Explicit Transfer
+     - Evolutionary Multitasking with Effective Transfer
    * - ``EMT_PD``
-     - Evolutionary Multitasking with Probabilistic Distribution
+     - Evolutionary Multitasking with Population Distribution-based Transfer
    * - ``EMT_GS``
      - Evolutionary Multitasking with Generative Strategies
    * - ``MO_MTEA_PAE``

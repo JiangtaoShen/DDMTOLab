@@ -13,6 +13,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen (DDMTOLab implementation)
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.16
 Version: 1.0
 """
@@ -209,7 +210,7 @@ class SSDE:
                 # tie handling degenerates to uniform random sampling.
                 if pop_cons is not None and pop_cons.shape[1] > 0:
                     cv = np.sum(np.maximum(0, pop_cons), axis=1)
-                    mating_pool = _platemo_tournament_selection(2, N, cv)
+                    mating_pool = platemo_tournament_selection(2, N, cv)
                 else:
                     mating_pool = np.random.randint(0, n_pop, size=N)
 
@@ -450,23 +451,6 @@ def _som_training(W, LDis, sample_decs, sample_objs, num_nodes, eta0, sigma0,
 # =============================================================================
 # DE Operator
 # =============================================================================
-
-def _platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's ``TournamentSelection``.
-
-    Candidates are compared lexicographically on the given fitness keys (lower
-    is better) and ties share the same rank, so a tournament among tied
-    candidates is decided uniformly at random by the draw order.
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
 def _operator_de(parent1, parent2, parent3, CR=1.0, F=0.5, proM=1.0, disM=20.0):
     """
     Exact port of PlatEMO's ``OperatorDE`` (default parameters {1, 0.5, 1, 20}).

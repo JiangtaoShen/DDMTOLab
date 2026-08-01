@@ -12,6 +12,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.17
 Version: 1.0
 """
@@ -21,7 +22,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import numpy as np
-from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Methods.Algo_Methods.bo_utils import gp_build, gp_predict
 import warnings

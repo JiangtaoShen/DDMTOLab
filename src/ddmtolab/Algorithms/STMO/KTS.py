@@ -17,6 +17,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.17
 Version: 1.0
 """
@@ -44,7 +45,7 @@ class KTS:
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'equal',
+        'cons': 'unequal',
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'False',
@@ -237,8 +238,8 @@ class KTS:
                         # KCCMO-style: full GA on each pool independently
                         fitness_p2 = spea2_fitness(CP2_objs, CP2_cons)
                         fitness_da = spea2_fitness(CDA_objs)
-                        pool1 = _platemo_tournament_selection(2, N, fitness_p2)
-                        pool2 = _platemo_tournament_selection(2, N, fitness_da)
+                        pool1 = platemo_tournament_selection(2, N, fitness_p2)
+                        pool2 = platemo_tournament_selection(2, N, fitness_da)
                         off1 = _full_ga(CP2_decs[pool1])
                         off2 = _full_ga(CDA_decs[pool2])
                         off_decs = np.vstack([off1, off2])
@@ -342,9 +343,15 @@ class KTS:
         pbar.close()
         runtime = time.time() - start_time
 
-        all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu1)
+        # KTS declares constraint support, so feasibility must survive into the
+        # results whenever the problem actually carries constraints
+        if any(c > 0 for c in n_cons):
+            all_decs, all_objs, all_cons = build_staircase_history(decs, objs, k=self.mu1, db_cons=cons)
+        else:
+            all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu1)
+            all_cons = None
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-                                     max_nfes=nfes_per_task, bounds=problem.bounds,
+                                     max_nfes=nfes_per_task, all_cons=all_cons, bounds=problem.bounds,
                                      save_path=self.save_path, filename=self.name,
                                      save_data=self.save_data)
         return results
@@ -557,25 +564,6 @@ def _mating_selection(CA_objs, CA_decs, DA_objs, DA_decs, N):
     parentM_decs = CA_decs[np.random.randint(0, CA_n, size=N)]
 
     return parentC_decs, parentM_decs
-
-
-def _platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's ``TournamentSelection``.
-
-    Candidates are compared lexicographically on the given fitness keys (lower is
-    better). Solutions with identical fitness share the same rank, so a tournament
-    among tied candidates is decided by the (random) draw order, i.e. uniformly at
-    random -- unlike a total order that would break ties by index.
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
 def _stack_optional(a, b):
     """Vertically stack two optionally-None arrays."""
     if a is None:

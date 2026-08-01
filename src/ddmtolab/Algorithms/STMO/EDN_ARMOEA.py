@@ -12,15 +12,14 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.17
 Version: 1.0
 """
 from tqdm import tqdm
 import time
 import numpy as np
-import torch
-import torch.nn as nn
-from scipy.spatial.distance import pdist, squareform, cdist
+from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
 import warnings

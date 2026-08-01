@@ -16,82 +16,7 @@ Version: 1.1
 """
 import time
 from tqdm import tqdm
-from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort, platemo_tournament_selection
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
-    [0, 1] here: the MATLAB reference clips once at the end of ``Generation``,
-    after polynomial mutation has acted on the raw crossover output.
-
-    Parameters
-    ----------
-    par_dec1 : np.ndarray
-        First parent decision vector, shape (d,)
-    par_dec2 : np.ndarray
-        Second parent decision vector, shape (d,)
-    mu : float
-        Distribution index for the crossover
-
-    Returns
-    -------
-    off_dec1 : np.ndarray
-        First offspring decision vector, shape (d,)
-    off_dec2 : np.ndarray
-        Second offspring decision vector, shape (d,)
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
-
-    Operates on the possibly out-of-bounds input and does NOT clip; the caller
-    clips once afterwards, matching the MATLAB reference.
-
-    Parameters
-    ----------
-    dec : np.ndarray
-        Decision vector to mutate, shape (d,)
-    mu : float
-        Distribution index for the mutation
-
-    Returns
-    -------
-    dec : np.ndarray
-        Mutated decision vector, shape (d,)
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    with np.errstate(over='ignore', invalid='ignore'):
-        for j in range(d):
-            if np.random.rand() < prob_m:
-                u = np.random.rand()
-                if u <= 0.5:
-                    delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-                else:
-                    delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-                dec[j] += delta
-    return dec
-
-
 class EMT_PD:
     """
     Evolutionary Multi-task with Population Distribution-based Transfer.
@@ -296,18 +221,18 @@ class EMT_PD:
 
             if sf1 == sf2 or np.random.rand() < self.rmp:
                 # Crossover
-                off_dec1, off_dec2 = _sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
+                off_dec1, off_dec2 = sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
                 # Mutation
-                off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
-                off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                off_dec1 = poly_mutation_unclipped(off_dec1, self.mum)
+                off_dec2 = poly_mutation_unclipped(off_dec2, self.mum)
                 # Imitation: each child picks one of the two parents independently
                 pair = (sf1, sf2)
                 off_sfs[count] = pair[np.random.randint(2)]
                 off_sfs[count + 1] = pair[np.random.randint(2)]
             else:
                 # Mutation only
-                off_dec1 = _poly_mutation_unclipped(par_decs[p1, :], self.mum)
-                off_dec2 = _poly_mutation_unclipped(par_decs[p2, :], self.mum)
+                off_dec1 = poly_mutation_unclipped(par_decs[p1, :], self.mum)
+                off_dec2 = poly_mutation_unclipped(par_decs[p2, :], self.mum)
                 # Imitation
                 off_sfs[count] = sf1
                 off_sfs[count + 1] = sf2
@@ -381,7 +306,7 @@ class EMT_PD:
                 b_idx = np.random.randint(model_size)
                 with np.errstate(over='ignore', invalid='ignore'):
                     off_dec = w1 * p[:, a_idx] + (1 - w1) * q[:, b_idx]
-                off_dec = _poly_mutation_unclipped(off_dec, self.mum)
+                off_dec = poly_mutation_unclipped(off_dec, self.mum)
                 off_dec = np.clip(off_dec, 0, 1)
                 nan_mask = np.isnan(off_dec)
                 if np.any(nan_mask):

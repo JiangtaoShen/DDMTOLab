@@ -40,7 +40,7 @@ class MOEA_D_FRRMAB:
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'unequal',
+        'cons': 'equal',
         'n_cons': '0',
         'expensive': 'False',
         'knowledge_transfer': 'False',
@@ -79,9 +79,9 @@ class MOEA_D_FRRMAB:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MOEADFRRMAB_test')
+            Name for the experiment (default: 'MOEA-D-FRRMAB')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

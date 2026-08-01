@@ -13,6 +13,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.18
 Version: 1.0
 """

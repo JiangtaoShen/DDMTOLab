@@ -13,13 +13,13 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.18
 Version: 1.0
 """
 from tqdm import tqdm
 import time
 import numpy as np
-from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 import warnings
 

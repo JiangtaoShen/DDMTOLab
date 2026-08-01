@@ -1,382 +1,172 @@
 """
 Algorithm Template for DDMTOLab
-===============================
 
-This is a template for creating new optimization algorithms that will be
-automatically detected by the UI. Follow this pattern to ensure your
-algorithm appears in the UI.
+This module is the reference for the algorithm paradigm every algorithm in
+``ddmtolab.Algorithms`` follows. Copy it into the matching category folder,
+rename the file and the class, and fill in ``optimize()``. The class is then
+discovered automatically by the UI and usable with ``BatchExperiment``.
 
-Usage:
-------
-1. Copy this file to the appropriate category folder:
-   - STSO/ - Single-Task Single-Objective algorithms
-   - STMO/ - Single-Task Multi-Objective algorithms
-   - MTSO/ - Multi-Task Single-Objective algorithms
-   - MTMO/ - Multi-Task Multi-Objective algorithms
+Platform rules
+--------------
+1. File name and class name are identical; the file lives in ``STSO/``,
+   ``STMO/``, ``MTSO/`` or ``MTMO/``. Hyphenated published names are spelled
+   with underscores in the file name (``NSGA_II.py`` -> class ``NSGA_II``).
+2. The class exposes an ``algorithm_information`` dict with exactly the ten
+   canonical keys, in the order shown below, and a
+   ``get_algorithm_information`` classmethod delegating to the shared helper.
+   The ninth key is ``n_initial`` for algorithms with a design-of-experiments
+   phase and ``n`` for purely population-based ones.
+3. ``__init__`` starts with ``problem``, then the sizing parameters
+   (``n`` or ``n_initial``, then ``max_nfes``), then algorithm-specific
+   parameters, and always ends with the four standard parameters
+   ``save_data=True, save_path='./Data', name=<display name>,
+   disable_tqdm=True``. ``name`` defaults to the file name with underscores
+   replaced by hyphens.
+4. ``optimize()`` measures runtime, shows a ``tqdm`` progress bar, and returns
+   the ``Results`` object built by ``build_save_results``.
+5. Populations live in the normalized [0, 1] space; ``initialization``,
+   ``evaluation`` / ``evaluation_single`` and ``build_save_results`` handle the
+   mapping to each task's real bounds. Never call the problem object directly.
 
-2. Rename the file and class (e.g., my_algo.py, MyAlgo)
-   - File name and class name should match (my_algo.py -> MyAlgo or MY_ALGO)
+References
+----------
+    [1] David E. Goldberg. Genetic Algorithms in Search, Optimization, and Machine Learning. Addison-Wesley, Reading, MA, 1989.
 
-3. Implement the optimize() method
-
-4. Run the UI - your algorithm will be automatically detected!
-
-Naming Conventions:
--------------------
-- File name: snake_case or UPPER_CASE (my_algo.py or MY_ALGO.py)
-- Class name: Same as file name (MyAlgo or MY_ALGO)
-- Special characters: Use underscore in file, hyphen in display
-  - CMA_ES.py -> displays as "CMA-ES"
-  - NSGA_II.py -> displays as "NSGA-II"
-  - MOEA_D.py -> displays as "MOEA/D"
-
-Required Methods:
------------------
-- __init__(): Initialize with problem and parameters
-- optimize(): Run the optimization and return Results object
-
-Required Attributes:
---------------------
-- algorithm_information: Dict describing algorithm capabilities
+Notes
+-----
+Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
+Date: 2026.08.01
+Version: 2.0
 """
+import time
+from tqdm import tqdm
+from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
-import numpy as np
-from ddmtolab.Methods.mtop import MTOP
 
-
-class TemplateAlgorithm:
+class TEMPLATE_ALGORITHM:
     """
-    Template optimization algorithm for DDMTOLab.
+    Reference implementation of the DDMTOLab algorithm paradigm.
 
-    This class demonstrates the standard pattern for algorithm implementation.
-    The UI will automatically detect this class and its parameters.
-
-    Parameters
-    ----------
-    problem : MTOP
-        The optimization problem to solve.
-    n : int, default=100
-        Population size.
-    max_nfes : int, default=10000
-        Maximum number of function evaluations.
-    save_data : bool, default=False
-        Whether to save optimization history.
-    save_path : str, default='./'
-        Directory to save data.
-    name : str, default='TemplateAlgorithm'
-        Name for saved files.
-    disable_tqdm : bool, default=False
-        Whether to disable progress bar.
+    The body is a plain (mu + lambda) genetic algorithm, kept minimal so that
+    the surrounding structure — not the search logic — is what a new algorithm
+    is copied from.
 
     Attributes
     ----------
     algorithm_information : dict
-        Describes algorithm capabilities for UI display.
+        Dictionary containing algorithm capabilities and requirements
     """
 
-    # =========================================================================
-    # Algorithm Information (REQUIRED for UI detection)
-    # =========================================================================
     algorithm_information = {
-        'n_tasks': '[1, K]',      # '[1, K]' for single-task, '[2, K]' for multi-task
-        'dims': 'unequal',        # 'equal' or 'unequal' (for multi-task)
-        'objs': 'unequal',        # 'equal' or 'unequal'
-        'n_objs': '1',            # '1' single-obj, '[2, M]' multi-obj, '[2, 3]' 2-3 objs
-        'cons': 'unequal',        # 'equal' or 'unequal'
-        'n_cons': '[0, C]',       # '0' no constraints, '[0, C]' supports constraints
-        'expensive': 'False',     # 'True' for surrogate-assisted algorithms
-        'knowledge_transfer': 'False',  # 'True' for transfer learning algorithms
-        'n': 'unequal',
-        'max_nfes': 'unequal'
+        'n_tasks': '[1, K]',        # '[1, K]' single-task, '[2, K]' multi-task
+        'dims': 'unequal',          # 'equal' if all tasks must share a dimension
+        'objs': 'equal',            # 'equal' if all tasks must share an objective count
+        'n_objs': '1',              # '1' single-objective, '[2, M]' multi-objective
+        'cons': 'unequal',          # 'equal' if all tasks must share a constraint count
+        'n_cons': '[0, C]',         # '0' unconstrained only, '[0, C]' constraints supported
+        'expensive': 'False',       # 'True' for surrogate-assisted algorithms
+        'knowledge_transfer': 'False',  # 'True' for multi-task transfer algorithms
+        'n': 'unequal',             # 'n_initial' instead when a DoE phase is used
+        'max_nfes': 'unequal'       # 'equal' if the budget must be shared across tasks
     }
 
-    def __init__(
-        self,
-        problem: MTOP,
-        n: int = 100,
-        max_nfes: int = 10000,
-        # Add your algorithm-specific parameters here
-        pc: float = 0.9,          # Crossover probability
-        pm: float = None,         # Mutation probability (None = 1/D)
-        muc: int = 20,            # Crossover distribution index
-        mum: int = 20,            # Mutation distribution index
-        # Standard parameters (keep these)
-        save_data: bool = False,
-        save_path: str = './',
-        name: str = 'TemplateAlgorithm',
-        disable_tqdm: bool = False,
-    ):
-        """Initialize the algorithm."""
-        # Store problem
-        self.problem = problem
-        self.n_tasks = problem.n_tasks
-        self.dims = problem.dims
-        self.n_objs = problem.n_objs
+    @classmethod
+    def get_algorithm_information(cls, print_info=True):
+        return get_algorithm_information(cls, print_info)
 
-        # Store parameters
-        self.n = n
-        self.max_nfes = max_nfes
-        self.pc = pc
-        self.pm = pm
+    def __init__(self, problem, n=None, max_nfes=None, muc=2.0, mum=5.0, save_data=True, save_path='./Data',
+                 name='TEMPLATE-ALGORITHM', disable_tqdm=True):
+        """
+        Initialize the template algorithm.
+
+        Parameters
+        ----------
+        problem : MTOP
+            Multi-task optimization problem instance
+        n : int or List[int], optional
+            Population size per task (default: 100)
+        max_nfes : int or List[int], optional
+            Maximum number of function evaluations per task (default: 10000)
+        muc : float, optional
+            Distribution index for simulated binary crossover (SBX) (default: 2.0)
+        mum : float, optional
+            Distribution index for polynomial mutation (PM) (default: 5.0)
+        save_data : bool, optional
+            Whether to save optimization data (default: True)
+        save_path : str, optional
+            Path to save results (default: './Data')
+        name : str, optional
+            Name for the experiment (default: 'TEMPLATE-ALGORITHM')
+        disable_tqdm : bool, optional
+            Whether to disable progress bar (default: True)
+        """
+        self.problem = problem
+        self.n = n if n is not None else 100
+        self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.muc = muc
         self.mum = mum
-
-        # Store save settings
         self.save_data = save_data
         self.save_path = save_path
         self.name = name
         self.disable_tqdm = disable_tqdm
 
-        # Initialize tracking
-        self.nfes = 0
-        self.gen = 0
-
     def optimize(self):
         """
-        Run the optimization algorithm.
+        Execute the template algorithm.
 
         Returns
         -------
         Results
-            Object containing optimization results:
-            - best_decs: Best decision variables found
-            - best_objs: Best objective values found
-            - all_decs: History of all decision variables (if save_data=True)
-            - all_objs: History of all objective values (if save_data=True)
-            - runtime: Total optimization time
+            Optimization results containing decision variables, objectives, and runtime
         """
-        import time
-        from tqdm import tqdm
-
         start_time = time.time()
+        problem = self.problem
+        nt = problem.n_tasks
+        n_per_task = par_list(self.n, nt)
+        max_nfes_per_task = par_list(self.max_nfes, nt)
 
-        # Get problem bounds
-        lb = self.problem.lower_bounds[0]
-        ub = self.problem.upper_bounds[0]
-        dim = self.dims[0]
+        # Initialize the population in [0, 1] space and evaluate it per task
+        decs = initialization(problem, n_per_task)
+        objs, cons = evaluation(problem, decs)
+        nfes_per_task = n_per_task.copy()
+        all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
-        # Initialize population randomly
-        pop = np.random.rand(self.n, dim) * (ub - lb) + lb
+        total_nfes = sum(max_nfes_per_task)
+        pbar = tqdm(total=total_nfes, initial=sum(n_per_task), desc=f"{self.name}",
+                    disable=self.disable_tqdm)
 
-        # Evaluate initial population
-        objs = self.problem.evaluate(pop, task=0)
-        self.nfes += self.n
-
-        # History tracking
-        all_decs = [pop.copy()] if self.save_data else None
-        all_objs = [objs.copy()] if self.save_data else None
-
-        # Main optimization loop
-        max_gen = (self.max_nfes - self.n) // self.n
-        pbar = tqdm(range(max_gen), disable=self.disable_tqdm, desc=self.name)
-
-        for gen in pbar:
-            self.gen = gen
-
-            # =================================================================
-            # YOUR ALGORITHM LOGIC HERE
-            # =================================================================
-
-            # Example: Simple random search (replace with your algorithm)
-            offspring = np.random.rand(self.n, dim) * (ub - lb) + lb
-
-            # Evaluate offspring
-            off_objs = self.problem.evaluate(offspring, task=0)
-            self.nfes += self.n
-
-            # Selection (example: keep better solutions)
-            combined_pop = np.vstack([pop, offspring])
-            combined_objs = np.vstack([objs, off_objs])
-
-            # Sort by objective and select best n
-            indices = np.argsort(combined_objs[:, 0])
-            pop = combined_pop[indices[:self.n]]
-            objs = combined_objs[indices[:self.n]]
-
-            # =================================================================
-            # END OF YOUR ALGORITHM LOGIC
-            # =================================================================
-
-            # Save history
-            if self.save_data:
-                all_decs.append(pop.copy())
-                all_objs.append(objs.copy())
-
-            # Update progress bar
-            best_obj = np.min(objs)
-            pbar.set_postfix({'best': f'{best_obj:.6f}', 'nfes': self.nfes})
-
-            # Check termination
-            if self.nfes >= self.max_nfes:
+        while sum(nfes_per_task) < total_nfes:
+            # Tasks that have exhausted their own budget stop being evolved
+            active_tasks = [i for i in range(nt) if nfes_per_task[i] < max_nfes_per_task[i]]
+            if not active_tasks:
                 break
 
-        # Build results
+            for i in active_tasks:
+                # ============================================================
+                # Replace this block with the algorithm's own search operators
+                # ============================================================
+                off_decs = ga_generation(decs[i], self.muc, self.mum)
+                off_objs, off_cons = evaluation_single(problem, off_decs, i)
+                n_off = off_decs.shape[0]
+
+                # Merge parents and offspring, then keep the best n individuals
+                objs[i], decs[i], cons[i] = vstack_groups(
+                    (objs[i], off_objs), (decs[i], off_decs), (cons[i], off_cons)
+                )
+                index = selection_elit(objs=objs[i], n=n_per_task[i], cons=cons[i])
+                objs[i], decs[i], cons[i] = select_by_index(index, objs[i], decs[i], cons[i])
+                # ============================================================
+
+                nfes_per_task[i] += n_off
+                pbar.update(n_off)
+                append_history(all_decs[i], decs[i], all_objs[i], objs[i], all_cons[i], cons[i])
+
+        pbar.close()
         runtime = time.time() - start_time
-        best_idx = np.argmin(objs[:, 0])
 
-        results = Results(
-            best_decs=[pop[best_idx:best_idx+1]],
-            best_objs=[objs[best_idx:best_idx+1]],
-            all_decs=[all_decs] if self.save_data else None,
-            all_objs=[all_objs] if self.save_data else None,
-            runtime=runtime,
-        )
-
-        # Save to file if requested
-        if self.save_data:
-            results.save(self.save_path, self.name)
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
+                                     filename=self.name, save_data=self.save_data)
 
         return results
-
-
-class Results:
-    """
-    Container for optimization results.
-
-    Attributes
-    ----------
-    best_decs : List[np.ndarray]
-        Best decision variables for each task.
-    best_objs : List[np.ndarray]
-        Best objective values for each task.
-    all_decs : List[List[np.ndarray]], optional
-        History of decision variables per generation per task.
-    all_objs : List[List[np.ndarray]], optional
-        History of objective values per generation per task.
-    runtime : float
-        Total optimization time in seconds.
-    """
-
-    def __init__(self, best_decs, best_objs, all_decs=None, all_objs=None, runtime=0.0):
-        self.best_decs = best_decs
-        self.best_objs = best_objs
-        self.all_decs = all_decs
-        self.all_objs = all_objs
-        self.runtime = runtime
-
-    def save(self, path: str, name: str):
-        """Save results to pickle file."""
-        import pickle
-        import os
-
-        os.makedirs(path, exist_ok=True)
-        filepath = os.path.join(path, f'{name}.pkl')
-
-        with open(filepath, 'wb') as f:
-            pickle.dump({
-                'best_decs': self.best_decs,
-                'best_objs': self.best_objs,
-                'all_decs': self.all_decs,
-                'all_objs': self.all_objs,
-                'runtime': self.runtime,
-            }, f)
-
-
-# =============================================================================
-# Multi-Task Algorithm Template
-# =============================================================================
-
-class TemplateMultiTaskAlgorithm:
-    """
-    Template for multi-task optimization algorithms.
-
-    For MTSO/MTMO algorithms that handle multiple tasks with knowledge transfer.
-    """
-
-    algorithm_information = {
-        'n_tasks': '[2, K]',      # Multi-task: handles 2 or more tasks
-        'dims': 'unequal',        # 'equal' or 'unequal' dimensions across tasks
-        'objs': 'unequal',        # 'equal' or 'unequal'
-        'n_objs': '1',       # '1' single-obj, '[2, M]' multi-obj
-        'cons': 'unequal',
-        'n_cons': '[0, C]',
-        'expensive': 'False',
-        'knowledge_transfer': 'True',  # Uses transfer learning
-        'n': 'equal',
-        'max_nfes': 'equal'
-    }
-
-    def __init__(
-        self,
-        problem: MTOP,
-        n: int = 100,
-        max_nfes: int = 10000,
-        rmp: float = 0.3,         # Random mating probability (key MT parameter)
-        save_data: bool = False,
-        save_path: str = './',
-        name: str = 'TemplateMultiTask',
-        disable_tqdm: bool = False,
-    ):
-        self.problem = problem
-        self.n_tasks = problem.n_tasks
-        self.dims = problem.dims
-        self.n_objs = problem.n_objs
-
-        self.n = n
-        self.max_nfes = max_nfes
-        self.rmp = rmp
-
-        self.save_data = save_data
-        self.save_path = save_path
-        self.name = name
-        self.disable_tqdm = disable_tqdm
-
-    def optimize(self):
-        """Run multi-task optimization."""
-        # Implementation for multi-task algorithm
-        # Handle multiple tasks, knowledge transfer, etc.
-        pass
-
-
-# =============================================================================
-# Surrogate-Assisted Algorithm Template
-# =============================================================================
-
-class TemplateSurrogateAlgorithm:
-    """
-    Template for surrogate-assisted (expensive) optimization algorithms.
-
-    For algorithms that use surrogate models (GP, RBF, etc.) to reduce
-    function evaluations.
-    """
-
-    algorithm_information = {
-        'n_tasks': '[1, K]',
-        'dims': 'unequal',
-        'objs': 'unequal',
-        'n_objs': '1',
-        'cons': 'equal',
-        'n_cons': '0',
-        'expensive': 'True',      # Uses surrogate model
-        'knowledge_transfer': 'False',
-        'n_initial': 'unequal',
-        'max_nfes': 'unequal'
-    }
-
-    def __init__(
-        self,
-        problem: MTOP,
-        n: int = 100,
-        n_initial: int = 50,      # Initial samples for surrogate
-        max_nfes: int = 200,      # Typically small for expensive problems
-        mode: str = 'ei',         # Acquisition function: 'ei', 'lcb', 'pi'
-        save_data: bool = False,
-        save_path: str = './',
-        name: str = 'TemplateSurrogate',
-        disable_tqdm: bool = False,
-    ):
-        self.problem = problem
-        self.n = n
-        self.n_initial = n_initial
-        self.max_nfes = max_nfes
-        self.mode = mode
-
-        self.save_data = save_data
-        self.save_path = save_path
-        self.name = name
-        self.disable_tqdm = disable_tqdm
-
-    def optimize(self):
-        """Run surrogate-assisted optimization."""
-        # Implementation using GP/RBF surrogate
-        pass
