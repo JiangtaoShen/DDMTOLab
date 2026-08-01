@@ -17,31 +17,6 @@ Version: 1.0
 import time
 from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper, the offspring are NOT clipped to
-    [0, 1] here. G-MFEA mates *translated* parents and subtracts the translation
-    vector again afterwards, so clipping may only happen once, at the very end
-    of Generation, exactly as in the MATLAB reference.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
 def _matlab_round(x):
     """Round half away from zero, matching MATLAB's ``round``."""
     return int(np.floor(np.abs(x) + 0.5) * np.sign(x))
@@ -108,9 +83,9 @@ class G_MFEA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'GMFEA_test')
+            Name for the experiment (default: 'G-MFEA')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -354,7 +329,7 @@ class G_MFEA:
 
             if sf1 == sf2:
                 # Same task: direct crossover
-                off_dec1, off_dec2 = _sbx_crossover_unclipped(pop_decs[p1], pop_decs[p2], self.muc)
+                off_dec1, off_dec2 = sbx_crossover_unclipped(pop_decs[p1], pop_decs[p2], self.muc)
                 # Random imitation: each child picks a parent independently
                 off_sfs[count, 0] = parent_sfs[np.random.randint(2)]
                 off_sfs[count + 1, 0] = parent_sfs[np.random.randint(2)]
@@ -364,7 +339,7 @@ class G_MFEA:
                 # search region, mate there, and translate the children back
                 t_dec1 = pop_decs[p1] + transfer[(sf1, sf2)]
                 t_dec2 = pop_decs[p2] + transfer[(sf2, sf1)]
-                off_dec1, off_dec2 = _sbx_crossover_unclipped(t_dec1, t_dec2, self.muc)
+                off_dec1, off_dec2 = sbx_crossover_unclipped(t_dec1, t_dec2, self.muc)
                 off_dec1 = off_dec1 - transfer[(sf1, sf2)]
                 off_dec2 = off_dec2 - transfer[(sf2, sf1)]
                 # Random imitation: each child picks a parent independently

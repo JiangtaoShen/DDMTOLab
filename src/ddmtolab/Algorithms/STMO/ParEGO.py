@@ -10,6 +10,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2025.01.10
 Version: 1.0
 """
@@ -49,7 +50,6 @@ class ParEGO:
         'expensive': 'True',
         'knowledge_transfer': 'False',
         'n_initial': 'unequal',
-        'n_weights': 'unequal',
         'max_nfes': 'unequal'
     }
 
@@ -80,9 +80,9 @@ class ParEGO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'ParEGO_test')
+            Name for the experiment (default: 'ParEGO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

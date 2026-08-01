@@ -18,6 +18,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.17
 Version: 1.0
 """
@@ -25,31 +26,11 @@ from tqdm import tqdm
 import time
 import torch
 import numpy as np
-from scipy.spatial.distance import cdist
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 from ddmtolab.Methods.Algo_Methods.bo_utils import gp_build, gp_predict
 import warnings
 
 warnings.filterwarnings("ignore")
-
-
-def _platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's ``TournamentSelection``.
-
-    Candidates are compared lexicographically on the given fitness keys (lower is
-    better, matching SPEA2 fitness). Solutions with identical fitness share the
-    same rank, so a tournament among tied candidates is decided by the (random)
-    draw order rather than deterministically by index.
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
 def _spea2_select(fitness, pop_obj, N, use_real_obj=None):
     """
     SPEA2 selection: prefer fitness < 1, fill/truncate to N.
@@ -440,7 +421,7 @@ class MGSAEA:
 
                     for w in range(self.wmax):
                         # SPEA2 fitness: LOWER is better, so it must not be negated
-                        mating_pool = _platemo_tournament_selection(2, NI, inner_fitness)
+                        mating_pool = platemo_tournament_selection(2, NI, inner_fitness)
                         off_decs = ga_generation(inner_decs[mating_pool], muc=20.0, mum=20.0)
                         inner_decs = np.vstack([inner_decs, off_decs])
 
@@ -518,7 +499,7 @@ class MGSAEA:
 
                     for w in range(self.wmax):
                         # SPEA2 fitness: LOWER is better, so it must not be negated
-                        mating_pool = _platemo_tournament_selection(2, NI, inner_fitness)
+                        mating_pool = platemo_tournament_selection(2, NI, inner_fitness)
                         off_decs = ga_generation(inner_decs[mating_pool], muc=20.0, mum=20.0)
                         inner_decs = np.vstack([inner_decs, off_decs])
 

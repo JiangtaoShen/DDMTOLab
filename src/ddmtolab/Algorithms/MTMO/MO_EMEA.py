@@ -20,70 +20,6 @@ import time
 import numpy as np
 from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
-    [0, 1]: the MATLAB reference clips only once at the end of ``Generation``,
-    after polynomial mutation has acted on the raw crossover output.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
-def _platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO / MToP ``TournamentSelection``.
-
-    Candidates are compared lexicographically on the given fitness keys (lower
-    is better) and solutions with identical keys share the same rank, so a
-    tournament between tied candidates is decided uniformly at random rather
-    than by index. Draws from the global NumPy RNG so that ``np.random.seed``
-    reproduces a run (the shared ``tournament_selection`` helper builds its own
-    ``default_rng`` and additionally breaks ties by index).
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
 def selection_spea2(objs, cons, n, epsilon=0.0):
     """
     Environmental selection of SPEA2 (MToP ``Selection_SPEA2``).
@@ -136,43 +72,6 @@ def selection_spea2(objs, cons, n, epsilon=0.0):
     order = np.argsort(fitness[index], kind='stable')
     index = index[order]
     return index, fitness[index]
-
-
-def nsga2_sort(objs, cons=None):
-    """
-    NSGA-II sorting (MToP ``NSGA2Sort``).
-
-    Parameters
-    ----------
-    objs : np.ndarray
-        Objective value matrix of shape (pop_size, n_obj)
-    cons : np.ndarray, optional
-        Constraint matrix of shape (pop_size, n_con) (default: None)
-
-    Returns
-    -------
-    rank : np.ndarray
-        rank[i] is the sorted position (0-based) of solution i
-    front_no : np.ndarray
-        Non-dominated front number of each solution
-    crowd_dis : np.ndarray
-        Crowding distance of each solution
-    """
-    pop_size = objs.shape[0]
-
-    if cons is not None and cons.size > 0:
-        front_no, _ = nd_sort(objs, cons, pop_size)
-    else:
-        front_no, _ = nd_sort(objs, pop_size)
-
-    crowd_dis = crowding_distance(objs, front_no)
-    order = np.lexsort((-crowd_dis, front_no))
-
-    rank = np.empty(pop_size, dtype=int)
-    rank[order] = np.arange(pop_size)
-    return rank, front_no, crowd_dis
-
-
 def mda(curr_pop, his_pop, his_best_solution):
     """
     Marginalized denoising autoencoder mapping (MToP ``mDA``).
@@ -383,7 +282,7 @@ class MO_EMEA:
                     continue
 
                 # 4.1 Binary tournament on the SPEA2 / NSGA-II fitness
-                mating_pool = _platemo_tournament_selection(2, n_per_task[t], fitness[t])
+                mating_pool = platemo_tournament_selection(2, n_per_task[t], fitness[t])
 
                 # 4.2 GA offspring. MO-EMEA pairs the mating pool
                 #     deterministically (i with i + floor(N/2)); the pool is
@@ -467,9 +366,9 @@ class MO_EMEA:
             p1 = parent_decs[i]
             p2 = parent_decs[i + half]
 
-            c1, c2 = _sbx_crossover_unclipped(p1, p2, self.mu_c)
-            c1 = _poly_mutation_unclipped(c1, self.mu_m)
-            c2 = _poly_mutation_unclipped(c2, self.mu_m)
+            c1, c2 = sbx_crossover_unclipped(p1, p2, self.mu_c)
+            c1 = poly_mutation_unclipped(c1, self.mu_m)
+            c2 = poly_mutation_unclipped(c2, self.mu_m)
 
             off_decs[count] = np.clip(c1, 0, 1)
             off_decs[count + 1] = np.clip(c2, 0, 1)

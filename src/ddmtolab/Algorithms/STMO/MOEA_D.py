@@ -75,9 +75,9 @@ class MOEA_D:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MOEAD_test')
+            Name for the experiment (default: 'MOEA-D')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -191,7 +191,7 @@ class MOEA_D:
         runtime = time.time() - start_time
 
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
-                                     bounds=problem.bounds, save_path=self.save_path,
+                                     all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 
         return results

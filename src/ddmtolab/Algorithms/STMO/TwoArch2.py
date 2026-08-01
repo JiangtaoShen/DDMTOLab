@@ -34,7 +34,7 @@ class TwoArch2:
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'unequal',
+        'cons': 'equal',
         'n_cons': '0',
         'expensive': 'False',
         'knowledge_transfer': 'False',
@@ -66,9 +66,9 @@ class TwoArch2:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'Two_Arch2_test')
+            Name for the experiment (default: 'Two_Arch2')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

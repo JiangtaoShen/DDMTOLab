@@ -66,9 +66,9 @@ class NSGA_II:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'NSGA-II_test')
+            Name for the experiment (default: 'NSGA-II')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -152,82 +152,3 @@ class NSGA_II:
                                      filename=self.name, save_data=self.save_data)
 
         return results
-
-
-def platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's TournamentSelection.
-
-    Candidates are compared lexicographically on the given fitness keys
-    (lower values are better). Solutions with identical fitness values share
-    the same rank, so a tournament among tied candidates is decided by the
-    (random) draw order, i.e. uniformly at random. This differs from ranking
-    with a composite total order, which would break ties deterministically.
-
-    Parameters
-    ----------
-    K : int
-        Tournament size
-    N : int
-        Number of parents to select
-    *fitness : np.ndarray
-        One or more fitness vectors of equal length (primary key first)
-
-    Returns
-    -------
-    index : np.ndarray
-        Indices of the selected parents, shape (N,)
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]
-
-
-def nsga2_sort(objs, cons=None):
-    """
-    Sort solutions based on NSGA-II criteria using non-dominated sorting and crowding distance.
-
-    Parameters
-    ----------
-    objs : np.ndarray
-        Objective value matrix of shape (pop_size, n_obj)
-    cons : np.ndarray, optional
-        Constraint matrix of shape (pop_size, n_con). If None, no constraints are considered (default: None)
-
-    Returns
-    -------
-    rank : np.ndarray
-        Ranking of each solution (0-based index after sorting) of shape (pop_size,).
-        rank[i] indicates the position of solution i in the sorted order
-    front_no : np.ndarray
-        Non-dominated front number of each solution of shape (pop_size,)
-    crowd_dis : np.ndarray
-        Crowding distance of each solution of shape (pop_size,)
-
-    Notes
-    -----
-    Solutions are sorted first by front number (ascending), then by crowding distance (descending).
-    Larger crowding distance values indicate better diversity preservation.
-    """
-    pop_size = objs.shape[0]
-
-    # Perform non-dominated sorting
-    if cons is not None:
-        front_no, _ = nd_sort(objs, cons, pop_size)
-    else:
-        front_no, _ = nd_sort(objs, pop_size)
-
-    # Calculate crowding distance for diversity preservation
-    crowd_dis = crowding_distance(objs, front_no)
-
-    # Sort by front number (ascending), then by crowding distance (descending)
-    sorted_indices = np.lexsort((-crowd_dis, front_no))
-
-    # Create rank array: rank[i] gives the sorted position of solution i
-    rank = np.empty(pop_size, dtype=int)
-    rank[sorted_indices] = np.arange(pop_size)
-
-    return rank, front_no, crowd_dis

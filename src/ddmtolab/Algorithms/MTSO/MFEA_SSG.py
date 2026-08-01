@@ -406,6 +406,10 @@ class MFEA_SSG:
             pass a value to switch to pure GA crossover after that generation.
         refine_freq : int, optional
             Refinement frequency tau for generative model (default: 1)
+        n_pairs_per_gen : int, optional
+            Number of parent pairs bred per generation; each pair costs one true
+            evaluation on the generative branch and two on the GA branch
+            (default: None, i.e. one pair per task)
         n_diffusion_steps : int, optional
             Number of diffusion timesteps N (default: 100)
         train_epochs : int, optional

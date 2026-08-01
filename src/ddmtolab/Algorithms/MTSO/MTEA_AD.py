@@ -20,51 +20,6 @@ from tqdm import tqdm
 import numpy as np
 from scipy.stats import multivariate_normal
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
-    [0, 1]: the MATLAB reference clips only once at the end of Generation,
-    after mutation and gene swapping have acted on the raw crossover output.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with prob 1/D per gene.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT
-    clip; the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
 class MTEA_AD:
     """
     Multi-task Evolutionary Algorithm with Adaptive Knowledge Transfer via Anomaly Detection.
@@ -117,9 +72,9 @@ class MTEA_AD:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MTEA_AD_test')
+            Name for the experiment (default: 'MTEA-AD')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -291,9 +246,9 @@ class MTEA_AD:
             p2 = population[ind_order[i + half], :]
 
             # Crossover then mutation, both unclipped
-            off1, off2 = _sbx_crossover_unclipped(p1, p2, self.muc)
-            off1 = _poly_mutation_unclipped(off1, self.mum)
-            off2 = _poly_mutation_unclipped(off2, self.mum)
+            off1, off2 = sbx_crossover_unclipped(p1, p2, self.muc)
+            off1 = poly_mutation_unclipped(off1, self.mum)
+            off2 = poly_mutation_unclipped(off2, self.mum)
 
             # Gene swapping
             swap_indicator = np.random.rand(d) < 0.5

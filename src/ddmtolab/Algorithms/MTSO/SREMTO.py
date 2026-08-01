@@ -18,30 +18,6 @@ import time
 import numpy as np
 from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper, the offspring are NOT clipped to
-    [0, 1] here: SREMTO applies its differential mutation to the raw crossover
-    output and clips only once, at the end of Generation.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
 class SREMTO:
     """
     Self-Regulated Evolutionary Multitask Optimization.
@@ -102,9 +78,9 @@ class SREMTO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'SREMTO_test')
+            Name for the experiment (default: 'SREMTO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -409,7 +385,7 @@ class SREMTO:
 
             if np.random.rand() < self.p_alpha:
                 # Crossover
-                off_dec1, off_dec2 = _sbx_crossover_unclipped(parent_decs[p1], parent_decs[p2], self.muc)
+                off_dec1, off_dec2 = sbx_crossover_unclipped(parent_decs[p1], parent_decs[p2], self.muc)
 
                 # Differential mutation towards the task incumbent; the reference draws
                 # an independent scaling factor for each of the two children

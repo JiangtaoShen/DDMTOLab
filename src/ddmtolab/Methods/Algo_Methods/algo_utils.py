@@ -22,8 +22,6 @@ class Results:
     """
     Container for optimization results.
 
-    :no-index:
-
     Attributes
     ----------
     best_decs : List[np.ndarray]
@@ -873,6 +871,123 @@ def ga_generation(parents: np.ndarray, muc: float, mum: float) -> np.ndarray:
     return offdecs
 
 
+def sbx_crossover_unclipped(par_dec1: np.ndarray, par_dec2: np.ndarray, mu: float) -> tuple[
+        np.ndarray, np.ndarray]:
+    """
+    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
+
+    Unlike :func:`crossover`, offspring are NOT clipped to [0, 1] here: the
+    MATLAB reference clips only once at the end of ``Generation``, after
+    mutation has acted on the raw crossover output.
+
+    Parameters
+    ----------
+    par_dec1 : np.ndarray
+        First parent decision vector, shape (d,)
+    par_dec2 : np.ndarray
+        Second parent decision vector, shape (d,)
+    mu : float
+        Distribution index for crossover
+
+    Returns
+    -------
+    off_dec1 : np.ndarray
+        First offspring decision vector, unclipped, shape (d,)
+    off_dec2 : np.ndarray
+        Second offspring decision vector, unclipped, shape (d,)
+    """
+    d = par_dec1.shape[0]
+    u = np.random.rand(d)
+    beta = np.zeros(d)
+    mask = u <= 0.5
+    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
+    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
+    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
+    beta[np.random.rand(d) < 0.5] = 1.0
+
+    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
+    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
+    return off_dec1, off_dec2
+
+
+def poly_mutation_unclipped(dec: np.ndarray, mu: float) -> np.ndarray:
+    """
+    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
+
+    Operates on the possibly out-of-bounds crossover output and does NOT clip;
+    the caller clips once afterwards, matching the MATLAB reference.
+
+    Parameters
+    ----------
+    dec : np.ndarray
+        Decision vector to mutate, shape (d,)
+    mu : float
+        Distribution index for mutation
+
+    Returns
+    -------
+    dec : np.ndarray
+        Mutated decision vector, unclipped, shape (d,)
+    """
+    d = dec.shape[0]
+    dec = dec.copy()
+    prob_m = 1 / d
+    # Out-of-bounds input can overflow the power terms; the resulting inf/nan is
+    # clipped by the caller, so only the warning is suppressed here
+    with np.errstate(over='ignore', invalid='ignore'):
+        for j in range(d):
+            if np.random.rand() < prob_m:
+                u = np.random.rand()
+                if u <= 0.5:
+                    delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
+                else:
+                    delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
+                dec[j] += delta
+    return dec
+
+
+def ga_generation_matlab(parents: np.ndarray, muc: float, mum: float) -> np.ndarray:
+    """
+    Offspring generation matching MTO-Platform ``GA.Generation`` exactly.
+
+    A random permutation is split in halves and parent i is paired with parent
+    i + floor(N/2) for i = 1..ceil(N/2); each pair yields two children (SBX then
+    polynomial mutation), and the single clip to [0, 1] happens only after
+    mutation. For odd N this produces N + 1 offspring (the middle permutation
+    index is used twice), exactly as in MATLAB.
+
+    Parameters
+    ----------
+    parents : np.ndarray
+        Parent population, shape (n, d)
+    muc : float
+        Distribution index for crossover
+    mum : float
+        Distribution index for mutation
+
+    Returns
+    -------
+    offdecs : np.ndarray
+        Offspring decision variables, shape (2 * ceil(n / 2), d)
+    """
+    n, d = parents.shape
+    order = np.random.permutation(n)
+    half = n // 2
+    n_pairs = int(np.ceil(n / 2))
+    offdecs = np.empty((2 * n_pairs, d))
+    count = 0
+    for i in range(n_pairs):
+        p1 = parents[order[i], :]
+        p2 = parents[order[i + half], :]
+        c1, c2 = sbx_crossover_unclipped(p1, p2, muc)
+        c1 = poly_mutation_unclipped(c1, mum)
+        c2 = poly_mutation_unclipped(c2, mum)
+        offdecs[count] = np.clip(c1, 0, 1)
+        offdecs[count + 1] = np.clip(c2, 0, 1)
+        count += 2
+    return offdecs
+
+
 def de_generation(parents: np.ndarray, F: float, CR: float) -> np.ndarray:
     """
     Generate offspring for a population using Differential Evolution (DE).
@@ -1230,6 +1345,88 @@ def crowding_distance(pop_obj: np.ndarray, front_no: Optional[np.ndarray] = None
                     )
 
     return crowd_dis
+
+
+def nsga2_sort(objs: np.ndarray, cons: Optional[np.ndarray] = None) -> Tuple[
+        np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Sort solutions by the NSGA-II criteria (PlatEMO/MToP ``NSGA2Sort``).
+
+    Parameters
+    ----------
+    objs : np.ndarray
+        Objective value matrix of shape (pop_size, n_obj)
+    cons : np.ndarray, optional
+        Constraint matrix of shape (pop_size, n_con). If None or empty, no
+        constraints are considered (default: None)
+
+    Returns
+    -------
+    rank : np.ndarray
+        Ranking of each solution (0-based index after sorting) of shape (pop_size,).
+        rank[i] indicates the position of solution i in the sorted order
+    front_no : np.ndarray
+        Non-dominated front number of each solution of shape (pop_size,)
+    crowd_dis : np.ndarray
+        Crowding distance of each solution of shape (pop_size,)
+
+    Notes
+    -----
+    Solutions are sorted first by front number (ascending), then by crowding
+    distance (descending). Larger crowding distance values indicate better
+    diversity preservation.
+    """
+    pop_size = objs.shape[0]
+
+    # Perform non-dominated sorting
+    if cons is not None and cons.size > 0:
+        front_no, _ = nd_sort(objs, cons, pop_size)
+    else:
+        front_no, _ = nd_sort(objs, pop_size)
+
+    # Calculate crowding distance for diversity preservation
+    crowd_dis = crowding_distance(objs, front_no)
+
+    # Sort by front number (ascending), then by crowding distance (descending)
+    sorted_indices = np.lexsort((-crowd_dis, front_no))
+
+    # Create rank array: rank[i] gives the sorted position of solution i
+    rank = np.empty(pop_size, dtype=int)
+    rank[sorted_indices] = np.arange(pop_size)
+
+    return rank, front_no, crowd_dis
+
+
+def platemo_tournament_selection(K: int, N: int, *fitness: np.ndarray) -> np.ndarray:
+    """
+    Exact port of PlatEMO's ``TournamentSelection``.
+
+    Candidates are compared lexicographically on the given fitness keys (lower
+    values are better). Solutions with identical fitness values share the same
+    rank, so a tournament among tied candidates is decided by the (random) draw
+    order, i.e. uniformly at random. This differs from ranking with a composite
+    total order, which would break ties deterministically.
+
+    Parameters
+    ----------
+    K : int
+        Tournament size
+    N : int
+        Number of parents to select
+    *fitness : np.ndarray
+        One or more fitness vectors of equal length (primary key first)
+
+    Returns
+    -------
+    index : np.ndarray
+        Indices of the selected parents, shape (N,)
+    """
+    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
+    _, loc = np.unique(fits, axis=0, return_inverse=True)
+    loc = loc.ravel()
+    parents = np.random.randint(0, fits.shape[0], size=(K, N))
+    best = np.argmin(loc[parents], axis=0)
+    return parents[best, np.arange(N)]
 
 
 def tournament_selection(

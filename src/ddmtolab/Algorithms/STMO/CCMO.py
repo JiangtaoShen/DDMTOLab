@@ -73,9 +73,9 @@ class CCMO:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'CCMO_test')
+            Name for the experiment (default: 'CCMO')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

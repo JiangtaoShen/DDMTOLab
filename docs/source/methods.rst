@@ -10,7 +10,7 @@ Batch Experiments
 
 .. code-block:: python
 
-    from Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
 
 The batch experiment module provides a complete framework for running multiple optimization algorithms on multiple benchmark problems, supporting parallel processing, automatic logging, and configuration management.
 
@@ -51,7 +51,7 @@ Use the ``add_problem`` method to add optimization problems:
 
 .. code-block:: python
 
-    from Problems.MTSO.cec17_mtso import CEC17MTSO
+    from ddmtolab.Problems.MTSO.cec17_mtso import CEC17MTSO
     cec17mtso = CEC17MTSO()
 
     # Add problems to batch experiment
@@ -71,9 +71,9 @@ Use the ``add_algorithm`` method to add optimization algorithms:
 
 .. code-block:: python
 
-    from Algorithms.STSO.GA import GA
-    from Algorithms.STSO.DE import DE
-    from Algorithms.STSO.PSO import PSO
+    from ddmtolab.Algorithms.STSO.GA import GA
+    from ddmtolab.Algorithms.STSO.DE import DE
+    from ddmtolab.Algorithms.STSO.PSO import PSO
 
     # Add algorithms with parameters
     batch_exp.add_algorithm(algorithm_class=GA, algorithm_name='GA',
@@ -215,7 +215,7 @@ Data Analysis
 
 .. code-block:: python
 
-    from Methods.data_analysis import DataAnalyzer
+    from ddmtolab.Methods.data_analysis import DataAnalyzer
 
 The data analysis module provides comprehensive analysis and visualization for optimization results, including metric calculation, statistical comparison tables, convergence curves, runtime analysis, Pareto front visualization, etc.
 
@@ -299,7 +299,7 @@ Complete Analysis Pipeline
 
 .. code-block:: python
 
-    from Methods.data_analysis import DataAnalyzer
+    from ddmtolab.Methods.data_analysis import DataAnalyzer
 
     # Create analyzer instance (settings optional for SO)
     analyzer = DataAnalyzer()
@@ -401,7 +401,7 @@ The system supports three types of reference definitions:
 
 .. code-block:: python
 
-   from Methods.data_utils import DataUtils
+   from ddmtolab.Methods.data_analysis import DataUtils
 
    reference = DataUtils.load_reference(
        settings=SETTINGS,
@@ -429,7 +429,7 @@ Most common for benchmark problems:
 
 .. code-block:: python
 
-   from Methods.Algo_Methods.uniform_point import uniform_point
+   from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
 
    # Define reference generation function
    def DTLZ1_PF(N, M):
@@ -614,9 +614,9 @@ Test Data Analysis
 
 .. code-block:: python
 
-    from Methods.test_data_analysis import TestDataAnalyzer
+    from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 
-The ``TestDataAnalyzer`` is a lightweight version of ``DataAnalyzer`` for quickly analyzing single test runs. It directly reads files with ``_test.pkl`` suffix without statistical tests or multi-run aggregation, suitable for algorithm development and debugging.
+The ``TestDataAnalyzer`` is a lightweight version of ``DataAnalyzer`` for quickly analyzing single test runs. It directly reads the ``.pkl`` files written by a single run, without statistical tests or multi-run aggregation, suitable for algorithm development and debugging.
 
 Module Features
 ~~~~~~~~~~~~~~~
@@ -633,17 +633,17 @@ Class Initialization
 .. code-block:: python
 
     analyzer = TestDataAnalyzer(
-        data_path='./TestData',          # Test data directory
+        data_path='./Data',              # Test data directory
         settings=None,                   # Problem settings (for MO)
         algorithm_order=None,            # Algorithm display order
-        save_path='./TestResults',       # Results save path
+        save_path='./Results',           # Results save path
         figure_format='pdf',             # Figure format
         log_scale=False,                 # Log scale
         show_pf=True,                    # Show true Pareto front
         show_nd=True,                    # Show only non-dominated
         best_so_far=True,                # Use best-so-far values
         clear_results=True,              # Clear results folder
-        file_suffix='_test.pkl'          # Test file suffix
+        file_suffix='.pkl'               # Result file suffix
     )
 
 Basic Usage
@@ -651,11 +651,11 @@ Basic Usage
 
 .. code-block:: python
 
-    from Methods.test_data_analysis import TestDataAnalyzer
+    from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 
     # Create analyzer (settings optional for SO)
-    analyzer = TestDataAnalyzer(data_path='./TestData',
-                               save_path='./TestResults')
+    analyzer = TestDataAnalyzer(data_path='./Data',
+                               save_path='./Results')
 
     # Execute complete analysis
     results = analyzer.run()
@@ -665,15 +665,14 @@ Output Structure
 
 .. code-block:: text
 
-    ./TestResults/
-    ├── test_results_table.tex           # Results comparison table
-    ├── convergence_summary_table.tex    # Convergence summary table
-    ├── Task1_convergence.pdf            # Task1 convergence
-    ├── Task2_convergence.pdf            # Task2 convergence (if any)
+    ./Results/
+    ├── test_results.xlsx                # Results comparison table
+    ├── P1-Task1_convergence.pdf         # Task 1 convergence
+    ├── P1-Task2_convergence.pdf         # Task 2 convergence (if any)
     ├── runtime_comparison.pdf           # Runtime comparison
     └── ND_Solutions/                    # Non-dominated solutions
-        ├── Task1-GA.pdf
-        ├── Task1-DE.pdf
+        ├── P1-Task1-GA.pdf
+        ├── P1-Task1-DE.pdf
         └── ...
 
 Comparison with DataAnalyzer
@@ -687,7 +686,7 @@ Comparison with DataAnalyzer
      - TestDataAnalyzer
      - DataAnalyzer
    * - Data Source
-     - Single test files (``*_test.pkl``)
+     - Single-run files (``*.pkl``) in one directory
      - Multiple repeated experiments
    * - File Structure
      - Direct test files in directory
@@ -696,7 +695,7 @@ Comparison with DataAnalyzer
      - No statistical tests
      - Wilcoxon rank-sum test
    * - Table Format
-     - LaTeX only
+     - Excel (``test_results.xlsx``)
      - Excel and LaTeX
    * - Use Case
      - Development and quick validation
@@ -707,7 +706,7 @@ Problem Definition (MTOP)
 
 .. code-block:: python
 
-    from Methods.mtop import MTOP
+    from ddmtolab.Methods.mtop import MTOP
 
 The ``MTOP`` (Multitask Optimization Problem) class provides a unified interface for defining single-task and multitask optimization problems with support for objectives, constraints, and variable bounds.
 
@@ -836,7 +835,7 @@ Animation Generator
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator, create_optimization_animation
+    from ddmtolab.Methods.animation_generator import AnimationGenerator, create_optimization_animation
 
 The animation generator module provides comprehensive visualization tools for optimization processes, supporting both single-objective and multiobjective optimization with multiple comparison modes.
 
@@ -877,7 +876,7 @@ Quick Start
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator
+    from ddmtolab.Methods.animation_generator import AnimationGenerator
 
     # Create generator and run
     generator = AnimationGenerator(data_path='./Data', save_path='./Results')
@@ -887,7 +886,7 @@ Quick Start
 
 .. code-block:: python
 
-    from Methods.animation_generator import create_optimization_animation
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Generate animation for a single result file
     create_optimization_animation(
@@ -995,7 +994,7 @@ Instantiate the ``AnimationGenerator`` class for batch processing:
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator
+    from ddmtolab.Methods.animation_generator import AnimationGenerator
 
     generator = AnimationGenerator(
         data_path='./Data',           # Directory containing .pkl files
@@ -1152,10 +1151,10 @@ Batch Processing
 
 .. code-block:: python
 
-    # Scan ./TestData and save to ./TestResults
+    # Scan ./Data and save to ./Results
     results = create_optimization_animation(
-        data_path='./TestData',
-        save_path='./TestResults',
+        data_path='./Data',
+        save_path='./Results',
         max_nfes=10000,
         fps=10,
         dpi=100
@@ -1199,7 +1198,7 @@ Complete Example
 
 .. code-block:: python
 
-    from Methods.optimization_animator import create_optimization_animation
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Individual animations
     create_optimization_animation(
@@ -1248,22 +1247,16 @@ Complete Example
 Command Line Usage
 ~~~~~~~~~~~~~~~~~~
 
-The animation generator can be used from the command line:
+Running the module directly executes a demo that scans ``./Data`` and writes GIFs to
+``./Results`` with the default settings. It takes no positional arguments:
 
 .. code-block:: bash
 
-    # Single file
-    python -m Methods.optimization_animator results.pkl output.gif 10 100
+    python -m ddmtolab.Methods.animation_generator
 
-    # Auto-scan mode (no arguments)
-    python -m Methods.optimization_animator
-
-**Arguments:**
-
-1. ``pkl_file``: Path to .pkl file
-2. ``output_file``: Output path (optional)
-3. ``fps``: Frames per second (optional, default: 10)
-4. ``dpi``: Resolution (optional, default: 100)
+To control the data path, output format, frame rate or resolution, call
+``create_optimization_animation`` (or construct ``AnimationGenerator``) from Python as
+shown above.
 
 Output Structure
 ~~~~~~~~~~~~~~~~
@@ -1300,8 +1293,8 @@ Console Output Example
     ======================================================================
     Optimization Animation Generator
     ======================================================================
-    Data path: ./TestData
-    Save path: ./TestResults
+    Data path: ./Data
+    Save path: ./Results
     Found 4 result files
     Animation params: FPS=10, DPI=100, Interval=100ms, Format=GIF
     Max NFEs: [5000, 10000]
@@ -1313,14 +1306,14 @@ Console Output Example
     Original algorithms: ['BO-LCB-BCKT', 'BO', 'MTBO', 'RAMTEA']
     Ordered algorithms: ['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT']
     Generating animation... (this may take a while)
-    Animation saved to: ./TestResults/test_animation.gif
+    Animation saved to: ./Results/test_animation.gif
       ✓ Success
 
     ======================================================================
     Processing Complete!
     Merged animation: Success
     ======================================================================
-    Animations saved to: ./TestResults
+    Animations saved to: ./Results
     ======================================================================
 
 Best Practices
@@ -1361,8 +1354,8 @@ Combine with ``BatchExperiment`` for complete workflow:
 
 .. code-block:: python
 
-    from Methods.batch_experiment import BatchExperiment
-    from Methods.optimization_animator import create_optimization_animation
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Step 1: Run batch experiments
     batch_exp = BatchExperiment(base_path='./Data')
@@ -1424,7 +1417,7 @@ Performance Metrics
 
 .. code-block:: python
 
-    from Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spacing, Spread
+    from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spacing, Spread
 
 The performance metrics module provides comprehensive implementations of optimization algorithm evaluation metrics with a unified interface design.
 
@@ -1506,7 +1499,7 @@ Usage Examples
 
 .. code-block:: python
 
-    from Methods.metrics import IGD, HV, GD, IGDp, DeltaP, Spacing, Spread
+    from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, DeltaP, Spacing, Spread
     import numpy as np
 
     # Obtained solutions and true Pareto front
@@ -1546,7 +1539,7 @@ Usage Examples
 
 .. code-block:: python
 
-    from Methods.metrics import FR, CV
+    from ddmtolab.Methods.metrics import FR, CV
     import numpy as np
 
     # Constraint values (n_solutions x n_constraints)
@@ -1574,7 +1567,7 @@ Algorithm Utilities
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.algo_utils import *
+    from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 The algorithm utilities module provides a complete toolkit for building optimization algorithms, including population initialization, evaluation, selection, mutation, crossover, and auxiliary functions.
 
@@ -1634,7 +1627,7 @@ Bayesian Optimization Utilities
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.bo_utils import *
+    from ddmtolab.Methods.Algo_Methods.bo_utils import *
 
 The BO utilities module provides core Bayesian optimization functionalities based on BoTorch and GPyTorch, including single-task and multitask Gaussian process modeling.
 
@@ -1664,7 +1657,7 @@ Similarity Evaluation
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.sim_evaluation import *
+    from ddmtolab.Methods.Algo_Methods.sim_evaluation import *
 
 The similarity evaluation module computes inter-task similarity for knowledge transfer decisions.
 
@@ -1682,7 +1675,7 @@ Uniform Point Generation
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.uniform_point import *
+    from ddmtolab.Methods.Algo_Methods.uniform_point import *
 
 The uniform point generation module provides various methods for generating uniformly distributed points for multiobjective optimization and decision space sampling.
 

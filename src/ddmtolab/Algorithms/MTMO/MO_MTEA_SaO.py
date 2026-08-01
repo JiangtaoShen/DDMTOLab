@@ -18,51 +18,6 @@ import time
 import numpy as np
 from tqdm import tqdm
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
-    [0, 1]: the MATLAB reference clips only once at the end of
-    ``Generation_GA``, after mutation has acted on the raw crossover output.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
 class MO_MTEA_SaO:
     """
     Multi-objective Multi-task Evolutionary Algorithm with Self-adaptive Solvers.
@@ -404,7 +359,7 @@ class MO_MTEA_SaO:
         if pop_size <= 1:
             off_decs = np.empty((pop_size, dim))
             for i in range(pop_size):
-                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+                off_decs[i] = poly_mutation_unclipped(parent_decs[i], self.ga_mum)
             return off_decs
 
         order = np.random.permutation(pop_size)
@@ -417,9 +372,9 @@ class MO_MTEA_SaO:
             p1 = parent_decs[order[i]]
             p2 = parent_decs[order[i + half]]
 
-            c1, c2 = _sbx_crossover_unclipped(p1, p2, self.ga_muc)
-            c1 = _poly_mutation_unclipped(c1, self.ga_mum)
-            c2 = _poly_mutation_unclipped(c2, self.ga_mum)
+            c1, c2 = sbx_crossover_unclipped(p1, p2, self.ga_muc)
+            c1 = poly_mutation_unclipped(c1, self.ga_mum)
+            c2 = poly_mutation_unclipped(c2, self.ga_mum)
 
             off_decs[count] = np.clip(c1, 0, 1)
             off_decs[count + 1] = np.clip(c2, 0, 1)
@@ -449,7 +404,7 @@ class MO_MTEA_SaO:
         if pop_size < 4:
             off_decs = np.empty((pop_size, dim))
             for i in range(pop_size):
-                off_decs[i] = _poly_mutation_unclipped(parent_decs[i], self.ga_mum)
+                off_decs[i] = poly_mutation_unclipped(parent_decs[i], self.ga_mum)
             return off_decs
 
         off_decs = np.empty((pop_size, dim))

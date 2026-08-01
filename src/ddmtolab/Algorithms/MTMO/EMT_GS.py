@@ -20,7 +20,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F_nn
 from tqdm import tqdm
-from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 # MATLAB's ``eps`` used inside the GAN log-losses

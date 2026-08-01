@@ -54,8 +54,8 @@ class BO_LCB_BCKT:
         return get_algorithm_information(cls, print_info)
 
     def __init__(self, problem, n_initial=None, max_nfes=None, gen_gap=10,
-                 sigma_I_sq=0.05 ** 2, save_data=True, save_path='./Data',
-                 name='BO-LCB-BCKT', disable_tqdm=True, padding='zero'):
+                 sigma_I_sq=0.05 ** 2, padding='zero', save_data=True,
+                 save_path='./Data', name='BO-LCB-BCKT', disable_tqdm=True):
         """
         Initialize BO-LCB-BCKT algorithm.
 
@@ -78,6 +78,8 @@ class BO_LCB_BCKT:
         sigma_I_sq : float, optional
             Observation variance of the similarity measurements in the
             conjugate Gaussian model of transferability (default: 0.05**2)
+        padding : str, optional
+            Padding mode for the unified search space (default: 'zero')
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -86,8 +88,6 @@ class BO_LCB_BCKT:
             Name for the experiment (default: 'BO-LCB-BCKT')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
-        padding : str, optional
-            Padding mode for the unified search space (default: 'zero')
         """
         self.problem = problem
         self.n_initial = n_initial if n_initial is not None else 50
@@ -103,6 +103,14 @@ class BO_LCB_BCKT:
         self.d_max = np.max(problem.dims)
 
     def optimize(self):
+        """
+        Execute the BO-LCB-BCKT algorithm.
+
+        Returns
+        -------
+        Results
+            Optimization results containing decision variables, objectives, and runtime
+        """
         data_type = torch.float
         start_time = time.time()
         problem = self.problem

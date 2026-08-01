@@ -1313,7 +1313,7 @@ Algorithm Utilities
 ~~~~~~~~~~~~~~~~~~~
 
 .. automodule:: ddmtolab.Methods.Algo_Methods.algo_utils
-   :members: Results, initialization, evaluation, nd_sort, crowding_distance, tournament_selection, ga_generation, de_generation, init_history, append_history, build_save_results, rbf_build, rbf_predict, dsmerge, merge_archive, spea2_fitness, spea2_truncation, spea2_truncation_fast, reorganize_initial_data
+   :members:
    :undoc-members:
 
 Bayesian Optimization Utilities

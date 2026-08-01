@@ -18,81 +18,7 @@ import time
 from tqdm import tqdm
 from scipy.stats import norm
 from scipy.optimize import minimize_scalar
-from ddmtolab.Algorithms.STMO.NSGA_II import nsga2_sort, platemo_tournament_selection
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform ``GA_Crossover``).
-
-    Unlike the shared ``crossover`` helper the offspring are NOT clipped to
-    [0, 1] here: the MATLAB reference clips once at the end of ``Generation``,
-    after mutation and variable swap have acted on the raw crossover output.
-
-    Parameters
-    ----------
-    par_dec1 : np.ndarray
-        First parent decision vector, shape (d,)
-    par_dec2 : np.ndarray
-        Second parent decision vector, shape (d,)
-    mu : float
-        Distribution index for the crossover
-
-    Returns
-    -------
-    off_dec1 : np.ndarray
-        First offspring decision vector, shape (d,)
-    off_dec2 : np.ndarray
-        Second offspring decision vector, shape (d,)
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT clip;
-    the caller clips once afterwards, matching the MATLAB reference.
-
-    Parameters
-    ----------
-    dec : np.ndarray
-        Decision vector to mutate, shape (d,)
-    mu : float
-        Distribution index for the mutation
-
-    Returns
-    -------
-    dec : np.ndarray
-        Mutated decision vector, shape (d,)
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
 class MO_MFEA_II:
     """
     Multiobjective Multifactorial Evolutionary Algorithm With Online Transfer Parameter Estimation.
@@ -288,10 +214,10 @@ class MO_MFEA_II:
 
             if sf1 == sf2 or np.random.rand() < rmp:
                 # Crossover
-                off_dec1, off_dec2 = _sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
+                off_dec1, off_dec2 = sbx_crossover_unclipped(par_decs[p1, :], par_decs[p2, :], self.muc)
                 # Mutation
-                off_dec1 = _poly_mutation_unclipped(off_dec1, self.mum)
-                off_dec2 = _poly_mutation_unclipped(off_dec2, self.mum)
+                off_dec1 = poly_mutation_unclipped(off_dec1, self.mum)
+                off_dec2 = poly_mutation_unclipped(off_dec2, self.mum)
                 # Variable swap (uniform crossover between the two children)
                 swap_indicator = np.random.rand(d) >= self.swap
                 temp = off_dec2[swap_indicator].copy()
@@ -313,10 +239,10 @@ class MO_MFEA_II:
                     while idx == p and find_idx.shape[0] > 1:
                         idx = find_idx[np.random.randint(find_idx.shape[0])]
                     # Crossover
-                    child, temp_child = _sbx_crossover_unclipped(par_decs[p, :], par_decs[idx, :], self.muc)
+                    child, temp_child = sbx_crossover_unclipped(par_decs[p, :], par_decs[idx, :], self.muc)
                     # Mutation
-                    child = _poly_mutation_unclipped(child, self.mum)
-                    temp_child = _poly_mutation_unclipped(temp_child, self.mum)
+                    child = poly_mutation_unclipped(child, self.mum)
+                    temp_child = poly_mutation_unclipped(temp_child, self.mum)
                     # Variable swap (uniform crossover, one directional)
                     swap_indicator = np.random.rand(d) >= self.swap
                     child[swap_indicator] = temp_child[swap_indicator]

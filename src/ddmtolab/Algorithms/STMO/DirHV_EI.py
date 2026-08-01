@@ -12,6 +12,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.16
 Version: 1.0
 """
@@ -23,7 +24,7 @@ from scipy.stats import norm
 from scipy.stats import qmc
 from scipy.spatial.distance import pdist, squareform
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-from ddmtolab.Methods.Algo_Methods.bo_utils import mo_gp_build, mo_gp_predict
+from ddmtolab.Methods.Algo_Methods.bo_utils import mo_gp_build
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
 import warnings
 

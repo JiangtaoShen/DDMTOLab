@@ -228,9 +228,9 @@ class LCB_EMT:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'LCBEMT_test')
+            Name for the experiment (default: 'LCB-EMT')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

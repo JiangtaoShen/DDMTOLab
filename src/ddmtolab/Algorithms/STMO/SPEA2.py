@@ -69,9 +69,9 @@ class SPEA2:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'SPEA2_test')
+            Name for the experiment (default: 'SPEA2')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

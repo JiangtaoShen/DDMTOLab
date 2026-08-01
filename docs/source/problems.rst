@@ -555,7 +555,7 @@ Single-Task Single-Objective (STSO)
      - 1
      - 50 (configurable)
      - 1 / 0
-     - Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Sphere, Weierstrass (P1-P8)
+     - Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Schwefel 2.22, Sphere, Weierstrass (P1-P9)
    * - ``CEC10CSO``
      - 1
      - 1000 (configurable)
@@ -568,8 +568,8 @@ Single-Task Single-Objective (STSO)
 
    from ddmtolab.Problems.STSO.classical_so import CLASSICALSO
 
-   problem_suite = CLASSICALSO(dim=30)
-   problem = problem_suite.P1()  # Ackley function
+   problem_suite = CLASSICALSO()
+   problem = problem_suite.P1(D=30)  # Ackley function
 
 Single-Task Multiobjective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

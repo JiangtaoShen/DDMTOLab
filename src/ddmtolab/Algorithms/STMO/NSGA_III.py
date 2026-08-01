@@ -69,9 +69,9 @@ class NSGA_III:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'NSGA-III_test')
+            Name for the experiment (default: 'NSGA-III')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -343,36 +343,3 @@ class NSGA_III:
                 Zchoose[j] = False
 
         return Choose
-
-
-def platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's TournamentSelection.
-
-    Candidates are compared lexicographically on the given fitness keys
-    (lower values are better). Solutions with identical fitness values share
-    the same rank, so a tournament among tied candidates is decided by the
-    (random) draw order, i.e. uniformly at random. In particular, when all
-    fitness values are equal (e.g. all-zero constraint violations), mating
-    selection is uniformly random, as in PlatEMO.
-
-    Parameters
-    ----------
-    K : int
-        Tournament size
-    N : int
-        Number of parents to select
-    *fitness : np.ndarray
-        One or more fitness vectors of equal length (primary key first)
-
-    Returns
-    -------
-    index : np.ndarray
-        Indices of the selected parents, shape (N,)
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]

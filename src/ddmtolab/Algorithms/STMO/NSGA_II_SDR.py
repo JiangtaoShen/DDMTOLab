@@ -35,8 +35,8 @@ class NSGA_II_SDR:
         'dims': 'unequal',
         'objs': 'unequal',
         'n_objs': '[2, M]',
-        'cons': 'unequal',
-        'n_cons': '[0, C]',
+        'cons': 'equal',
+        'n_cons': '0',
         'expensive': 'False',
         'knowledge_transfer': 'False',
         'n': 'unequal',
@@ -67,9 +67,9 @@ class NSGA_II_SDR:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'NSGA-II-SDR_test')
+            Name for the experiment (default: 'NSGA-II-SDR')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -90,7 +90,7 @@ class NSGA_II_SDR:
         Returns
         -------
         Results
-            Optimization results containing decision variables, objectives, constraints, and runtime
+            Optimization results containing decision variables, objectives, and runtime
         """
         start_time = time.time()
         problem = self.problem
@@ -326,35 +326,3 @@ def nd_sort_sdr(pop_obj: np.ndarray, n_sort: int) -> Tuple[np.ndarray, int]:
     normalized = (pop_obj - obj_min) / obj_range
 
     return sdr_sort_core(normalized, n_sort)
-
-
-def platemo_tournament_selection(K, N, *fitness):
-    """
-    Exact port of PlatEMO's TournamentSelection.
-
-    Candidates are compared lexicographically on the given fitness keys
-    (lower values are better). Solutions with identical fitness values share
-    the same rank, so a tournament among tied candidates is decided by the
-    (random) draw order, i.e. uniformly at random. This differs from ranking
-    with a composite total order, which would break ties deterministically.
-
-    Parameters
-    ----------
-    K : int
-        Tournament size
-    N : int
-        Number of parents to select
-    *fitness : np.ndarray
-        One or more fitness vectors of equal length (primary key first)
-
-    Returns
-    -------
-    index : np.ndarray
-        Indices of the selected parents, shape (N,)
-    """
-    fits = np.column_stack([np.asarray(f, dtype=float).ravel() for f in fitness])
-    _, loc = np.unique(fits, axis=0, return_inverse=True)
-    loc = loc.ravel()
-    parents = np.random.randint(0, fits.shape[0], size=(K, N))
-    best = np.argmin(loc[parents], axis=0)
-    return parents[best, np.arange(N)]

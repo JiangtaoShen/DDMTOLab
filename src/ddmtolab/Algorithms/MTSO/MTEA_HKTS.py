@@ -14,6 +14,7 @@ References
 Notes
 -----
 Author: Jiangtao Shen (DDMTOLab adaptation)
+Email: j.shen5@exeter.ac.uk
 Date: 2026.02.22
 Version: 1.0
 """

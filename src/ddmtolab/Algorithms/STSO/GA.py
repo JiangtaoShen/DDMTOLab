@@ -20,80 +20,6 @@ from tqdm import tqdm
 import time
 import numpy as np
 from ddmtolab.Methods.Algo_Methods.algo_utils import *
-
-
-def _sbx_crossover_unclipped(par_dec1, par_dec2, mu):
-    """
-    Simulated binary crossover (MTO-Platform GA_Crossover).
-
-    Unlike the shared ``crossover`` helper, offspring are NOT clipped to
-    [0, 1] here: the MATLAB reference clips only once at the end of
-    Generation, after mutation has acted on the raw crossover output.
-    """
-    d = par_dec1.shape[0]
-    u = np.random.rand(d)
-    beta = np.zeros(d)
-    mask = u <= 0.5
-    beta[mask] = (2 * u[mask]) ** (1 / (mu + 1))
-    beta[~mask] = (2 * (1 - u[~mask])) ** (-1 / (mu + 1))
-    beta *= (-1.0) ** np.random.randint(0, 2, size=d)
-    beta[np.random.rand(d) < 0.5] = 1.0
-
-    off_dec1 = 0.5 * ((1 + beta) * par_dec1 + (1 - beta) * par_dec2)
-    off_dec2 = 0.5 * ((1 + beta) * par_dec2 + (1 - beta) * par_dec1)
-    return off_dec1, off_dec2
-
-
-def _poly_mutation_unclipped(dec, mu):
-    """
-    Polynomial mutation (MTO-Platform GA_Mutation) with prob 1/D per gene.
-
-    Operates on the possibly out-of-bounds crossover output and does NOT
-    clip; the caller clips once afterwards, matching the MATLAB reference.
-    """
-    d = dec.shape[0]
-    dec = dec.copy()
-    prob_m = 1 / d
-    for j in range(d):
-        if np.random.rand() < prob_m:
-            u = np.random.rand()
-            if u <= 0.5:
-                delta = (2 * u + (1 - 2 * u) * (1 - dec[j]) ** (mu + 1)) ** (1 / (mu + 1)) - 1
-            else:
-                delta = 1 - (2 * (1 - u) + 2 * (u - 0.5) * dec[j] ** (mu + 1)) ** (1 / (mu + 1))
-            dec[j] += delta
-    return dec
-
-
-def _ga_generation_matlab(parents, muc, mum):
-    """
-    Offspring generation matching MTO-Platform GA.Generation exactly.
-
-    A random permutation is split in halves and parent i is paired with
-    parent i + floor(N/2) for i = 1..ceil(N/2); each pair yields two
-    children (SBX then polynomial mutation), and the single clip to
-    [0, 1] happens only after mutation. For odd N this produces N + 1
-    offspring (the middle permutation index is used twice), exactly as
-    in MATLAB.
-    """
-    n, d = parents.shape
-    order = np.random.permutation(n)
-    half = n // 2
-    n_pairs = int(np.ceil(n / 2))
-    offdecs = np.empty((2 * n_pairs, d))
-    count = 0
-    for i in range(n_pairs):
-        p1 = parents[order[i], :]
-        p2 = parents[order[i + half], :]
-        c1, c2 = _sbx_crossover_unclipped(p1, p2, muc)
-        c1 = _poly_mutation_unclipped(c1, mum)
-        c2 = _poly_mutation_unclipped(c2, mum)
-        offdecs[count] = np.clip(c1, 0, 1)
-        offdecs[count + 1] = np.clip(c2, 0, 1)
-        count += 2
-    return offdecs
-
-
 class GA:
     """
     Genetic Algorithm for single-objective optimization.
@@ -141,9 +67,9 @@ class GA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'GA_test')
+            Name for the experiment (default: 'GA')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
@@ -190,7 +116,7 @@ class GA:
 
             for i in active_tasks:
                 # Generate offspring through crossover and mutation
-                off_decs = _ga_generation_matlab(decs[i], self.muc, self.mum)
+                off_decs = ga_generation_matlab(decs[i], self.muc, self.mum)
                 off_objs, off_cons = evaluation_single(problem, off_decs, i)
                 n_off = off_decs.shape[0]
 

@@ -67,9 +67,9 @@ class IPOP_CMA_ES:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'IPOP_CMA_ES_test')
+            Name for the experiment (default: 'IPOP-CMA-ES')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """

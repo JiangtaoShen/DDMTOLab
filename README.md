@@ -171,7 +171,7 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 
 | Category | Problem Suites |
 |----------|----------------|
-| **STSO** | CLASSICALSO (8 functions), CEC10_CSO (20 functions) |
+| **STSO** | CLASSICALSO (9 functions), CEC10_CSO (20 functions) |
 | **STMO** | ZDT (6), DTLZ (9), WFG (9), UF (10), CF (10), MW (14) |
 | **MTSO** | CEC17MTSO (9), CEC17MTSO_10D (9), CEC19MaTSO (many-task), CMT (9), STOP (12), ManyTask_10D (4) |
 | **MTMO** | CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (many-task), CEC21MTMO (10), MTMO_DTLZ, MTMOInstances |

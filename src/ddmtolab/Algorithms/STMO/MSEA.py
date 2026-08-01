@@ -9,8 +9,8 @@ References
 
 Notes
 -----
-Author: [Your Name]
-Email: [Your Email]
+Author: Jiangtao Shen
+Email: j.shen5@exeter.ac.uk
 Date: 2025.12.12
 Version: 1.0
 """
@@ -68,9 +68,9 @@ class MSEA:
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
-            Path to save results (default: './TestData')
+            Path to save results (default: './Data')
         name : str, optional
-            Name for the experiment (default: 'MSEA_test')
+            Name for the experiment (default: 'MSEA')
         disable_tqdm : bool, optional
             Whether to disable progress bar (default: True)
         """
