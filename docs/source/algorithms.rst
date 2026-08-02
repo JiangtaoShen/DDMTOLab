@@ -776,6 +776,8 @@ Multitask multiobjective evolutionary algorithms with knowledge transfer.
      - Description
    * - ``ParEGO_KT``
      - ParEGO with Knowledge Transfer
+   * - ``SAEA_AKT``
+     - Surrogate-Assisted EA with Adaptive Knowledge Transfer
 
 See Also
 --------

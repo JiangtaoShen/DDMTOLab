@@ -1085,6 +1085,16 @@ Multitask Multiobjective (MTMO)
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+.. automodule:: ddmtolab.Algorithms.MTMO.SAEA_AKT
+   :no-members:
+
+.. autoclass:: ddmtolab.Algorithms.MTMO.SAEA_AKT.SAEA_AKT
+   :members: optimize
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
 .. automodule:: ddmtolab.Algorithms.MTMO.EMT_GS
    :no-members:
 

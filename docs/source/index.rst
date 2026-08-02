@@ -168,7 +168,7 @@ Algorithms (110+)
      - MO_MFEA, MO_MFEA_II, MO_EMEA, MO_MTEA_SaO, MTDE_MKTA, MTEA_D_DN, EMT_ET, EMT_PD, EMT_GS, MO_MTEA_PAE, MO_SBO, MTEA_D_TSD, MTEA_DCK
    * - **MTMO**
      - Expensive
-     - ParEGO_KT
+     - ParEGO_KT, SAEA_AKT
 
 Problems (180+)
 ^^^^^^^^^^^^^^^
