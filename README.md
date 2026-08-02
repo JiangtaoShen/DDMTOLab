@@ -28,8 +28,8 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
-- **2026-08-03** — Added SAEA-AKT, the first surrogate-assisted algorithm for expensive multitask multiobjective optimization.
-- **2026-07-23** — Aligned seven surrogate-assisted single-task algorithms (TLRBF, GL-SADE, AutoSAEA, DDEA-MESS, LSADE, SHPSO, SA-COSO) with their MATLAB reference implementations; added shared `newrbe`/`newrb` RBF surrogates.
+- **2026-08-03** — Verified and validated an expensive multitask multiobjective optimization algorithm (SAEA-AKT).
+- **2026-07-23** — Verified and validated several surrogate-assisted single-task algorithms (TLRBF, GL-SADE, AutoSAEA, DDEA-MESS, LSADE, SHPSO, SA-COSO).
 - **2026-07-19** — Verified and validated several expensive multitask optimization algorithms (MFEA-SSG, BO-LCB-CKT, BO-LCB-BCKT, MUMBO, SELF, EEI-BO / EEI-BO+, SaEF-AKT, RAMTEA, LCB-EMT).
 
 ## 📖 Overview

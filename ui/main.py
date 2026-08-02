@@ -1,5 +1,6 @@
 """DDMTOLab UI - Main entry point."""
 
+import re
 import sys
 from pathlib import Path
 
@@ -124,7 +125,13 @@ def _load_logo(parent):
             continue
         try:
             import cairosvg
-            png_data = cairosvg.svg2png(url=str(svg_logo), scale=3)
+            # The exported SVGs carry a baked-in "DDMTOLab" wordmark. The header
+            # draws its own D²MTOLab wordmark next to the mark, so strip any text
+            # from the asset first; otherwise both appear side by side. The PNG
+            # fallback is already mark-only, so this keeps the two paths identical.
+            svg_source = re.sub(r'<text\b.*?</text>', '',
+                                svg_logo.read_text(encoding='utf-8'), flags=re.S)
+            png_data = cairosvg.svg2png(bytestring=svg_source.encode('utf-8'), scale=3)
             img = Image.open(io.BytesIO(png_data)).convert("RGBA")
             # Crop to content area
             bbox = img.getbbox()
