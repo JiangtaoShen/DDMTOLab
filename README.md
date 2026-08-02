@@ -28,6 +28,7 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
+- **2026-08-03** — Verified and validated an expensive multitask multiobjective optimization algorithm (SAEA-AKT).
 - **2026-07-23** — Verified and validated several surrogate-assisted single-task algorithms (TLRBF, GL-SADE, AutoSAEA, DDEA-MESS, LSADE, SHPSO, SA-COSO).
 - **2026-07-19** — Verified and validated several expensive multitask optimization algorithms (MFEA-SSG, BO-LCB-CKT, BO-LCB-BCKT, MUMBO, SELF, EEI-BO / EEI-BO+, SaEF-AKT, RAMTEA, LCB-EMT).
 
@@ -165,7 +166,7 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 | **MTSO** | Inexpensive | MFEA, MFEA_II, EMEA, EBS, G_MFEA, MTEA_AD, MKTDE, MTEA_SaO, SREMTO, LCB_EMT, BLKT_DE, DTSKT, EMTO_AI, MFEA_AKT, MFEA_DGD, MFEA_VC, MTDE_ADKT, MTEA_HKTS, MTEA_PAE, MTES_KG, SSLT_DE, TNG_SNES |
 | **MTSO** | Expensive | MTBO, RAMTEA, SELF, EEI_BO_plus, MUMBO, BO_LCB_CKT, BO_LCB_BCKT, MFEA_SSG, SaEF_AKT |
 | **MTMO** | Inexpensive | MO_MFEA, MO_MFEA_II, MO_EMEA, MO_MTEA_SaO, MTDE_MKTA, MTEA_D_DN, EMT_ET, EMT_PD, EMT_GS, MO_MTEA_PAE, MO_SBO, MTEA_D_TSD, MTEA_DCK |
-| **MTMO** | Expensive | ParEGO_KT |
+| **MTMO** | Expensive | ParEGO_KT, SAEA_AKT |
 
 ### Problems (180+)
 
