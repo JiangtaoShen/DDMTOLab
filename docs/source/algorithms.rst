@@ -537,6 +537,28 @@ Classical evolutionary algorithms and surrogate-assisted methods for single-obje
      - Data-Driven EA with Multi-Evolutionary Sampling Strategy
    * - ``LSADE``
      - Lipschitz Surrogate-Assisted Differential Evolution
+   * - ``LAEA``
+     - LLM-Assisted Evolutionary Algorithm
+
+.. note::
+
+   ``LAEA`` uses a large language model as its surrogate rather than a fitted
+   regression model, so it needs the ``llm`` extra
+   (``pip install ddmtolab[llm]``) and an API key in the environment variable
+   named by ``llm_api_key_env``.
+
+   It spends a second budget alongside ``max_nfes``: every generation issues
+   ``2 * n_initial`` inference calls and consumes one real evaluation, so the
+   default setting reaches ``max_nfes=300`` only after roughly 25,000 calls.
+   Cap this with ``max_llm_calls``, which stops the run and returns partial
+   results once it is hit.
+
+   Every response is written to a JSONL cache under
+   ``<save_path>/llm_cache/``. Because a hosted model is not bit-reproducible
+   even at ``temperature=0``, that cache -- not the seed -- is what makes a run
+   repeatable: re-running with ``llm_backend='replay'`` replays it offline and
+   at no cost, and raises on any prompt it has not seen. Archive the cache file
+   together with the ``.pkl`` when reporting results.
 
 STMO (Single-Task Multiobjective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -276,6 +276,16 @@ Single-Task Single-Objective (STSO)
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information
 
+.. automodule:: ddmtolab.Algorithms.STSO.LAEA
+   :no-members:
+
+.. autoclass:: ddmtolab.Algorithms.STSO.LAEA.LAEA
+   :members: optimize
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information, llm_information
+
 Single-Task Multiobjective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
