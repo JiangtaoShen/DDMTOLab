@@ -10,6 +10,8 @@ import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import importlib
 
+from ddmtolab.Methods.Algo_Methods.algo_utils import set_seed
+
 
 class BatchExperiment:
     """
@@ -206,16 +208,19 @@ class BatchExperiment:
             dumped = dumped[:-4].strip()
         return dumped
 
-    def save_config(self, n_runs: int, max_workers: int):
+    def save_config(self, n_runs: int, max_workers: int, base_seed: int = None):
         """
         Save experiment configuration to YAML file with custom formatting
 
         Args:
             n_runs: Number of independent runs
             max_workers: Maximum number of worker processes
+            base_seed: Base seed used for system-level random-seed control, or None
+                      if the runs were not seeded
         """
         # Add run settings
         self.experiment_config['run_settings'] = {'n_runs': n_runs, 'max_workers': max_workers,
+                                                  'base_seed': base_seed,
                                                   'start_time': datetime.now().isoformat()}
 
         s = self._yaml_scalar  # YAML-safe scalar renderer
@@ -256,6 +261,7 @@ class BatchExperiment:
                 f.write("\nrun_settings:\n")
                 f.write(f"  n_runs: {s(self.experiment_config['run_settings']['n_runs'])}\n")
                 f.write(f"  max_workers: {s(self.experiment_config['run_settings']['max_workers'])}\n")
+                f.write(f"  base_seed: {s(self.experiment_config['run_settings']['base_seed'])}\n")
                 f.write(f"  start_time: {s(self.experiment_config['run_settings']['start_time'])}\n")
 
             print(f"💾 Configuration saved to: {config_path}\n")
@@ -397,6 +403,7 @@ class BatchExperiment:
         algo_params = task['algo_params']
         save_path = task['save_path']
         file_name = task['file_name']
+        seed = task.get('seed')
 
         # Record start time for performance measurement
         exp_start_time = time.time()
@@ -404,6 +411,11 @@ class BatchExperiment:
         error_msg = ""
 
         try:
+            # Fix every random stream before anything stochastic happens, so the
+            # whole run is reproducible from this single seed
+            if seed is not None:
+                set_seed(seed)
+
             # Recreate problem instance in child process to avoid pickling issues
             problem_instance = problem_creator(**problem_params)
 
@@ -434,10 +446,12 @@ class BatchExperiment:
             'Filename': file_name,
             'Time(s)': round(exp_duration, 4),
             'Status': status,
-            'Error': error_msg
+            'Error': error_msg,
+            'Seed': seed if seed is not None else ''
         }
 
-    def run(self, n_runs: int = None, verbose: bool = True, max_workers: int = None):
+    def run(self, n_runs: int = None, verbose: bool = True, max_workers: int = None,
+            base_seed: int = None):
         """
         Run all experiments using multi-core parallel processing
 
@@ -447,11 +461,19 @@ class BatchExperiment:
             verbose: Whether to print detailed progress information
             max_workers: Maximum number of worker processes, defaults to CPU count if None
                         If None and loaded from config, uses config value
+            base_seed: Base seed for system-level random-seed control. When given, run
+                      ``r`` (1-indexed) is executed under seed ``base_seed + r - 1``,
+                      applied to the global ``random``, NumPy and PyTorch (including
+                      CUDA) generators before the problem and algorithm are built, so
+                      each individual run is reproducible from its seed. The per-run
+                      seed is recorded in the timing summary. If None and loaded from
+                      config, uses config value; if still None, no seeding is performed
+                      and runs use the interpreter's default random state.
 
         Returns:
             List[Dict]: One timing/status record per executed run, with keys
             'Algorithm', 'Problem', 'Run', 'Filename', 'Time(s)', 'Status',
-            'Error'. Empty list if nothing was run.
+            'Error', 'Seed'. Empty list if nothing was run.
         """
         if not self.problems:
             print("Error: No problems added!")
@@ -467,6 +489,8 @@ class BatchExperiment:
                 n_runs = self._loaded_run_settings.get('n_runs', 30)
             if max_workers is None:
                 max_workers = self._loaded_run_settings.get('max_workers', mp.cpu_count())
+            if base_seed is None:
+                base_seed = self._loaded_run_settings.get('base_seed', None)
         else:
             # Use default values
             if n_runs is None:
@@ -478,9 +502,11 @@ class BatchExperiment:
             raise ValueError(f"n_runs must be a positive integer, got {n_runs!r}")
         if not isinstance(max_workers, int) or max_workers < 1:
             raise ValueError(f"max_workers must be a positive integer, got {max_workers!r}")
+        if base_seed is not None and not isinstance(base_seed, int):
+            raise ValueError(f"base_seed must be an integer or None, got {base_seed!r}")
 
         # Save configuration before running
-        self.save_config(n_runs, max_workers)
+        self.save_config(n_runs, max_workers, base_seed)
 
         total_experiments = len(self.problems) * len(self.algorithms) * n_runs
         timing_records = []
@@ -515,7 +541,8 @@ class BatchExperiment:
                         'run_id': run_id,
                         'algo_params': algo_params,
                         'save_path': save_path,
-                        'file_name': file_name
+                        'file_name': file_name,
+                        'seed': None if base_seed is None else base_seed + run_id - 1
                     }
                     all_tasks.append(task)
 
@@ -568,7 +595,8 @@ class BatchExperiment:
                         'Filename': task['file_name'],
                         'Time(s)': 0.0,
                         'Status': "Failed",
-                        'Error': str(e)
+                        'Error': str(e),
+                        'Seed': task['seed'] if task.get('seed') is not None else ''
                     })
                     completed_count += 1
 
@@ -630,7 +658,7 @@ class BatchExperiment:
         try:
             # utf-8-sig so Excel on Windows opens the file with correct encoding
             with open(csv_path, 'w', newline='', encoding='utf-8-sig') as csvfile:
-                fieldnames = ['Algorithm', 'Problem', 'Run', 'Filename', 'Time(s)', 'Status', 'Error']
+                fieldnames = ['Algorithm', 'Problem', 'Run', 'Filename', 'Time(s)', 'Status', 'Error', 'Seed']
                 writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(timing_records)

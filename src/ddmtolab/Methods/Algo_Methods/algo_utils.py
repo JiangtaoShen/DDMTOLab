@@ -9,12 +9,52 @@ Version: 1.0
 import numpy as np
 import pickle
 import os
+import random
 from dataclasses import asdict
 from scipy.spatial.distance import cdist
 from sklearn.cluster import KMeans
 from dataclasses import dataclass
 import copy
 from typing import Any, List, Tuple, Union, Optional
+
+
+def set_seed(seed: int) -> int:
+    """
+    Fix every random generator the platform draws from, in one call.
+
+    All stochastic stages of the platform (initial sampling, data splitting,
+    surrogate training, and the stochastic optimization operators) draw from the
+    global ``random``, NumPy and PyTorch streams, so seeding those three streams
+    makes a whole run reproducible.
+
+    Parameters
+    ----------
+    seed : int
+        Seed applied to the ``random``, NumPy and PyTorch (including CUDA)
+        generators.
+
+    Returns
+    -------
+    int
+        The seed that was applied, so callers can record it alongside results.
+
+    Notes
+    -----
+    PyTorch is seeded only if it is installed; the platform does not require it
+    for algorithms that are purely NumPy-based.
+    """
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    try:
+        import torch
+    except ImportError:
+        pass
+    else:
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+    return seed
 
 
 @dataclass
@@ -347,6 +387,45 @@ def par_list(par: Union[int, List[int]], n_tasks: int) -> List[int]:
     else:
         par_per_task = list(par)
     return par_per_task
+
+
+def resolve_budget(problem, max_nfes, n_tasks: int, default: Optional[int] = None) -> Optional[List[int]]:
+    """
+    Resolve the per-task evaluation budget $N^k$ an algorithm should run under.
+
+    The budget can come from two places: the task itself, when it was declared
+    through ``MTOP.add_task(..., budget=...)``, or the algorithm's ``max_nfes``
+    argument. An explicitly supplied ``max_nfes`` always wins, so passing the
+    argument keeps the historical behaviour unchanged; the task-declared budget
+    is used only when the caller left ``max_nfes`` unset.
+
+    Parameters
+    ----------
+    problem : MTOP
+        Problem instance, optionally carrying per-task budgets.
+    max_nfes : int, List[int] or None
+        Budget explicitly requested by the caller, if any.
+    n_tasks : int
+        Number of tasks.
+    default : int, optional
+        Fallback used when neither source provides a budget.
+
+    Returns
+    -------
+    List[int] or None
+        Per-task budgets, or None when no source provides one and no default
+        is given, in which case the algorithm applies its own default.
+    """
+    if max_nfes is not None:
+        return par_list(max_nfes, n_tasks)
+
+    declared = getattr(problem, 'budgets', None)
+    if declared is not None and len(declared) == n_tasks and all(b is not None for b in declared):
+        return [int(b) for b in declared]
+
+    if default is not None:
+        return par_list(default, n_tasks)
+    return None
 
 
 def build_staircase_history(

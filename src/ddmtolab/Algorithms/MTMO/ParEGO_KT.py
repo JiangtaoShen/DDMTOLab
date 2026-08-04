@@ -85,7 +85,9 @@ class ParEGO_KT:
         self.problem = problem
         self.n_initial = n_initial
         self.n_weights = n_weights if n_weights is not None else 100
-        self.max_nfes = max_nfes if max_nfes is not None else 200
+        # Keep the caller's request as given; the budget declared by the tasks is
+        # consulted at run time and only used when max_nfes was left unset.
+        self.max_nfes = max_nfes
         self.rho = rho
         self.save_data = save_data
         self.save_path = save_path
@@ -114,7 +116,7 @@ class ParEGO_KT:
         else:
             n_initial_per_task = par_list(self.n_initial, nt)
 
-        max_nfes_per_task = par_list(self.max_nfes, nt)
+        max_nfes_per_task = resolve_budget(problem, self.max_nfes, nt, default=200)
         n_weights_per_task = par_list(self.n_weights, nt)
 
         # Generate uniformly distributed weight vectors for each task

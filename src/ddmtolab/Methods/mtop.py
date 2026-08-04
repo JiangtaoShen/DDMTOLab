@@ -312,6 +312,10 @@ class MTOP:
         self.tasks: List[Dict[str, Any]] = []
         self.dims: List[int] = []
         self.bounds: List[Tuple[np.ndarray, np.ndarray]] = []
+        # Per-task evaluation budget N^k (None when the task declares none) and a
+        # free-form, user-supplied descriptor dict, both optional and declarative.
+        self.budgets: List[Optional[int]] = []
+        self.metadata: List[Dict[str, Any]] = []
 
         # Unified evaluation mode settings
         self._unified_eval_mode = unified_eval_mode
@@ -407,7 +411,9 @@ class MTOP:
             lower_bound: Optional[
                 Union[float, List[float], np.ndarray, Tuple[Union[float, List[float], np.ndarray], ...]]] = None,
             upper_bound: Optional[
-                Union[float, List[float], np.ndarray, Tuple[Union[float, List[float], np.ndarray], ...]]] = None
+                Union[float, List[float], np.ndarray, Tuple[Union[float, List[float], np.ndarray], ...]]] = None,
+            budget: Optional[Union[int, Tuple[Optional[int], ...]]] = None,
+            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None
     ) -> Union[int, List[int]]:
         """
         Add one or more tasks to MTOP.
@@ -498,9 +504,11 @@ class MTOP:
         4
         """
         if isinstance(objective_func, tuple):
-            return self._add_multiple_tasks(objective_func, dim, constraint_func, lower_bound, upper_bound)
+            return self._add_multiple_tasks(objective_func, dim, constraint_func, lower_bound, upper_bound,
+                                            budget, metadata)
         else:
-            return self._add_single_task(objective_func, dim, constraint_func, lower_bound, upper_bound)
+            return self._add_single_task(objective_func, dim, constraint_func, lower_bound, upper_bound,
+                                         budget, metadata)
 
     def _add_single_task(
             self,
@@ -508,7 +516,9 @@ class MTOP:
             dim: int,
             constraint_func: Optional[Union[Callable, List[Callable]]] = None,
             lower_bound: Optional[Union[float, List[float], np.ndarray]] = None,
-            upper_bound: Optional[Union[float, List[float], np.ndarray]] = None
+            upper_bound: Optional[Union[float, List[float], np.ndarray]] = None,
+            budget: Optional[int] = None,
+            metadata: Optional[Dict[str, Any]] = None
     ) -> int:
         """
         Add a single task to MTOP.
@@ -586,6 +596,13 @@ class MTOP:
         constraint_wrappers, n_constraints = self._process_constraints(
             constraint_func, dim, probe_point=probe_point)
 
+        if budget is not None:
+            budget = int(budget)
+            if budget < 1:
+                raise ValueError(f"budget must be a positive integer, got {budget}")
+        if metadata is not None and not isinstance(metadata, dict):
+            raise ValueError(f"metadata must be a dict or None, got {type(metadata).__name__}")
+
         task = {
             'raw_objective': objective_func,
             'objective': wrapped_obj,  # callable: X (n,dim) -> (n, n_obj)
@@ -597,6 +614,8 @@ class MTOP:
         self.tasks.append(task)
         self.dims.append(dim)
         self.bounds.append((lb.reshape(1, -1), ub.reshape(1, -1)))
+        self.budgets.append(budget)
+        self.metadata.append({} if metadata is None else dict(metadata))
         return len(self.tasks) - 1
 
     def _add_multiple_tasks(
@@ -605,7 +624,9 @@ class MTOP:
             dims: Union[int, Tuple[int, ...]],
             constraint_func: Optional[Union[List[Callable], Tuple[List[Callable], ...]]] = None,
             lower_bounds: Optional[Tuple[Union[float, List[float], np.ndarray], ...]] = None,
-            upper_bounds: Optional[Tuple[Union[float, List[float], np.ndarray], ...]] = None
+            upper_bounds: Optional[Tuple[Union[float, List[float], np.ndarray], ...]] = None,
+            budgets: Optional[Union[int, Tuple[Optional[int], ...]]] = None,
+            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None
     ) -> List[int]:
         """
         Add multiple tasks to MTOP.
@@ -662,6 +683,17 @@ class MTOP:
         elif len(upper_bounds) != n_tasks:
             raise ValueError("upper_bounds length must match number of objective_funcs")
 
+        # Budget and metadata broadcast like dims: a single value applies to every task
+        if budgets is None or isinstance(budgets, int):
+            budgets = (budgets,) * n_tasks
+        elif len(budgets) != n_tasks:
+            raise ValueError("budgets length must match number of objective_funcs")
+
+        if metadata is None or isinstance(metadata, dict):
+            metadata = (metadata,) * n_tasks
+        elif len(metadata) != n_tasks:
+            raise ValueError("metadata length must match number of objective_funcs")
+
         indices = []
         for i in range(n_tasks):
             idx = self._add_single_task(
@@ -669,7 +701,9 @@ class MTOP:
                 dim=dims[i],
                 constraint_func=constraint_func[i],
                 lower_bound=lower_bounds[i],
-                upper_bound=upper_bounds[i]
+                upper_bound=upper_bounds[i],
+                budget=budgets[i],
+                metadata=metadata[i]
             )
             indices.append(idx)
         return indices
@@ -1264,6 +1298,10 @@ class MTOP:
             - 'upper_bounds' : np.ndarray - Upper bounds
             - 'objective_func' : Callable - Raw objective function
             - 'constraint_funcs' : List[Callable] - Constraint function wrappers
+            - 'budget' : int or None - Declared evaluation budget of the task
+            - 'metadata' : dict - Free-form descriptor supplied when the task was
+              added (e.g. data source, fidelity, units); never populated or
+              interpreted by the platform
 
         Raises
         ------
@@ -1291,7 +1329,9 @@ class MTOP:
             'lower_bounds': lb,
             'upper_bounds': ub,
             'objective_func': t['raw_objective'],
-            'constraint_funcs': [w for w in t['constraints']]
+            'constraint_funcs': [w for w in t['constraints']],
+            'budget': self.budgets[task_idx],
+            'metadata': self.metadata[task_idx]
         }
 
     def __str__(self) -> str:
