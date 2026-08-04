@@ -9,6 +9,8 @@ Classes:
     MetricResults: Dataclass for storing metric calculation results
     TableConfig: Dataclass for table generation configuration
     PlotConfig: Dataclass for plot generation configuration
+    EffectSizeResult: Dataclass for a Cliff's delta effect size
+    FriedmanResult: Dataclass for a Friedman test with post-hoc comparisons
     DataAnalyzer: Main class for data analysis pipeline
 
 Author: Jiangtao Shen
@@ -62,6 +64,7 @@ class StatisticType(Enum):
     MEDIAN = "median"
     MAX = "max"
     MIN = "min"
+    MEDIAN_IQR = "median_iqr"
 
 
 # Default color palette for plots
@@ -73,6 +76,11 @@ DEFAULT_COLORS = [
 
 # Default markers for plots
 DEFAULT_MARKERS = ['o', 's', '^', 'v', 'D', 'p', '*', 'h', '<', '>', 'X', 'P', 'd', '8', 'H']
+
+# Magnitude thresholds for |Cliff's delta| (Romano et al., 2006). A delta whose
+# absolute value falls below the first threshold is negligible, below the second
+# small, below the third medium, and large otherwise.
+CLIFFS_DELTA_THRESHOLDS: Tuple[float, float, float] = (0.147, 0.33, 0.474)
 
 
 # =============================================================================
@@ -153,13 +161,32 @@ class TableConfig:
     table_format : TableFormat
         Output format (EXCEL or LATEX).
     statistic_type : StatisticType
-        Type of statistic to display (MEAN, MEDIAN, MAX, MIN).
+        Type of statistic to display (MEAN, MEDIAN, MAX, MIN, MEDIAN_IQR).
     significance_level : float
         P-value threshold for statistical significance testing.
         Default: 0.05
     rank_sum_test : bool
         Whether to perform Wilcoxon rank-sum test.
         Default: True
+    holm_correction : bool
+        Whether to apply a Holm-Bonferroni correction to the per-instance
+        rank-sum p-values. The family is every comparison against the baseline
+        in one table generation, i.e. all non-baseline algorithms over all
+        problem-task instances. When enabled the '+'/'-'/'=' symbols follow the
+        corrected p-values instead of the raw ones.
+        Default: False
+    effect_size : bool
+        Whether to report Cliff's delta alongside each comparison, shown in the
+        cell as a separate bracketed field rather than folded into the symbol.
+        Default: False
+    friedman_test : bool
+        Whether to append Friedman test rows (average ranks plus Holm-corrected
+        post-hoc comparisons against a control algorithm) to the table.
+        Default: False
+    friedman_control : Optional[str]
+        Control algorithm for the Friedman post-hoc comparisons. Defaults to the
+        baseline, i.e. the last entry of the algorithm order.
+        Default: None
     save_path : Path
         Directory path to save output tables.
     """
@@ -167,6 +194,10 @@ class TableConfig:
     statistic_type: StatisticType = StatisticType.MEAN
     significance_level: float = 0.05
     rank_sum_test: bool = True
+    holm_correction: bool = False
+    effect_size: bool = False
+    friedman_test: bool = False
+    friedman_control: Optional[str] = None
     save_path: Path = Path('./Results')
 
 
@@ -234,10 +265,121 @@ class ComparisonResult:
     symbol : str
         Comparison symbol: '+' (better), '-' (worse), '=' (no significant difference).
     p_value : Optional[float]
-        P-value from statistical test, or None if test not performed.
+        Raw (uncorrected) p-value from the statistical test, or None if the test
+        was not performed.
+    p_adjusted : Optional[float]
+        Multiplicity-corrected p-value, populated only when a correction such as
+        Holm-Bonferroni is applied over a family of comparisons. None otherwise.
+    effect_size : Optional[float]
+        Effect size (Cliff's delta) oriented so that a positive value means the
+        algorithm is better than the baseline. None when not requested.
+    effect_magnitude : Optional[str]
+        Qualitative magnitude of ``effect_size``: 'negligible', 'small',
+        'medium', 'large', or 'undefined'. None when not requested.
     """
     symbol: str
     p_value: Optional[float] = None
+    p_adjusted: Optional[float] = None
+    effect_size: Optional[float] = None
+    effect_magnitude: Optional[str] = None
+
+
+@dataclass
+class EffectSizeResult:
+    """
+    Effect size of a pairwise comparison, reported separately from significance.
+
+    :no-index:
+
+    Attributes
+    ----------
+    delta : float
+        Cliff's delta in [-1, 1], oriented so that a positive value means the
+        algorithm is better than the baseline under the given optimization
+        direction. np.nan when it cannot be computed.
+    magnitude : str
+        Qualitative magnitude derived from |delta|: 'negligible', 'small',
+        'medium', 'large', or 'undefined' when delta is np.nan.
+    method : str
+        Name of the effect size measure, always 'cliffs_delta'.
+    """
+    delta: float
+    magnitude: str
+    method: str = 'cliffs_delta'
+
+
+@dataclass
+class FriedmanPostHocResult:
+    """
+    One post-hoc comparison of an algorithm against the control algorithm.
+
+    :no-index:
+
+    Attributes
+    ----------
+    algorithm : str
+        Name of the compared algorithm.
+    average_rank : float
+        Average Friedman rank of the algorithm (1 is best).
+    z_statistic : float
+        Standardized rank difference against the control algorithm.
+    p_value : Optional[float]
+        Raw two-sided p-value, or None for the control algorithm itself.
+    p_adjusted : Optional[float]
+        Holm-Bonferroni corrected p-value over the k-1 comparisons, or None for
+        the control algorithm itself.
+    significant : bool
+        Whether the corrected p-value is below the significance level.
+    symbol : str
+        '+' (better than control), '-' (worse), '=' (not significant), or ''
+        for the control algorithm itself.
+    """
+    algorithm: str
+    average_rank: float
+    z_statistic: float
+    p_value: Optional[float] = None
+    p_adjusted: Optional[float] = None
+    significant: bool = False
+    symbol: str = ''
+
+
+@dataclass
+class FriedmanResult:
+    """
+    Outcome of a Friedman test with post-hoc comparisons against a control.
+
+    :no-index:
+
+    Attributes
+    ----------
+    statistic : float
+        Friedman chi-squared statistic (chi^2_F).
+    p_value : float
+        P-value of the omnibus Friedman test.
+    average_ranks : Dict[str, float]
+        Average rank per algorithm (1 is best), keyed by algorithm name.
+    n_algorithms : int
+        Number of algorithms compared.
+    n_instances : int
+        Number of instances (blocks) retained after dropping incomplete ones.
+    n_instances_dropped : int
+        Number of instances dropped because at least one algorithm had no value.
+    control : Optional[str]
+        Control algorithm used for the post-hoc comparisons.
+    significance_level : float
+        Significance level applied to the corrected post-hoc p-values.
+    post_hoc : List[FriedmanPostHocResult]
+        One entry per algorithm, in the order the algorithms were supplied.
+    """
+    statistic: float
+    p_value: float
+    average_ranks: Dict[str, float]
+    n_algorithms: int
+    n_instances: int
+    n_instances_dropped: int = 0
+    control: Optional[str] = None
+    significance_level: float = 0.05
+    post_hoc: List[FriedmanPostHocResult] = field(default_factory=list)
 
 
 @dataclass
@@ -576,13 +718,14 @@ class StatisticsCalculator:
         data : List[float]
             List of numeric values to compute statistics from.
         statistic_type : StatisticType
-            Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN).
+            Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN, MEDIAN_IQR).
 
         Returns
         -------
         Tuple[float, Optional[float]]
-            Tuple of (statistic_value, std_value).
-            std_value is only returned for MEAN, None otherwise.
+            Tuple of (statistic_value, dispersion_value).
+            The dispersion is the standard deviation for MEAN and the
+            interquartile range for MEDIAN_IQR; it is None otherwise.
             Returns (np.nan, np.nan) for empty data.
         """
         if len(data) == 0:
@@ -594,6 +737,9 @@ class StatisticsCalculator:
             return stat_value, std_value
         elif statistic_type == StatisticType.MEDIAN:
             return np.median(data), None
+        elif statistic_type == StatisticType.MEDIAN_IQR:
+            q1, q3 = np.percentile(data, [25, 75])
+            return np.median(data), q3 - q1
         elif statistic_type == StatisticType.MAX:
             return np.max(data), None
         elif statistic_type == StatisticType.MIN:
@@ -606,7 +752,8 @@ class StatisticsCalculator:
             algo_data: List[float],
             base_data: List[float],
             significance_level: float = 0.05,
-            direction: OptimizationDirection = OptimizationDirection.MINIMIZE
+            direction: OptimizationDirection = OptimizationDirection.MINIMIZE,
+            compute_effect_size: bool = False
     ) -> ComparisonResult:
         """
         Perform Wilcoxon rank-sum test to compare two algorithms.
@@ -621,6 +768,10 @@ class StatisticsCalculator:
             P-value threshold for significance (default: 0.05).
         direction : OptimizationDirection, optional
             Optimization direction (MINIMIZE or MAXIMIZE).
+        compute_effect_size : bool, optional
+            Whether to also compute Cliff's delta and store it in the
+            ``effect_size`` / ``effect_magnitude`` fields of the result.
+            Default: False, which leaves both fields as None.
 
         Returns
         -------
@@ -630,6 +781,10 @@ class StatisticsCalculator:
         """
         if len(algo_data) == 0 or len(base_data) == 0:
             return ComparisonResult(symbol='=', p_value=None)
+
+        effect = None
+        if compute_effect_size:
+            effect = StatisticsCalculator.cliffs_delta(algo_data, base_data, direction)
 
         try:
             _, p_value = stats.ranksums(algo_data, base_data)
@@ -645,9 +800,315 @@ class StatisticsCalculator:
             else:
                 symbol = '='
 
-            return ComparisonResult(symbol=symbol, p_value=p_value)
+            return ComparisonResult(
+                symbol=symbol,
+                p_value=p_value,
+                effect_size=effect.delta if effect is not None else None,
+                effect_magnitude=effect.magnitude if effect is not None else None
+            )
         except Exception:
-            return ComparisonResult(symbol='=', p_value=None)
+            return ComparisonResult(
+                symbol='=',
+                p_value=None,
+                effect_size=effect.delta if effect is not None else None,
+                effect_magnitude=effect.magnitude if effect is not None else None
+            )
+
+    @staticmethod
+    def holm_bonferroni(p_values: List[Optional[float]]) -> List[Optional[float]]:
+        """
+        Apply the Holm-Bonferroni step-down correction to a family of p-values.
+
+        The p-values are sorted ascending; the i-th smallest of m values is
+        multiplied by ``m - i``, a running maximum enforces monotonicity, and the
+        result is capped at 1. Entries that are None or NaN are not part of the
+        family: they neither contribute to m nor receive an adjusted value.
+
+        Because the correction is monotone non-decreasing, an adjusted p-value is
+        never smaller than its raw counterpart, so a comparison can only lose
+        significance through it, never gain it.
+
+        Parameters
+        ----------
+        p_values : List[Optional[float]]
+            Raw p-values of one family of comparisons, in any order.
+
+        Returns
+        -------
+        List[Optional[float]]
+            Adjusted p-values in the same order and of the same length as the
+            input, with None wherever the input was None or NaN.
+
+        Examples
+        --------
+        >>> StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])
+        [0.03, 0.04, 0.04]
+        """
+        adjusted: List[Optional[float]] = [None] * len(p_values)
+        valid = [(i, float(p)) for i, p in enumerate(p_values)
+                 if p is not None and not np.isnan(p)]
+        if not valid:
+            return adjusted
+
+        m = len(valid)
+        running_max = 0.0
+        for rank, (index, p) in enumerate(sorted(valid, key=lambda item: item[1])):
+            running_max = max(running_max, (m - rank) * p)
+            adjusted[index] = min(1.0, running_max)
+
+        return adjusted
+
+    @staticmethod
+    def classify_cliffs_delta(delta: float) -> str:
+        """
+        Map a Cliff's delta to its qualitative magnitude.
+
+        Parameters
+        ----------
+        delta : float
+            Cliff's delta value; only its absolute value matters.
+
+        Returns
+        -------
+        str
+            'negligible' (|delta| < 0.147), 'small' (< 0.33), 'medium'
+            (< 0.474), 'large' otherwise, or 'undefined' for NaN.
+        """
+        if delta is None or np.isnan(delta):
+            return 'undefined'
+
+        magnitude = abs(delta)
+        negligible, small, medium = CLIFFS_DELTA_THRESHOLDS
+        if magnitude < negligible:
+            return 'negligible'
+        if magnitude < small:
+            return 'small'
+        if magnitude < medium:
+            return 'medium'
+        return 'large'
+
+    @staticmethod
+    def cliffs_delta(
+            algo_data: List[float],
+            base_data: List[float],
+            direction: OptimizationDirection = OptimizationDirection.MINIMIZE
+    ) -> EffectSizeResult:
+        """
+        Compute Cliff's delta, a non-parametric effect size for two samples.
+
+        Cliff's delta is the difference between the probability that a value of
+        one sample exceeds a value of the other and the probability of the
+        reverse; for independent samples it is equivalent to the rank-biserial
+        correlation derived from the rank-sum statistic. It is reported
+        independently of the significance test: a large delta on few runs may
+        still be non-significant, and a significant difference may be negligible
+        in size.
+
+        The sign is oriented by ``direction`` so that a positive delta always
+        means the algorithm is better than the baseline.
+
+        Parameters
+        ----------
+        algo_data : List[float]
+            Data from the algorithm being tested. NaN entries are dropped.
+        base_data : List[float]
+            Data from the baseline algorithm. NaN entries are dropped.
+        direction : OptimizationDirection, optional
+            Optimization direction (MINIMIZE or MAXIMIZE).
+
+        Returns
+        -------
+        EffectSizeResult
+            Delta in [-1, 1] with its qualitative magnitude, or
+            (np.nan, 'undefined') when either sample is empty.
+        """
+        algo_array = np.asarray(algo_data, dtype=float).ravel()
+        base_array = np.asarray(base_data, dtype=float).ravel()
+        algo_array = algo_array[~np.isnan(algo_array)]
+        base_array = base_array[~np.isnan(base_array)]
+
+        if algo_array.size == 0 or base_array.size == 0:
+            return EffectSizeResult(delta=np.nan, magnitude='undefined')
+
+        differences = algo_array[:, None] - base_array[None, :]
+        dominance = int(np.sum(differences > 0)) - int(np.sum(differences < 0))
+        delta = dominance / (algo_array.size * base_array.size)
+
+        # Positive must mean "algorithm is better", so flip when smaller is better
+        if direction == OptimizationDirection.MINIMIZE:
+            delta = -delta
+
+        return EffectSizeResult(
+            delta=delta,
+            magnitude=StatisticsCalculator.classify_cliffs_delta(delta)
+        )
+
+    @staticmethod
+    def perform_friedman_test(
+            data_matrix: Union[np.ndarray, List[List[float]]],
+            algorithm_names: List[str],
+            direction: OptimizationDirection = OptimizationDirection.MINIMIZE,
+            control: Optional[str] = None,
+            significance_level: float = 0.05
+    ) -> FriedmanResult:
+        """
+        Run a Friedman test over an algorithm-by-instance matrix, with post-hoc
+        comparisons against a control algorithm.
+
+        Each instance (column) is a block in which the algorithms are ranked,
+        rank 1 being the best under ``direction`` and ties receiving their
+        average rank. The omnibus statistic comes from
+        ``scipy.stats.friedmanchisquare``. The post-hoc step compares every other
+        algorithm against the control using the standardized rank difference
+
+        .. math:: z_i = (R_i - R_c) / \\sqrt{k(k+1) / (6N)}
+
+        with two-sided normal p-values corrected by Holm-Bonferroni over the
+        k-1 comparisons.
+
+        Instances where any algorithm has a NaN are dropped, since the test needs
+        complete blocks. When every block is fully tied there is no rank
+        variation to test and the statistic degenerates to 0/0, so it is reported
+        as chi^2_F = 0 with p = 1 rather than NaN.
+
+        Parameters
+        ----------
+        data_matrix : Union[np.ndarray, List[List[float]]]
+            Results with shape (n_algorithms, n_instances); entry [i, j] is the
+            performance of algorithm i on instance j.
+        algorithm_names : List[str]
+            Algorithm names, one per row of ``data_matrix``.
+        direction : OptimizationDirection, optional
+            Optimization direction (MINIMIZE or MAXIMIZE).
+        control : Optional[str], optional
+            Control algorithm for the post-hoc comparisons. Defaults to the last
+            entry of ``algorithm_names``.
+        significance_level : float, optional
+            Threshold applied to the corrected post-hoc p-values (default: 0.05).
+
+        Returns
+        -------
+        FriedmanResult
+            Omnibus statistic and p-value, average ranks, and one post-hoc entry
+            per algorithm.
+
+        Raises
+        ------
+        ValueError
+            If fewer than 3 algorithms are supplied (the test is not applicable),
+            if the number of names does not match the number of rows, if fewer
+            than 2 complete instances remain, or if ``control`` is not one of
+            ``algorithm_names``.
+        """
+        matrix = np.asarray(data_matrix, dtype=float)
+        if matrix.ndim != 2:
+            raise ValueError(
+                f"data_matrix must be 2-D with shape (n_algorithms, n_instances), "
+                f"got shape {matrix.shape}"
+            )
+        if matrix.shape[0] != len(algorithm_names):
+            raise ValueError(
+                f"algorithm_names has {len(algorithm_names)} entries but data_matrix "
+                f"has {matrix.shape[0]} rows; they must match"
+            )
+        if len(algorithm_names) < 3:
+            raise ValueError(
+                f"The Friedman test needs at least 3 algorithms, got "
+                f"{len(algorithm_names)}. Use perform_rank_sum_test for a "
+                f"pairwise comparison instead."
+            )
+
+        # Only complete blocks can be ranked, so drop instances with any NaN
+        complete = ~np.isnan(matrix).any(axis=0)
+        n_dropped = int(np.sum(~complete))
+        if n_dropped:
+            warnings.warn(
+                f"Dropped {n_dropped} instance(s) from the Friedman test because "
+                f"at least one algorithm had no value there."
+            )
+        matrix = matrix[:, complete]
+
+        n_algorithms, n_instances = matrix.shape
+        if n_instances < 2:
+            raise ValueError(
+                f"The Friedman test needs at least 2 complete instances, got "
+                f"{n_instances}."
+            )
+
+        # Rank within each instance; rank 1 is best, ties share the average rank
+        ranked = matrix if direction == OptimizationDirection.MINIMIZE else -matrix
+        ranks = np.apply_along_axis(stats.rankdata, 0, ranked)
+        mean_ranks = ranks.mean(axis=1)
+        average_ranks = {name: float(rank) for name, rank in zip(algorithm_names, mean_ranks)}
+
+        if np.all(np.ptp(ranks, axis=0) == 0):
+            # Every block is fully tied, which zeroes scipy's tie correction and
+            # makes the statistic 0/0. There is no rank variation to test, so
+            # report the degenerate-but-meaningful "no difference at all".
+            statistic, p_value = 0.0, 1.0
+        else:
+            statistic, p_value = stats.friedmanchisquare(*matrix)
+
+        control_name = control if control is not None else algorithm_names[-1]
+        if control_name not in algorithm_names:
+            raise ValueError(
+                f"control '{control_name}' is not one of algorithm_names: {algorithm_names}"
+            )
+        control_rank = average_ranks[control_name]
+
+        # Standardized rank differences against the control, then Holm over k-1
+        standard_error = np.sqrt(n_algorithms * (n_algorithms + 1) / (6.0 * n_instances))
+        z_scores, raw_p = {}, {}
+        for name in algorithm_names:
+            if name == control_name:
+                continue
+            z = (average_ranks[name] - control_rank) / standard_error
+            z_scores[name] = float(z)
+            raw_p[name] = float(2.0 * stats.norm.sf(abs(z)))
+
+        compared = [name for name in algorithm_names if name != control_name]
+        adjusted = StatisticsCalculator.holm_bonferroni([raw_p[name] for name in compared])
+        adjusted_p = dict(zip(compared, adjusted))
+
+        post_hoc = []
+        for name in algorithm_names:
+            if name == control_name:
+                post_hoc.append(FriedmanPostHocResult(
+                    algorithm=name,
+                    average_rank=average_ranks[name],
+                    z_statistic=0.0
+                ))
+                continue
+
+            p_adj = adjusted_p[name]
+            significant = p_adj is not None and p_adj < significance_level
+            if significant:
+                # A lower average rank is better, so it earns the '+'
+                symbol = '+' if average_ranks[name] < control_rank else '-'
+            else:
+                symbol = '='
+
+            post_hoc.append(FriedmanPostHocResult(
+                algorithm=name,
+                average_rank=average_ranks[name],
+                z_statistic=z_scores[name],
+                p_value=raw_p[name],
+                p_adjusted=p_adj,
+                significant=significant,
+                symbol=symbol
+            ))
+
+        return FriedmanResult(
+            statistic=float(statistic),
+            p_value=float(p_value),
+            average_ranks=average_ranks,
+            n_algorithms=n_algorithms,
+            n_instances=n_instances,
+            n_instances_dropped=n_dropped,
+            control=control_name,
+            significance_level=significance_level,
+            post_hoc=post_hoc
+        )
 
     @staticmethod
     def collect_task_data(
@@ -705,6 +1166,7 @@ class StatisticsCalculator:
             Task index (0-based).
         statistic_type : StatisticType
             Type of statistic (MEAN returns None as all runs are used).
+            MEDIAN_IQR selects the same run as MEDIAN.
 
         Returns
         -------
@@ -730,7 +1192,7 @@ class StatisticsCalculator:
         final_values = np.array(final_values)
         runs = np.array(runs)
 
-        if statistic_type == StatisticType.MEDIAN:
+        if statistic_type in (StatisticType.MEDIAN, StatisticType.MEDIAN_IQR):
             target_value = np.median(final_values)
             idx = np.argmin(np.abs(final_values - target_value))
         elif statistic_type == StatisticType.MAX:
@@ -787,6 +1249,14 @@ class TableGenerator:
         -------
         Union[pd.DataFrame, str]
             DataFrame for Excel format, LaTeX string for LaTeX format.
+
+        Raises
+        ------
+        ValueError
+            If ``friedman_test`` is enabled but the test cannot be applied, for
+            instance with fewer than 3 algorithms or fewer than 2 complete
+            instances. The misconfiguration is surfaced rather than silently
+            producing a table without the requested rows.
         """
         # Extract problems and determine task count
         problems = sorted(all_best_values[algorithm_order[0]].keys(),
@@ -796,13 +1266,70 @@ class TableGenerator:
         direction = DataUtils.get_metric_direction(metric_name)
 
         # Generate data rows
-        rows, comparison_counts, algorithm_ranks = self._generate_data_rows(all_best_values, algorithm_order, problems, direction)
+        rows, comparison_counts, algorithm_ranks, instance_stats = self._generate_data_rows(
+            all_best_values, algorithm_order, problems, direction
+        )
+
+        friedman_result = None
+        if self.config.friedman_test:
+            friedman_result = self._run_friedman_test(instance_stats, algorithm_order, direction)
 
         # Generate and save table
         if self.config.table_format == TableFormat.EXCEL:
-            return self._generate_excel_table(rows, algorithm_order, comparison_counts, algorithm_ranks, direction)
+            return self._generate_excel_table(rows, algorithm_order, comparison_counts,
+                                              algorithm_ranks, direction, friedman_result)
         else:
-            return self._generate_latex_table(rows, algorithm_order, comparison_counts, algorithm_ranks, direction)
+            return self._generate_latex_table(rows, algorithm_order, comparison_counts,
+                                              algorithm_ranks, direction, friedman_result)
+
+    def _run_friedman_test(
+            self,
+            instance_stats: List[Dict[str, float]],
+            algorithm_order: List[str],
+            direction: OptimizationDirection
+    ) -> FriedmanResult:
+        """
+        Run the Friedman test over the instances of this table.
+
+        The matrix handed to the test is the statistic already displayed in the
+        cells, so the ranks in the table footer are consistent with the numbers
+        above them.
+
+        Parameters
+        ----------
+        instance_stats : List[Dict[str, float]]
+            Per-instance statistic of every algorithm, one dict per table row.
+        algorithm_order : List[str]
+            Algorithm display order; its last entry is the default control.
+        direction : OptimizationDirection
+            Optimization direction (MINIMIZE or MAXIMIZE).
+
+        Returns
+        -------
+        FriedmanResult
+            Omnibus statistic, average ranks and post-hoc comparisons.
+
+        Raises
+        ------
+        ValueError
+            If the test cannot be applied to this table.
+        """
+        if not instance_stats:
+            raise ValueError(
+                "Friedman test requested but the table has no instances to rank."
+            )
+
+        matrix = np.array(
+            [[row.get(algo, np.nan) for row in instance_stats] for algo in algorithm_order],
+            dtype=float
+        )
+        return StatisticsCalculator.perform_friedman_test(
+            matrix,
+            list(algorithm_order),
+            direction=direction,
+            control=self.config.friedman_control,
+            significance_level=self.config.significance_level
+        )
 
     def _generate_data_rows(
             self,
@@ -810,17 +1337,24 @@ class TableGenerator:
             algorithm_order: List[str],
             problems: List[str],
             direction: OptimizationDirection
-    ) -> Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]]]:
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]],
+               List[Dict[str, float]]]:
         """
-        ...
+        Build one table row per problem-task instance.
+
+        Every instance is visited first and only formatted afterwards, because a
+        Holm correction spans the whole family of comparisons in the table and
+        can therefore not be resolved while the instances are still being read.
+
         Returns
         -------
-        Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]]]
-            Tuple of (rows, comparison_counts, algorithm_ranks).
-            algorithm_ranks[algo] = List[int]
+        Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]], List[Dict[str, float]]]
+            Tuple of (rows, comparison_counts, algorithm_ranks, instance_stats).
+            algorithm_ranks[algo] = List[int]; instance_stats holds the displayed
+            statistic of every algorithm per instance, which feeds the Friedman test.
         """
         base_algo = algorithm_order[-1]
-        rows = []
+        instances = []
         comparison_counts = {algo: ComparisonCounts() for algo in algorithm_order[:-1]}
         algorithm_ranks = {algo: [] for algo in algorithm_order}
 
@@ -839,9 +1373,8 @@ class TableGenerator:
                 continue
 
             for task_idx in range(num_tasks):
-                row = {'Problem': prob, 'Task': task_idx + 1}
-
                 algo_stat_values = {}
+                cells = {}
 
                 base_data = StatisticsCalculator.collect_task_data(
                     all_best_values, base_algo, prob, task_idx
@@ -858,32 +1391,98 @@ class TableGenerator:
 
                     algo_stat_values[algo] = stat_value
 
-                    symbol = ''
+                    result = None
                     if self.config.rank_sum_test and algo != base_algo:
                         result = StatisticsCalculator.perform_rank_sum_test(
                             algo_data, base_data,
-                            self.config.significance_level, direction
+                            self.config.significance_level, direction,
+                            compute_effect_size=self.config.effect_size
                         )
-                        symbol = result.symbol
 
-                        if algo in comparison_counts:
-                            if symbol == '+':
-                                comparison_counts[algo].plus += 1
-                            elif symbol == '-':
-                                comparison_counts[algo].minus += 1
-                            else:
-                                comparison_counts[algo].equal += 1
+                    cells[algo] = (stat_value, std_value, result)
 
-                    cell_content = self._format_cell_content(stat_value, std_value, symbol)
-                    row[algo] = cell_content
+                instances.append({
+                    'problem': prob,
+                    'task': task_idx + 1,
+                    'stats': algo_stat_values,
+                    'cells': cells
+                })
 
-                row_ranks = self._calculate_row_ranks(algo_stat_values, direction)
-                for algo, rank in row_ranks.items():
-                    algorithm_ranks[algo].append(rank)
+        if self.config.holm_correction:
+            self._apply_holm_correction(instances, algorithm_order)
 
-                rows.append(row)
+        rows = []
+        instance_stats = []
 
-        return rows, comparison_counts, algorithm_ranks
+        for instance in instances:
+            row = {'Problem': instance['problem'], 'Task': instance['task']}
+
+            for algo in algorithm_order:
+                stat_value, std_value, result = instance['cells'][algo]
+                symbol = result.symbol if result is not None else ''
+
+                if result is not None and algo in comparison_counts:
+                    if symbol == '+':
+                        comparison_counts[algo].plus += 1
+                    elif symbol == '-':
+                        comparison_counts[algo].minus += 1
+                    else:
+                        comparison_counts[algo].equal += 1
+
+                row[algo] = self._format_cell_content(stat_value, std_value, symbol, result)
+
+            row_ranks = self._calculate_row_ranks(instance['stats'], direction)
+            for algo, rank in row_ranks.items():
+                algorithm_ranks[algo].append(rank)
+
+            rows.append(row)
+            instance_stats.append(instance['stats'])
+
+        return rows, comparison_counts, algorithm_ranks, instance_stats
+
+    def _apply_holm_correction(
+            self,
+            instances: List[Dict[str, Any]],
+            algorithm_order: List[str]
+    ) -> None:
+        """
+        Holm-correct every comparison of this table in place.
+
+        The family is all comparisons against the baseline over all instances of
+        one table generation. Each affected ``ComparisonResult`` gets its
+        ``p_adjusted`` filled in, and its symbol is relaxed to '=' when the
+        corrected p-value no longer clears the significance level. The reverse
+        can never happen, since a Holm-adjusted p-value is never smaller than the
+        raw one, so the sign of a surviving symbol stays valid.
+
+        Parameters
+        ----------
+        instances : List[Dict[str, Any]]
+            Per-instance records produced by the first pass, modified in place.
+        algorithm_order : List[str]
+            Algorithm display order, used to visit the cells deterministically.
+
+        Returns
+        -------
+        None
+        """
+        comparisons = [
+            instance['cells'][algo][2]
+            for instance in instances
+            for algo in algorithm_order
+            if instance['cells'][algo][2] is not None
+        ]
+        if not comparisons:
+            return
+
+        adjusted = StatisticsCalculator.holm_bonferroni(
+            [comparison.p_value for comparison in comparisons]
+        )
+
+        for comparison, p_adjusted in zip(comparisons, adjusted):
+            comparison.p_adjusted = p_adjusted
+            if p_adjusted is None or p_adjusted >= self.config.significance_level:
+                comparison.symbol = '='
 
     def _calculate_row_ranks(
             self,
@@ -933,19 +1532,29 @@ class TableGenerator:
             self,
             stat_value: float,
             std_value: Optional[float],
-            symbol: str
+            symbol: str,
+            comparison: Optional[ComparisonResult] = None
     ) -> str:
         """
-        Format a table cell with statistic value, optional std deviation, and comparison symbol.
+        Format a table cell with statistic value, optional dispersion, comparison
+        symbol, and optional effect size.
+
+        The dispersion is rendered as ``mean (std)`` for MEAN and ``median[IQR]``
+        for MEDIAN_IQR. An effect size, when present, is appended as its own
+        bracketed field so it is never read as part of the significance symbol.
 
         Parameters
         ----------
         stat_value : float
             Statistical value.
         std_value : Optional[float]
-            Standard deviation (or None).
+            Dispersion accompanying the statistic: standard deviation for MEAN,
+            interquartile range for MEDIAN_IQR, None otherwise.
         symbol : str
             Comparison symbol.
+        comparison : Optional[ComparisonResult], optional
+            Comparison the cell belongs to, used only to render its effect size.
+            Default: None, which appends nothing.
 
         Returns
         -------
@@ -958,6 +1567,8 @@ class TableGenerator:
         if self.config.table_format == TableFormat.EXCEL:
             if self.config.statistic_type == StatisticType.MEAN:
                 cell_content = f"{stat_value:.3e} ({std_value:.1e})"
+            elif self.config.statistic_type == StatisticType.MEDIAN_IQR:
+                cell_content = f"{stat_value:.3e}[{std_value:.1e}]"
             else:
                 cell_content = f"{stat_value:.3e}"
 
@@ -967,13 +1578,44 @@ class TableGenerator:
             # LaTeX format
             if self.config.statistic_type == StatisticType.MEAN:
                 cell_content = f"${stat_value:.3e}$ (${std_value:.1e}$)"
+            elif self.config.statistic_type == StatisticType.MEDIAN_IQR:
+                cell_content = f"${stat_value:.3e}$[${std_value:.1e}$]"
             else:
                 cell_content = f"${stat_value:.3e}$"
 
             if symbol:
                 cell_content += f" ${symbol}$"
 
+        cell_content += self._format_effect_size(comparison)
+
         return cell_content
+
+    def _format_effect_size(self, comparison: Optional[ComparisonResult]) -> str:
+        """
+        Render the effect size of a comparison as a separate trailing field.
+
+        Parameters
+        ----------
+        comparison : Optional[ComparisonResult]
+            Comparison whose effect size should be rendered, if it carries one.
+
+        Returns
+        -------
+        str
+            Bracketed effect size prefixed by a space, or an empty string when
+            no effect size was computed.
+        """
+        if comparison is None or comparison.effect_size is None:
+            return ''
+
+        delta = comparison.effect_size
+        magnitude = comparison.effect_magnitude or 'undefined'
+
+        if np.isnan(delta):
+            return ' [d=N/A]'
+        if self.config.table_format == TableFormat.EXCEL:
+            return f" [d={delta:.2f} {magnitude}]"
+        return f" [$\\delta={delta:.2f}$ {magnitude}]"
 
     def _find_best_value_in_row(
             self,
@@ -1006,8 +1648,10 @@ class TableGenerator:
             if cell != 'N/A':
                 try:
                     # Cell formats: "1.2e+00", "1.2e+00 +", "1.2e+00 (3e-01) +",
-                    # and LaTeX "$...$" variants -- strip std and symbol parts
-                    val_str = cell.split('(')[0].replace('$', '').split()[0]
+                    # "1.2e+00[4e-01] +", a trailing " [d=0.42 large]" effect
+                    # size, and LaTeX "$...$" variants -- strip dispersion,
+                    # symbol and effect size parts
+                    val_str = cell.split('(')[0].split('[')[0].replace('$', '').split()[0]
                     val = float(val_str)
 
                     if direction == OptimizationDirection.MINIMIZE:
@@ -1023,13 +1667,73 @@ class TableGenerator:
 
         return best_algo
 
+    def _build_friedman_rows(
+            self,
+            friedman_result: FriedmanResult,
+            algorithm_order: List[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Render a Friedman result as table rows.
+
+        Produces two rows: the average ranks, labelled with the omnibus
+        chi-squared statistic and its p-value, and the Holm-corrected post-hoc
+        p-values against the control algorithm.
+
+        Parameters
+        ----------
+        friedman_result : FriedmanResult
+            Result to render.
+        algorithm_order : List[str]
+            Algorithm display order.
+
+        Returns
+        -------
+        List[Dict[str, Any]]
+            Two row dictionaries keyed like the data rows.
+        """
+        is_latex = self.config.table_format == TableFormat.LATEX
+
+        if is_latex:
+            rank_label = (f"Friedman Rank ($\\chi^2_F={friedman_result.statistic:.4g}$, "
+                          f"$p={friedman_result.p_value:.2e}$)")
+        else:
+            rank_label = (f"Friedman Rank (chi2={friedman_result.statistic:.4g}, "
+                          f"p={friedman_result.p_value:.2e})")
+
+        rank_row = {'Problem': rank_label, 'Task': ''}
+        for algo in algorithm_order:
+            rank = friedman_result.average_ranks[algo]
+            rank_row[algo] = f"${rank:.2f}$" if is_latex else f"{rank:.2f}"
+
+        post_hoc = {entry.algorithm: entry for entry in friedman_result.post_hoc}
+        if is_latex:
+            # '_' is a LaTeX control character, so escape it out of both the
+            # label and the control algorithm's name
+            control_label = str(friedman_result.control).replace('_', '-')
+            p_label = f"Friedman $p_{{Holm}}$ (vs {control_label})"
+        else:
+            p_label = f"Friedman p_Holm (vs {friedman_result.control})"
+
+        p_row = {'Problem': p_label, 'Task': ''}
+        for algo in algorithm_order:
+            entry = post_hoc.get(algo)
+            if entry is None or entry.p_adjusted is None:
+                p_row[algo] = 'Control'
+            elif is_latex:
+                p_row[algo] = f"${entry.p_adjusted:.2e}$ ${entry.symbol}$"
+            else:
+                p_row[algo] = f"{entry.p_adjusted:.2e} {entry.symbol}"
+
+        return [rank_row, p_row]
+
     def _generate_excel_table(
             self,
             rows: List[Dict[str, Any]],
             algorithm_order: List[str],
             comparison_counts: Dict[str, ComparisonCounts],
             algorithm_ranks: Dict[str, List[int]],
-            direction: OptimizationDirection
+            direction: OptimizationDirection,
+            friedman_result: Optional[FriedmanResult] = None
     ) -> pd.DataFrame:
         """
         Generate and save a formatted Excel table.
@@ -1042,14 +1746,20 @@ class TableGenerator:
             Algorithm display order.
         comparison_counts : Dict[str, ComparisonCounts]
             Comparison result counts.
+        algorithm_ranks : Dict[str, List[int]]
+            Per-instance ranks used for the Average Rank row.
         direction : OptimizationDirection
             Optimization direction.
+        friedman_result : Optional[FriedmanResult], optional
+            Friedman result to append as extra rows, or None to omit them.
 
         Returns
         -------
         pd.DataFrame
             DataFrame containing the table data.
         """
+        num_summary_rows = 1  # Always has Average Rank row
+
         if self.config.rank_sum_test:
             summary_row = {'Problem': '+/-/=', 'Task': ''}
             for algo in algorithm_order[:-1]:
@@ -1057,6 +1767,13 @@ class TableGenerator:
                 summary_row[algo] = f"{counts.plus}/{counts.minus}/{counts.equal}"
             summary_row[algorithm_order[-1]] = 'Base'
             rows.append(summary_row)
+            num_summary_rows += 1
+
+        # Average Rank must stay the last row, so Friedman goes just before it
+        if friedman_result is not None:
+            friedman_rows = self._build_friedman_rows(friedman_result, algorithm_order)
+            rows.extend(friedman_rows)
+            num_summary_rows += len(friedman_rows)
 
         avg_rank_row = {'Problem': 'Average Rank', 'Task': ''}
         for algo in algorithm_order:
@@ -1081,7 +1798,8 @@ class TableGenerator:
         df.to_excel(output_file, index=False)
 
         # Apply Excel formatting
-        self._apply_excel_formatting(output_file, df, algorithm_order, direction)
+        self._apply_excel_formatting(output_file, df, algorithm_order, direction,
+                                     num_summary_rows)
 
         print(f"Excel table saved to: {output_file}")
         return df
@@ -1091,9 +1809,15 @@ class TableGenerator:
             output_file: Path,
             df: pd.DataFrame,
             algorithm_order: List[str],
-            direction: OptimizationDirection
+            direction: OptimizationDirection,
+            num_summary_rows: Optional[int] = None
     ) -> None:
-        """..."""
+        """
+        Style the saved workbook and bold the best value of every data row.
+
+        ``num_summary_rows`` tells the bolding logic how many trailing rows are
+        footers rather than data; it is derived from the config when omitted.
+        """
         wb = load_workbook(output_file)
         ws = wb.active
 
@@ -1128,9 +1852,10 @@ class TableGenerator:
             ws.column_dimensions[column_letter].width = max_length + 2
 
         # Bold the best value in each data row
-        num_summary_rows = 1  # Always has Average Rank row
-        if self.config.rank_sum_test:
-            num_summary_rows += 1  # Add +/-/= row
+        if num_summary_rows is None:
+            num_summary_rows = 1  # Always has Average Rank row
+            if self.config.rank_sum_test:
+                num_summary_rows += 1  # Add +/-/= row
 
         num_data_rows = len(df) - num_summary_rows
 
@@ -1144,8 +1869,9 @@ class TableGenerator:
 
                 if cell_value and cell_value != 'N/A':
                     try:
-                        # Handles "1.2e+00", "1.2e+00 +", "1.2e+00 (3e-01) +"
-                        val_str = str(cell_value).split('(')[0].split()[0]
+                        # Handles "1.2e+00", "1.2e+00 +", "1.2e+00 (3e-01) +",
+                        # "1.2e+00[4e-01] +" and a trailing " [d=0.42 large]"
+                        val_str = str(cell_value).split('(')[0].split('[')[0].split()[0]
                         val = float(val_str)
 
                         if direction == OptimizationDirection.MINIMIZE:
@@ -1191,9 +1917,15 @@ class TableGenerator:
             algorithm_order: List[str],
             comparison_counts: Dict[str, ComparisonCounts],
             algorithm_ranks: Dict[str, List[int]],
-            direction: OptimizationDirection
+            direction: OptimizationDirection,
+            friedman_result: Optional[FriedmanResult] = None
     ) -> str:
-        """..."""
+        """
+        Render the table as a standalone LaTeX document and save it.
+
+        ``friedman_result`` adds the average-rank and post-hoc footer rows when
+        supplied; the Average Rank row stays last, as in the Excel output.
+        """
         df = pd.DataFrame(rows)
 
         # Build table structure
@@ -1248,6 +1980,16 @@ class TableGenerator:
             summary_str += " & Base \\\\\n"
             latex_str += summary_str
             latex_str += "\\hline\n"
+
+        # Friedman footer rows, kept above Average Rank like in the Excel output
+        if friedman_result is not None:
+            for friedman_row in self._build_friedman_rows(friedman_result, algorithm_order):
+                friedman_str = "\\multicolumn{2}{|c|}{" + str(friedman_row['Problem']) + "}"
+                for algo in algorithm_order:
+                    friedman_str += f" & {friedman_row[algo]}"
+                friedman_str += " \\\\\n"
+                latex_str += friedman_str
+                latex_str += "\\hline\n"
 
         # Average Rank row with best rank highlighted
         avg_rank_str = "\\multicolumn{2}{|c|}{Average Rank}"
@@ -2287,6 +3029,10 @@ class DataAnalyzer:
             statistic_type: str = 'mean',
             significance_level: float = 0.05,
             rank_sum_test: bool = True,
+            holm_correction: bool = False,
+            effect_size: bool = False,
+            friedman_test: bool = False,
+            friedman_control: Optional[str] = None,
             log_scale: bool = False,
             show_pf: bool = True,
             show_nd: bool = True,
@@ -2330,7 +3076,8 @@ class DataAnalyzer:
             Output figure format: 'pdf', 'png', 'svg', etc.
             Default: 'pdf'
         statistic_type : str, optional
-            Type of statistic: 'mean', 'median', 'max', 'min'.
+            Type of statistic: 'mean', 'median', 'max', 'min', 'median_iqr'.
+            'mean' renders as ``mean (std)`` and 'median_iqr' as ``median[IQR]``.
             Default: 'mean'
         significance_level : float, optional
             P-value threshold for statistical significance testing.
@@ -2338,6 +3085,24 @@ class DataAnalyzer:
         rank_sum_test : bool, optional
             Whether to perform Wilcoxon rank-sum test.
             Default: True
+        holm_correction : bool, optional
+            Whether to Holm-Bonferroni correct the rank-sum p-values over all
+            comparisons against the baseline in the table. Symbols then follow
+            the corrected p-values, which is stricter than the raw ones.
+            Default: False
+        effect_size : bool, optional
+            Whether to report Cliff's delta next to each comparison, as its own
+            bracketed field rather than folded into the '+'/'-'/'=' symbol.
+            Default: False
+        friedman_test : bool, optional
+            Whether to append Friedman rows (average ranks plus Holm-corrected
+            post-hoc comparisons against a control) to the table. Requires at
+            least 3 algorithms and 2 instances, and raises otherwise.
+            Default: False
+        friedman_control : Optional[str], optional
+            Control algorithm of the Friedman post-hoc comparisons. Defaults to
+            the baseline, i.e. the last algorithm of the display order.
+            Default: None
         log_scale : bool, optional
             Whether to use logarithmic scale for convergence plot y-axis.
             Default: False
@@ -2383,6 +3148,10 @@ class DataAnalyzer:
             statistic_type=stat_type,
             significance_level=significance_level,
             rank_sum_test=rank_sum_test,
+            holm_correction=holm_correction,
+            effect_size=effect_size,
+            friedman_test=friedman_test,
+            friedman_control=friedman_control,
             save_path=Path(save_path)
         )
 
