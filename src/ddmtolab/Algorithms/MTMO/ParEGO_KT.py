@@ -43,7 +43,7 @@ class ParEGO_KT:
         'n_tasks': '[2, K]',
         'dims': 'unequal',
         'objs': 'unequal',
-        'n_objs': '[2, M]',
+        'n_objs': '[1, M]',
         'cons': 'equal',
         'n_cons': '0',
         'expensive': 'True',
