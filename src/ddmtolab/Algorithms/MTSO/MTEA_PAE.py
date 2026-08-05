@@ -235,7 +235,6 @@ class MTEA_PAE:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         maxD = max(dims)
         TNum = min(self.TNum, n // 2)
@@ -248,6 +247,9 @@ class MTEA_PAE:
         decs = [pop_decs[t][:, :dims[t]] for t in range(nt)]
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Report what each task actually consumed rather than the requested
+        # budget, which the analysis tools use to scale convergence curves
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         pop_objs = [o.copy() for o in objs]
@@ -382,6 +384,7 @@ class MTEA_PAE:
                 off_objs_t, off_cons_t = evaluation_single(
                     problem, off_decs[t][:, :dims[t]], t)
                 nfes += n
+                nfes_per_task[t] += n
                 pbar.update(n)
 
                 # Combine parent + offspring
@@ -446,7 +449,7 @@ class MTEA_PAE:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

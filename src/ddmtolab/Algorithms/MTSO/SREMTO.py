@@ -113,7 +113,6 @@ class SREMTO:
         ncons = problem.n_cons
         c_max = max(ncons)
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Two-line segment parameters for ability calculation
@@ -162,6 +161,9 @@ class SREMTO:
             pop_mf_cons[:, t, :] = cons_t
             update_best(pop_decs, objs_t, cvs_t, t)
         nfes = pop_size * nt
+        # Ability vectors decide which tasks each offspring is evaluated on, so
+        # the per-task counts diverge from the scalar budget counter
+        nfes_per_task = [pop_size] * nt
 
         # Calculate initial factorial ranks and ability vectors
         pop_mf_ranks = self._rank_pool(pop_mf_objs, pop_mf_cvs)
@@ -217,6 +219,7 @@ class SREMTO:
                     off_mf_cvs[rows, k] = cvs_k
                     off_mf_cons[rows, k, :] = cons_k
                     nfes += rows.size
+                    nfes_per_task[k] += rows.size
                     pbar.update(rows.size)
                     update_best(off_decs[rows], objs_k, cvs_k, k)
 
@@ -253,7 +256,7 @@ class SREMTO:
 
         # Build and save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-                                     max_nfes=max_nfes_per_task, all_cons=all_cons,
+                                     max_nfes=nfes_per_task, all_cons=all_cons,
                                      bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 

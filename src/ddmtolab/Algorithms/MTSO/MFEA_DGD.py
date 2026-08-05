@@ -116,7 +116,6 @@ class MFEA_DGD:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         pop_size = n * nt
 
@@ -124,6 +123,9 @@ class MFEA_DGD:
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Skill factors and gradient probes split the evaluations unevenly, so
+        # the per-task counts are tracked alongside the scalar budget counter
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform to unified space
@@ -211,6 +213,7 @@ class MFEA_DGD:
                     obj_pos, _ = evaluation_single(problem, probe_pos[:dims[ft]], ft)
                     obj_neg, _ = evaluation_single(problem, probe_neg[:dims[ft]], ft)
                     nfes += 2
+                    nfes_per_task[ft] += 2
                     pbar.update(2)
 
                     # Finite-difference gradient estimate
@@ -276,6 +279,7 @@ class MFEA_DGD:
                 t = main_off_sfs[idx].item()
                 main_off_objs[idx], main_off_cons[idx] = evaluation_single(
                     problem, main_off_decs[idx, :dims[t]], t)
+                nfes_per_task[t] += 1
             nfes += pop_size
             pbar.update(pop_size)
 
@@ -289,6 +293,7 @@ class MFEA_DGD:
                 t = probe_sfs[idx].item()
                 probe_objs[idx], probe_cons[idx] = evaluation_single(
                     problem, probe_decs[idx, :dims[t]], t)
+                nfes_per_task[t] += 1
             nfes += n_probes
             pbar.update(n_probes)
 
@@ -321,7 +326,7 @@ class MFEA_DGD:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

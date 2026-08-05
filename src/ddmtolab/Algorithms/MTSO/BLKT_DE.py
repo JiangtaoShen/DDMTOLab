@@ -111,13 +111,15 @@ class BLKT_DE:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize population and evaluate
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Report what each task actually consumed rather than the requested
+        # budget, which the analysis tools use to scale convergence curves
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Block parameters
@@ -213,6 +215,7 @@ class BLKT_DE:
                 # Evaluate offspring
                 off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t, t)
                 nfes += n
+                nfes_per_task[t] += n
                 pbar.update(n)
 
                 # Track best before selection. MToP's succ_flag is the Flag
@@ -256,7 +259,7 @@ class BLKT_DE:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

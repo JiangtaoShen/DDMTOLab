@@ -401,13 +401,15 @@ class SSLT_DE:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize and evaluate
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # The chosen transfer action decides how many offspring each task gets,
+        # so the per-task counts diverge from the scalar budget counter
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Convert to unified space for cross-task operations
@@ -508,6 +510,7 @@ class SSLT_DE:
                         problem, off_decs[:, :dims[t]], t)
                     off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += n
+                    nfes_per_task[t] += n
                     pbar.update(n)
 
                     # One-to-one Selection_Tournament
@@ -533,6 +536,7 @@ class SSLT_DE:
                         problem, shifted[:, :dims[t]], t)
                     sh_cons = _pad_cons(sh_cons_real, maxC)
                     nfes += n_shifted
+                    nfes_per_task[t] += n_shifted
                     pbar.update(n_shifted)
 
                     # Elite selection (target U shifted)
@@ -565,6 +569,7 @@ class SSLT_DE:
                         problem, off_decs[:, :dims[t]], t)
                     off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += n_merged
+                    nfes_per_task[t] += n_merged
                     pbar.update(n_merged)
 
                     # Elite selection (target U offspring)
@@ -597,6 +602,7 @@ class SSLT_DE:
                         problem, off_decs[:, :dims[t]], t)
                     off_cons = _pad_cons(off_cons_real, maxC)
                     nfes += num
+                    nfes_per_task[t] += num
                     pbar.update(num)
 
                     # Elite selection (target U offspring)
@@ -693,7 +699,7 @@ class SSLT_DE:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

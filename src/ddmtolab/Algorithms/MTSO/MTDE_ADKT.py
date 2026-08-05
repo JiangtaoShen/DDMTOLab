@@ -125,13 +125,15 @@ class MTDE_ADKT:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize and evaluate
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Report what each task actually consumed rather than the requested
+        # budget, which the analysis tools use to scale convergence curves
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Convert to unified space
@@ -274,6 +276,7 @@ class MTDE_ADKT:
                     if maxC > 0 and c1_real.shape[1] > 0:
                         c1[:, :c1_real.shape[1]] = c1_real
                     nfes += n1
+                    nfes_per_task[t] += n1
                     pbar.update(n1)
 
                     off_decs[idx1] = off1
@@ -304,6 +307,7 @@ class MTDE_ADKT:
                     if maxC > 0 and c2_real.shape[1] > 0:
                         c2[:, :c2_real.shape[1]] = c2_real
                     nfes += n2
+                    nfes_per_task[t] += n2
                     pbar.update(n2)
 
                     off_decs[idx2] = off2
@@ -332,6 +336,7 @@ class MTDE_ADKT:
                     if maxC > 0 and c3_real.shape[1] > 0:
                         c3[:, :c3_real.shape[1]] = c3_real
                     nfes += n3
+                    nfes_per_task[t] += n3
                     pbar.update(n3)
 
                     off_decs[idx3] = off3
@@ -461,7 +466,7 @@ class MTDE_ADKT:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

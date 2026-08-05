@@ -191,7 +191,6 @@ class MO_SBO:
         nt = problem.n_tasks
         dims = problem.dims
         max_dim = max(dims)
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize the population and evaluate. MToP evolves one unified
@@ -201,6 +200,9 @@ class MO_SBO:
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Report what each task actually consumed rather than the requested
+        # budget, which the analysis tools use to scale convergence curves
+        nfes_per_task = [n] * nt
 
         uni_decs = []
         for t in range(nt):
@@ -260,6 +262,7 @@ class MO_SBO:
             for t in range(nt):
                 off_objs_t, off_cons_t = evaluation_single(problem, off_uni_decs[t][:, :dims[t]], t)
                 nfes += n
+                nfes_per_task[t] += n
                 pbar.update(n)
 
                 # rankC: NSGA-II rank of the offspring among themselves
@@ -315,7 +318,7 @@ class MO_SBO:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data
         )

@@ -119,7 +119,6 @@ class G_MFEA:
         dims = problem.dims
         d_max = max(dims)
         c_max = max(problem.n_cons)
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         # Reference generation budget maxFE / (N * T), kept in floating point
         gen_ref = max_nfes / (n * nt)
@@ -156,6 +155,7 @@ class G_MFEA:
                 if idx_t.size == 0:
                     continue
                 objs_t, cons_t = evaluation_single(problem, dec_matrix[idx_t][:, :dims[t]], t, unified=True)
+                nfes_per_task[t] += idx_t.size
                 objs[idx_t, :] = objs_t[:, :1]
                 if c_max > 0:
                     cons[idx_t, :] = cons_t[:, :c_max]
@@ -178,6 +178,10 @@ class G_MFEA:
                 int_pop = pop_snapshot[p1][indices].copy()
                 int_pop[:, inorder[(t1, t2)][:dims[p2]]] = pop_snapshot[p2][:, :dims[p2]]
                 pop_decs[pop_sfs.flatten() == p2] = int_pop
+
+        # Skill factors split the unified population unevenly, so the per-task
+        # counts are accumulated inside evaluate_group and reported
+        nfes_per_task = [0] * nt
 
         # Evaluate initial population on its own task
         pop_objs, pop_cons = evaluate_group(pop_decs, pop_sfs)
@@ -262,6 +266,7 @@ class G_MFEA:
                     if c_max > 0:
                         pop_cons[task_indices, :] = cons_p2[:, :c_max]
                     nfes += int_pop.shape[0]
+                    nfes_per_task[p2] += int_pop.shape[0]
                     pbar.update(int_pop.shape[0])
 
                     # Calculate transfer vectors
@@ -279,7 +284,7 @@ class G_MFEA:
 
         # Build and save results
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-                                     max_nfes=max_nfes_per_task, all_cons=all_cons,
+                                     max_nfes=nfes_per_task, all_cons=all_cons,
                                      bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 

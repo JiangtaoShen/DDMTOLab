@@ -130,13 +130,15 @@ class MTEA_HKTS:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize and evaluate
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Transferred populations are evaluated on the receiving task only, so
+        # the per-task counts are tracked separately from the scalar budget
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Convert to unified space
@@ -237,6 +239,7 @@ class MTEA_HKTS:
                 if maxC > 0 and o_cons_r.shape[1] > 0:
                     o_cons[:, :o_cons_r.shape[1]] = o_cons_r
                 nfes += len(off_decs)
+                nfes_per_task[t] += len(off_decs)
                 pbar.update(len(off_decs))
 
                 # --- Merge and select ---
@@ -247,6 +250,7 @@ class MTEA_HKTS:
                     if maxC > 0 and tp_cons_r.shape[1] > 0:
                         tp_cons[:, :tp_cons_r.shape[1]] = tp_cons_r
                     nfes += len(transpop_decs)
+                    nfes_per_task[t] += len(transpop_decs)
                     pbar.update(len(transpop_decs))
                     m_decs = np.vstack([pop_decs[t], off_decs, transpop_decs])
                     m_objs = np.vstack([pop_objs[t], o_objs, tp_objs])
@@ -331,7 +335,7 @@ class MTEA_HKTS:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
         return results

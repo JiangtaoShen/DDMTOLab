@@ -75,7 +75,13 @@ class Results:
     runtime : float
         Total runtime in seconds
     max_nfes : List[int]
-        Maximum function evaluations per task
+        Function evaluations each task actually consumed, which the recorded
+        history spans. This is a measurement, not the requested budget: an
+        algorithm may overshoot its budget on the last generation, and in
+        multitask algorithms that share one population the split across tasks is
+        decided at run time and is rarely even. Analysis code relies on it to
+        scale the horizontal axis of convergence curves, so it must never be
+        filled with the declared ``max_nfes`` argument.
     best_cons : Optional[List[np.ndarray]]
         Best constraint values for each task (None if unconstrained)
     all_cons : Optional[List[List[np.ndarray]]]
@@ -125,7 +131,11 @@ def build_save_results(
     runtime : float
         Total runtime in seconds
     max_nfes : List[int]
-        Maximum function evaluations per task
+        Function evaluations each task actually consumed, i.e. the algorithm's
+        own per-task counter at the end of the run, not the budget it was asked
+        for. Pass the measured counts: analysis code uses this to scale the
+        horizontal axis of convergence curves, so a declared budget here
+        silently mis-scales every plot.
     all_cons : List[List[np.ndarray]], optional
         Constraint values history for all tasks (default: None)
     bounds : List[Tuple[np.ndarray, np.ndarray]], optional

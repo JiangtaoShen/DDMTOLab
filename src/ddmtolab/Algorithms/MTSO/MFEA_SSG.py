@@ -490,7 +490,6 @@ class MFEA_SSG:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         max_dim = max(dims)
 
@@ -516,6 +515,9 @@ class MFEA_SSG:
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Offspring are evaluated on a randomly assigned task factor, so the
+        # per-task counts diverge from the scalar budget counter
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform to unified search space
@@ -603,6 +605,7 @@ class MFEA_SSG:
                     off_dec_trimmed = dec_mut[:dims[assigned_sf]]
                     off_obj, off_con = evaluation_single(problem, off_dec_trimmed, assigned_sf)
                     nfes += 1
+                    nfes_per_task[assigned_sf] += 1
                     pbar.update(1)
 
                     off_decs_list.append(dec_mut.reshape(1, -1))
@@ -624,6 +627,7 @@ class MFEA_SSG:
                         off_dec_trimmed = off_dec[:dims[sf]]
                         off_obj, off_con = evaluation_single(problem, off_dec_trimmed, sf)
                         nfes += 1
+                        nfes_per_task[sf] += 1
                         pbar.update(1)
 
                         off_decs_list.append(off_dec.reshape(1, -1))
@@ -665,7 +669,7 @@ class MFEA_SSG:
         pbar.close()
         runtime = time.time() - start_time
 
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 

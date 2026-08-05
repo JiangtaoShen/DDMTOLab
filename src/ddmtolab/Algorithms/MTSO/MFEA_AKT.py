@@ -117,7 +117,6 @@ class MFEA_AKT:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         pop_size = n * nt  # total population size
 
@@ -125,6 +124,9 @@ class MFEA_AKT:
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Skill factors split the unified population unevenly, so the per-task
+        # counts are tracked alongside the scalar budget counter and reported
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform to unified space
@@ -220,6 +222,7 @@ class MFEA_AKT:
                 dec_trimmed = off_decs[idx, :dims[t]]
                 off_objs[idx], off_cons[idx] = evaluation_single(
                     problem, dec_trimmed, t)
+                nfes_per_task[t] += 1
 
             nfes += pop_size
             pbar.update(pop_size)
@@ -306,7 +309,7 @@ class MFEA_AKT:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 

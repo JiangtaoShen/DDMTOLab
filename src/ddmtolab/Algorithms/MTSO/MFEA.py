@@ -99,13 +99,15 @@ class MFEA:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize population and evaluate for each task
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Skill factors split the unified population unevenly, so the per-task
+        # counts are tracked alongside the scalar budget counter and reported
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform populations to unified search space for knowledge transfer. The
@@ -175,6 +177,7 @@ class MFEA:
                 if off_cons.shape[1] > 0:
                     off_cons[idx_t, :] = cons_t[:, :off_cons.shape[1]]
                 nfes += idx_t.size
+                nfes_per_task[t] += idx_t.size
                 pbar.update(idx_t.size)
 
             # Merge parents and offspring populations
@@ -194,7 +197,7 @@ class MFEA:
         runtime = time.time() - start_time
 
         # Save results
-        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=max_nfes_per_task,
+        results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime, max_nfes=nfes_per_task,
                                      all_cons=all_cons, bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 

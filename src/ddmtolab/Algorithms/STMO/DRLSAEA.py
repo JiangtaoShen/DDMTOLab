@@ -876,7 +876,7 @@ class DRLSAEA:
             all_decs, all_objs = build_staircase_history(decs, objs, k=self.mu)
             all_cons = None
         results = build_save_results(
-            all_decs, all_objs, runtime, max_nfes_per_task,
+            all_decs, all_objs, runtime, nfes_per_task,
             all_cons=all_cons if has_cons else None,
             bounds=problem.bounds,
             save_path=self.save_path,

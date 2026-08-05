@@ -115,7 +115,6 @@ class EMTO_AI:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
         pop_size = n * nt
 
@@ -123,6 +122,9 @@ class EMTO_AI:
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Cross-task evaluations land on the foreign task, so the per-task counts
+        # diverge from the scalar budget counter
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Transform to unified space
@@ -144,7 +146,7 @@ class EMTO_AI:
         # Initial transfer intensity. Initialization_MF evaluates every individual
         # on every task, so the reference already has a full cross-task objective
         # matrix here; reproduce it with one extra sweep per foreign task.
-        cross_objs = self._cross_evaluate(problem, pop_decs, pop_objs, nt, dims)
+        cross_objs = self._cross_evaluate(problem, pop_decs, pop_objs, nt, dims, nfes_per_task)
         nfes += n * nt * (nt - 1)
         rmp = np.clip(_compute_rmp(cross_objs, pop_objs, nt), 0.0, 1.0)
 
@@ -230,6 +232,7 @@ class EMTO_AI:
                 t = off_sfs[idx].item()
                 off_objs[idx], off_cons[idx] = evaluation_single(
                     problem, off_decs[idx, :dims[t]], t)
+                nfes_per_task[t] += 1
 
             nfes += pop_size
             pbar.update(pop_size)
@@ -281,7 +284,7 @@ class EMTO_AI:
                 # Cross-evaluate: evaluate each task's subpop on every other task
                 # cross_objs[t][o] = task t's subpop objectives when evaluated on task o
                 cross_objs = self._cross_evaluate(
-                    problem, pop_decs, pop_objs, nt, dims)
+                    problem, pop_decs, pop_objs, nt, dims, nfes_per_task)
                 nfes += n * nt * (nt - 1)
                 pbar.update(n * nt * (nt - 1))
 
@@ -301,14 +304,14 @@ class EMTO_AI:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 
         return results
 
     @staticmethod
-    def _cross_evaluate(problem, pop_decs, pop_objs, nt, dims):
+    def _cross_evaluate(problem, pop_decs, pop_objs, nt, dims, nfes_per_task=None):
         """
         Evaluate every task's subpopulation on every other task.
 
@@ -338,6 +341,8 @@ class EMTO_AI:
                 if o == t:
                     continue
                 c_objs, _ = evaluation_single(problem, pop_decs[t][:, :dims[o]], o)
+                if nfes_per_task is not None:
+                    nfes_per_task[o] += pop_decs[t].shape[0]
                 cross_objs[t][o] = c_objs
         return cross_objs
 

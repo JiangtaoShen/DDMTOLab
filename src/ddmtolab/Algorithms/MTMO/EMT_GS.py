@@ -208,7 +208,6 @@ class EMT_GS:
         n = self.n
         nt = problem.n_tasks
         dims = problem.dims
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Population lives in the unified [0, 1] space of dimension max(dims); the
@@ -222,6 +221,9 @@ class EMT_GS:
             objs.append(obj_t)
             cons.append(con_t)
         nfes = n * nt
+        # Skill factors split the unified population unevenly, so the per-task
+        # counts are tracked alongside the scalar budget counter and reported
+        nfes_per_task = [n] * nt
 
         # Sort each task's population by non-dominated rank then crowding distance
         for t in range(nt):
@@ -281,6 +283,7 @@ class EMT_GS:
                 off_decs_t = off_decs[mask, :]
                 off_objs_t, off_cons_t = evaluation_single(problem, off_decs_t[:, :dims[t]], t)
                 nfes += off_decs_t.shape[0]
+                nfes_per_task[t] += off_decs_t.shape[0]
                 pbar.update(off_decs_t.shape[0])
 
                 # Selection: NSGA-II sorting on the merged parent + offspring pool
@@ -297,7 +300,7 @@ class EMT_GS:
         runtime = time.time() - start_time
 
         results = build_save_results(all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-                                     max_nfes=max_nfes_per_task, all_cons=all_cons,
+                                     max_nfes=nfes_per_task, all_cons=all_cons,
                                      bounds=problem.bounds, save_path=self.save_path,
                                      filename=self.name, save_data=self.save_data)
 

@@ -108,13 +108,15 @@ class MKTDE:
         nt = problem.n_tasks
         dims = problem.dims
         n = self.n
-        max_nfes_per_task = par_list(self.max_nfes, nt)
         max_nfes = self.max_nfes * nt
 
         # Initialize and evaluate in real space
         decs = initialization(problem, n)
         objs, cons = evaluation(problem, decs)
         nfes = n * nt
+        # Transfers make the per-task evaluation counts diverge from the scalar
+        # budget counter, so they are tracked separately and reported
+        nfes_per_task = [n] * nt
         all_decs, all_objs, all_cons = init_history(decs, objs, cons)
 
         # Convert decisions to the unified max-D space used by MToP. MToP
@@ -186,6 +188,7 @@ class MKTDE:
                 off_objs_t, off_cons_t = evaluation_single(
                     problem, off_decs[:, :dims[t]], t)
                 nfes += n
+                nfes_per_task[t] += n
                 pbar.update(n)
 
                 # Elitist selection (parents + offspring → best n)
@@ -206,6 +209,7 @@ class MKTDE:
                 elite_obj, elite_con = evaluation_single(
                     problem, elite_dec[:dims[t]].reshape(1, -1), t)
                 nfes += 1
+                nfes_per_task[t] += 1
                 pbar.update(1)
 
                 pop_decs[t][-1] = elite_dec
@@ -222,7 +226,7 @@ class MKTDE:
 
         results = build_save_results(
             all_decs=all_decs, all_objs=all_objs, runtime=runtime,
-            max_nfes=max_nfes_per_task, all_cons=all_cons,
+            max_nfes=nfes_per_task, all_cons=all_cons,
             bounds=problem.bounds, save_path=self.save_path,
             filename=self.name, save_data=self.save_data)
 
