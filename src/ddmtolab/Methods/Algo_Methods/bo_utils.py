@@ -547,8 +547,9 @@ def mtbo_next_point(
     objs: list[np.ndarray],
     dims: list[int],
     nt: int,
-    data_type: torch.dtype = torch.float
-) -> np.ndarray:
+    data_type: torch.dtype = torch.float,
+    return_acq_value: bool = False
+):
     """
     Get the next sampling point using Multi-Task Bayesian Optimization.
 
@@ -566,11 +567,20 @@ def mtbo_next_point(
         Total number of tasks
     data_type : torch.dtype, optional
         Data type for tensors (default: torch.float)
+    return_acq_value : bool, optional
+        Whether to also return the acquisition value attained at the returned
+        point (default: False). The value is the *log* expected improvement,
+        so callers comparing tasks under different evaluation costs should
+        work in log space, i.e. compare ``log_ei - log(cost)`` rather than
+        dividing. Default False keeps the historical single return value.
 
     Returns
     -------
     candidate_np : np.ndarray
         Next sampling point, shape: (1, dims[task_id])
+    acq_value : float
+        Log expected improvement at ``candidate_np``. Only returned when
+        ``return_acq_value`` is True.
     """
     # Define search bounds [0, 1]^max_dim with fixed task index
     # (integer-valued task feature, matching mtgp_build)
@@ -593,7 +603,7 @@ def mtbo_next_point(
     )
 
     # Optimize acquisition function and extract decision variables
-    candidate, _ = optimize_acqf(
+    candidate, acq_value = optimize_acqf(
         logEI,
         bounds=bounds,
         q=1,
@@ -601,6 +611,9 @@ def mtbo_next_point(
         raw_samples=20
     )
     candidate_np = candidate[:, :dims[task_id]].detach().cpu().numpy()
+
+    if return_acq_value:
+        return candidate_np, float(acq_value.detach().cpu().item())
 
     return candidate_np
 
