@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Methods.data_analysis &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -85,6 +85,8 @@
 <span class="sd">    MetricResults: Dataclass for storing metric calculation results</span>
 <span class="sd">    TableConfig: Dataclass for table generation configuration</span>
 <span class="sd">    PlotConfig: Dataclass for plot generation configuration</span>
+<span class="sd">    EffectSizeResult: Dataclass for a Cliff&#39;s delta effect size</span>
+<span class="sd">    FriedmanResult: Dataclass for a Friedman test with post-hoc comparisons</span>
 <span class="sd">    DataAnalyzer: Main class for data analysis pipeline</span>
 
 <span class="sd">Author: Jiangtao Shen</span>
@@ -138,6 +140,7 @@
     <span class="n">MEDIAN</span> <span class="o">=</span> <span class="s2">&quot;median&quot;</span>
     <span class="n">MAX</span> <span class="o">=</span> <span class="s2">&quot;max&quot;</span>
     <span class="n">MIN</span> <span class="o">=</span> <span class="s2">&quot;min&quot;</span>
+    <span class="n">MEDIAN_IQR</span> <span class="o">=</span> <span class="s2">&quot;median_iqr&quot;</span>
 
 
 <span class="c1"># Default color palette for plots</span>
@@ -149,6 +152,11 @@
 
 <span class="c1"># Default markers for plots</span>
 <span class="n">DEFAULT_MARKERS</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;o&#39;</span><span class="p">,</span> <span class="s1">&#39;s&#39;</span><span class="p">,</span> <span class="s1">&#39;^&#39;</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">,</span> <span class="s1">&#39;D&#39;</span><span class="p">,</span> <span class="s1">&#39;p&#39;</span><span class="p">,</span> <span class="s1">&#39;*&#39;</span><span class="p">,</span> <span class="s1">&#39;h&#39;</span><span class="p">,</span> <span class="s1">&#39;&lt;&#39;</span><span class="p">,</span> <span class="s1">&#39;&gt;&#39;</span><span class="p">,</span> <span class="s1">&#39;X&#39;</span><span class="p">,</span> <span class="s1">&#39;P&#39;</span><span class="p">,</span> <span class="s1">&#39;d&#39;</span><span class="p">,</span> <span class="s1">&#39;8&#39;</span><span class="p">,</span> <span class="s1">&#39;H&#39;</span><span class="p">]</span>
+
+<span class="c1"># Magnitude thresholds for |Cliff&#39;s delta| (Romano et al., 2006). A delta whose</span>
+<span class="c1"># absolute value falls below the first threshold is negligible, below the second</span>
+<span class="c1"># small, below the third medium, and large otherwise.</span>
+<span class="n">CLIFFS_DELTA_THRESHOLDS</span><span class="p">:</span> <span class="n">Tuple</span><span class="p">[</span><span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mf">0.147</span><span class="p">,</span> <span class="mf">0.33</span><span class="p">,</span> <span class="mf">0.474</span><span class="p">)</span>
 
 
 <span class="c1"># =============================================================================</span>
@@ -229,13 +237,32 @@
 <span class="sd">    table_format : TableFormat</span>
 <span class="sd">        Output format (EXCEL or LATEX).</span>
 <span class="sd">    statistic_type : StatisticType</span>
-<span class="sd">        Type of statistic to display (MEAN, MEDIAN, MAX, MIN).</span>
+<span class="sd">        Type of statistic to display (MEAN, MEDIAN, MAX, MIN, MEDIAN_IQR).</span>
 <span class="sd">    significance_level : float</span>
 <span class="sd">        P-value threshold for statistical significance testing.</span>
 <span class="sd">        Default: 0.05</span>
 <span class="sd">    rank_sum_test : bool</span>
 <span class="sd">        Whether to perform Wilcoxon rank-sum test.</span>
 <span class="sd">        Default: True</span>
+<span class="sd">    holm_correction : bool</span>
+<span class="sd">        Whether to apply a Holm-Bonferroni correction to the per-instance</span>
+<span class="sd">        rank-sum p-values. The family is every comparison against the baseline</span>
+<span class="sd">        in one table generation, i.e. all non-baseline algorithms over all</span>
+<span class="sd">        problem-task instances. When enabled the &#39;+&#39;/&#39;-&#39;/&#39;=&#39; symbols follow the</span>
+<span class="sd">        corrected p-values instead of the raw ones.</span>
+<span class="sd">        Default: False</span>
+<span class="sd">    effect_size : bool</span>
+<span class="sd">        Whether to report Cliff&#39;s delta alongside each comparison, shown in the</span>
+<span class="sd">        cell as a separate bracketed field rather than folded into the symbol.</span>
+<span class="sd">        Default: False</span>
+<span class="sd">    friedman_test : bool</span>
+<span class="sd">        Whether to append Friedman test rows (average ranks plus Holm-corrected</span>
+<span class="sd">        post-hoc comparisons against a control algorithm) to the table.</span>
+<span class="sd">        Default: False</span>
+<span class="sd">    friedman_control : Optional[str]</span>
+<span class="sd">        Control algorithm for the Friedman post-hoc comparisons. Defaults to the</span>
+<span class="sd">        baseline, i.e. the last entry of the algorithm order.</span>
+<span class="sd">        Default: None</span>
 <span class="sd">    save_path : Path</span>
 <span class="sd">        Directory path to save output tables.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
@@ -243,6 +270,10 @@
     <span class="n">statistic_type</span><span class="p">:</span> <span class="n">StatisticType</span> <span class="o">=</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEAN</span>
     <span class="n">significance_level</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span>
     <span class="n">rank_sum_test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">holm_correction</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">effect_size</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">friedman_test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">friedman_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">save_path</span><span class="p">:</span> <span class="n">Path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s1">&#39;./Results&#39;</span><span class="p">)</span>
 
 
@@ -298,6 +329,8 @@
     <span class="n">markers</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="n">DEFAULT_MARKERS</span><span class="o">.</span><span class="n">copy</span><span class="p">())</span>
 
 
+<div class="viewcode-block" id="ComparisonResult">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.ComparisonResult">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ComparisonResult</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -310,10 +343,131 @@
 <span class="sd">    symbol : str</span>
 <span class="sd">        Comparison symbol: &#39;+&#39; (better), &#39;-&#39; (worse), &#39;=&#39; (no significant difference).</span>
 <span class="sd">    p_value : Optional[float]</span>
-<span class="sd">        P-value from statistical test, or None if test not performed.</span>
+<span class="sd">        Raw (uncorrected) p-value from the statistical test, or None if the test</span>
+<span class="sd">        was not performed.</span>
+<span class="sd">    p_adjusted : Optional[float]</span>
+<span class="sd">        Multiplicity-corrected p-value, populated only when a correction such as</span>
+<span class="sd">        Holm-Bonferroni is applied over a family of comparisons. None otherwise.</span>
+<span class="sd">    effect_size : Optional[float]</span>
+<span class="sd">        Effect size (Cliff&#39;s delta) oriented so that a positive value means the</span>
+<span class="sd">        algorithm is better than the baseline. None when not requested.</span>
+<span class="sd">    effect_magnitude : Optional[str]</span>
+<span class="sd">        Qualitative magnitude of ``effect_size``: &#39;negligible&#39;, &#39;small&#39;,</span>
+<span class="sd">        &#39;medium&#39;, &#39;large&#39;, or &#39;undefined&#39;. None when not requested.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span>
     <span class="n">p_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">p_adjusted</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">effect_size</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">effect_magnitude</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="EffectSizeResult">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.EffectSizeResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">EffectSizeResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Effect size of a pairwise comparison, reported separately from significance.</span>
+
+<span class="sd">    :no-index:</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    delta : float</span>
+<span class="sd">        Cliff&#39;s delta in [-1, 1], oriented so that a positive value means the</span>
+<span class="sd">        algorithm is better than the baseline under the given optimization</span>
+<span class="sd">        direction. np.nan when it cannot be computed.</span>
+<span class="sd">    magnitude : str</span>
+<span class="sd">        Qualitative magnitude derived from ``|delta|``: &#39;negligible&#39;, &#39;small&#39;,</span>
+<span class="sd">        &#39;medium&#39;, &#39;large&#39;, or &#39;undefined&#39; when delta is np.nan.</span>
+<span class="sd">    method : str</span>
+<span class="sd">        Name of the effect size measure, always &#39;cliffs_delta&#39;.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">delta</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">magnitude</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;cliffs_delta&#39;</span></div>
+
+
+
+<div class="viewcode-block" id="FriedmanPostHocResult">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.FriedmanPostHocResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FriedmanPostHocResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    One post-hoc comparison of an algorithm against the control algorithm.</span>
+
+<span class="sd">    :no-index:</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm : str</span>
+<span class="sd">        Name of the compared algorithm.</span>
+<span class="sd">    average_rank : float</span>
+<span class="sd">        Average Friedman rank of the algorithm (1 is best).</span>
+<span class="sd">    z_statistic : float</span>
+<span class="sd">        Standardized rank difference against the control algorithm.</span>
+<span class="sd">    p_value : Optional[float]</span>
+<span class="sd">        Raw two-sided p-value, or None for the control algorithm itself.</span>
+<span class="sd">    p_adjusted : Optional[float]</span>
+<span class="sd">        Holm-Bonferroni corrected p-value over the k-1 comparisons, or None for</span>
+<span class="sd">        the control algorithm itself.</span>
+<span class="sd">    significant : bool</span>
+<span class="sd">        Whether the corrected p-value is below the significance level.</span>
+<span class="sd">    symbol : str</span>
+<span class="sd">        &#39;+&#39; (better than control), &#39;-&#39; (worse), &#39;=&#39; (not significant), or &#39;&#39;</span>
+<span class="sd">        for the control algorithm itself.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">average_rank</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">z_statistic</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">p_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">p_adjusted</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">significant</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span></div>
+
+
+
+<div class="viewcode-block" id="FriedmanResult">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.FriedmanResult">[docs]</a>
+<span class="nd">@dataclass</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">FriedmanResult</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Outcome of a Friedman test with post-hoc comparisons against a control.</span>
+
+<span class="sd">    :no-index:</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    statistic : float</span>
+<span class="sd">        Friedman chi-squared statistic (chi^2_F).</span>
+<span class="sd">    p_value : float</span>
+<span class="sd">        P-value of the omnibus Friedman test.</span>
+<span class="sd">    average_ranks : Dict[str, float]</span>
+<span class="sd">        Average rank per algorithm (1 is best), keyed by algorithm name.</span>
+<span class="sd">    n_algorithms : int</span>
+<span class="sd">        Number of algorithms compared.</span>
+<span class="sd">    n_instances : int</span>
+<span class="sd">        Number of instances (blocks) retained after dropping incomplete ones.</span>
+<span class="sd">    n_instances_dropped : int</span>
+<span class="sd">        Number of instances dropped because at least one algorithm had no value.</span>
+<span class="sd">    control : Optional[str]</span>
+<span class="sd">        Control algorithm used for the post-hoc comparisons.</span>
+<span class="sd">    significance_level : float</span>
+<span class="sd">        Significance level applied to the corrected post-hoc p-values.</span>
+<span class="sd">    post_hoc : List[FriedmanPostHocResult]</span>
+<span class="sd">        One entry per algorithm, in the order the algorithms were supplied.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">statistic</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">p_value</span><span class="p">:</span> <span class="nb">float</span>
+    <span class="n">average_ranks</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]</span>
+    <span class="n">n_algorithms</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">n_instances</span><span class="p">:</span> <span class="nb">int</span>
+    <span class="n">n_instances_dropped</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">significance_level</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span>
+    <span class="n">post_hoc</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">FriedmanPostHocResult</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">list</span><span class="p">)</span></div>
+
 
 
 <span class="nd">@dataclass</span>
@@ -634,11 +788,15 @@
 <span class="c1"># Statistics Module</span>
 <span class="c1"># =============================================================================</span>
 
+<div class="viewcode-block" id="StatisticsCalculator">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">StatisticsCalculator</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Class for statistical calculations and hypothesis testing.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
 
+<div class="viewcode-block" id="StatisticsCalculator.calculate_statistic">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.calculate_statistic">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">calculate_statistic</span><span class="p">(</span>
             <span class="n">data</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
@@ -652,13 +810,14 @@
 <span class="sd">        data : List[float]</span>
 <span class="sd">            List of numeric values to compute statistics from.</span>
 <span class="sd">        statistic_type : StatisticType</span>
-<span class="sd">            Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN).</span>
+<span class="sd">            Type of statistic to calculate (MEAN, MEDIAN, MAX, MIN, MEDIAN_IQR).</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        Tuple[float, Optional[float]]</span>
-<span class="sd">            Tuple of (statistic_value, std_value).</span>
-<span class="sd">            std_value is only returned for MEAN, None otherwise.</span>
+<span class="sd">            Tuple of (statistic_value, dispersion_value).</span>
+<span class="sd">            The dispersion is the standard deviation for MEAN and the</span>
+<span class="sd">            interquartile range for MEDIAN_IQR; it is None otherwise.</span>
 <span class="sd">            Returns (np.nan, np.nan) for empty data.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
@@ -670,19 +829,26 @@
             <span class="k">return</span> <span class="n">stat_value</span><span class="p">,</span> <span class="n">std_value</span>
         <span class="k">elif</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="kc">None</span>
+        <span class="k">elif</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN_IQR</span><span class="p">:</span>
+            <span class="n">q1</span><span class="p">,</span> <span class="n">q3</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">percentile</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="p">[</span><span class="mi">25</span><span class="p">,</span> <span class="mi">75</span><span class="p">])</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">q3</span> <span class="o">-</span> <span class="n">q1</span>
         <span class="k">elif</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MAX</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="kc">None</span>
         <span class="k">elif</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MIN</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="kc">None</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span></div>
 
+
+<div class="viewcode-block" id="StatisticsCalculator.perform_rank_sum_test">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.perform_rank_sum_test">[docs]</a>
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">perform_rank_sum_test</span><span class="p">(</span>
             <span class="n">algo_data</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
             <span class="n">base_data</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
             <span class="n">significance_level</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
-            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span> <span class="o">=</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span> <span class="o">=</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span><span class="p">,</span>
+            <span class="n">compute_effect_size</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ComparisonResult</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Perform Wilcoxon rank-sum test to compare two algorithms.</span>
@@ -697,6 +863,10 @@
 <span class="sd">            P-value threshold for significance (default: 0.05).</span>
 <span class="sd">        direction : OptimizationDirection, optional</span>
 <span class="sd">            Optimization direction (MINIMIZE or MAXIMIZE).</span>
+<span class="sd">        compute_effect_size : bool, optional</span>
+<span class="sd">            Whether to also compute Cliff&#39;s delta and store it in the</span>
+<span class="sd">            ``effect_size`` / ``effect_magnitude`` fields of the result.</span>
+<span class="sd">            Default: False, which leaves both fields as None.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -706,6 +876,10 @@
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">algo_data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="nb">len</span><span class="p">(</span><span class="n">base_data</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">ComparisonResult</span><span class="p">(</span><span class="n">symbol</span><span class="o">=</span><span class="s1">&#39;=&#39;</span><span class="p">,</span> <span class="n">p_value</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+
+        <span class="n">effect</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="n">compute_effect_size</span><span class="p">:</span>
+            <span class="n">effect</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">cliffs_delta</span><span class="p">(</span><span class="n">algo_data</span><span class="p">,</span> <span class="n">base_data</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
 
         <span class="k">try</span><span class="p">:</span>
             <span class="n">_</span><span class="p">,</span> <span class="n">p_value</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">ranksums</span><span class="p">(</span><span class="n">algo_data</span><span class="p">,</span> <span class="n">base_data</span><span class="p">)</span>
@@ -721,9 +895,328 @@
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">symbol</span> <span class="o">=</span> <span class="s1">&#39;=&#39;</span>
 
-            <span class="k">return</span> <span class="n">ComparisonResult</span><span class="p">(</span><span class="n">symbol</span><span class="o">=</span><span class="n">symbol</span><span class="p">,</span> <span class="n">p_value</span><span class="o">=</span><span class="n">p_value</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ComparisonResult</span><span class="p">(</span>
+                <span class="n">symbol</span><span class="o">=</span><span class="n">symbol</span><span class="p">,</span>
+                <span class="n">p_value</span><span class="o">=</span><span class="n">p_value</span><span class="p">,</span>
+                <span class="n">effect_size</span><span class="o">=</span><span class="n">effect</span><span class="o">.</span><span class="n">delta</span> <span class="k">if</span> <span class="n">effect</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">effect_magnitude</span><span class="o">=</span><span class="n">effect</span><span class="o">.</span><span class="n">magnitude</span> <span class="k">if</span> <span class="n">effect</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">ComparisonResult</span><span class="p">(</span><span class="n">symbol</span><span class="o">=</span><span class="s1">&#39;=&#39;</span><span class="p">,</span> <span class="n">p_value</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+            <span class="k">return</span> <span class="n">ComparisonResult</span><span class="p">(</span>
+                <span class="n">symbol</span><span class="o">=</span><span class="s1">&#39;=&#39;</span><span class="p">,</span>
+                <span class="n">p_value</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                <span class="n">effect_size</span><span class="o">=</span><span class="n">effect</span><span class="o">.</span><span class="n">delta</span> <span class="k">if</span> <span class="n">effect</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
+                <span class="n">effect_magnitude</span><span class="o">=</span><span class="n">effect</span><span class="o">.</span><span class="n">magnitude</span> <span class="k">if</span> <span class="n">effect</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="kc">None</span>
+            <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StatisticsCalculator.holm_bonferroni">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.holm_bonferroni">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">holm_bonferroni</span><span class="p">(</span><span class="n">p_values</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Apply the Holm-Bonferroni step-down correction to a family of p-values.</span>
+
+<span class="sd">        The p-values are sorted ascending; the i-th smallest of m values is</span>
+<span class="sd">        multiplied by ``m - i``, a running maximum enforces monotonicity, and the</span>
+<span class="sd">        result is capped at 1. Entries that are None or NaN are not part of the</span>
+<span class="sd">        family: they neither contribute to m nor receive an adjusted value.</span>
+
+<span class="sd">        Because the correction is monotone non-decreasing, an adjusted p-value is</span>
+<span class="sd">        never smaller than its raw counterpart, so a comparison can only lose</span>
+<span class="sd">        significance through it, never gain it.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        p_values : List[Optional[float]]</span>
+<span class="sd">            Raw p-values of one family of comparisons, in any order.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[Optional[float]]</span>
+<span class="sd">            Adjusted p-values in the same order and of the same length as the</span>
+<span class="sd">            input, with None wherever the input was None or NaN.</span>
+
+<span class="sd">        Examples</span>
+<span class="sd">        --------</span>
+<span class="sd">        &gt;&gt;&gt; StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])</span>
+<span class="sd">        [0.03, 0.04, 0.04]</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">adjusted</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]]</span> <span class="o">=</span> <span class="p">[</span><span class="kc">None</span><span class="p">]</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">p_values</span><span class="p">)</span>
+        <span class="n">valid</span> <span class="o">=</span> <span class="p">[(</span><span class="n">i</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">p</span><span class="p">))</span> <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">p_values</span><span class="p">)</span>
+                 <span class="k">if</span> <span class="n">p</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">p</span><span class="p">)]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">valid</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">adjusted</span>
+
+        <span class="n">m</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">valid</span><span class="p">)</span>
+        <span class="n">running_max</span> <span class="o">=</span> <span class="mf">0.0</span>
+        <span class="k">for</span> <span class="n">rank</span><span class="p">,</span> <span class="p">(</span><span class="n">index</span><span class="p">,</span> <span class="n">p</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">valid</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">item</span><span class="p">:</span> <span class="n">item</span><span class="p">[</span><span class="mi">1</span><span class="p">])):</span>
+            <span class="n">running_max</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">running_max</span><span class="p">,</span> <span class="p">(</span><span class="n">m</span> <span class="o">-</span> <span class="n">rank</span><span class="p">)</span> <span class="o">*</span> <span class="n">p</span><span class="p">)</span>
+            <span class="n">adjusted</span><span class="p">[</span><span class="n">index</span><span class="p">]</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">running_max</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">adjusted</span></div>
+
+
+<div class="viewcode-block" id="StatisticsCalculator.classify_cliffs_delta">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.classify_cliffs_delta">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">classify_cliffs_delta</span><span class="p">(</span><span class="n">delta</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Map a Cliff&#39;s delta to its qualitative magnitude.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        delta : float</span>
+<span class="sd">            Cliff&#39;s delta value; only its absolute value matters.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        str</span>
+<span class="sd">            &#39;negligible&#39; (``|delta| &lt; 0.147``), &#39;small&#39; (&lt; 0.33), &#39;medium&#39;</span>
+<span class="sd">            (&lt; 0.474), &#39;large&#39; otherwise, or &#39;undefined&#39; for NaN.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">delta</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">delta</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39;undefined&#39;</span>
+
+        <span class="n">magnitude</span> <span class="o">=</span> <span class="nb">abs</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span>
+        <span class="n">negligible</span><span class="p">,</span> <span class="n">small</span><span class="p">,</span> <span class="n">medium</span> <span class="o">=</span> <span class="n">CLIFFS_DELTA_THRESHOLDS</span>
+        <span class="k">if</span> <span class="n">magnitude</span> <span class="o">&lt;</span> <span class="n">negligible</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s1">&#39;negligible&#39;</span>
+        <span class="k">if</span> <span class="n">magnitude</span> <span class="o">&lt;</span> <span class="n">small</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s1">&#39;small&#39;</span>
+        <span class="k">if</span> <span class="n">magnitude</span> <span class="o">&lt;</span> <span class="n">medium</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s1">&#39;medium&#39;</span>
+        <span class="k">return</span> <span class="s1">&#39;large&#39;</span></div>
+
+
+<div class="viewcode-block" id="StatisticsCalculator.cliffs_delta">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.cliffs_delta">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">cliffs_delta</span><span class="p">(</span>
+            <span class="n">algo_data</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+            <span class="n">base_data</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span> <span class="o">=</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">EffectSizeResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Compute Cliff&#39;s delta, a non-parametric effect size for two samples.</span>
+
+<span class="sd">        Cliff&#39;s delta is the difference between the probability that a value of</span>
+<span class="sd">        one sample exceeds a value of the other and the probability of the</span>
+<span class="sd">        reverse; for independent samples it is equivalent to the rank-biserial</span>
+<span class="sd">        correlation derived from the rank-sum statistic. It is reported</span>
+<span class="sd">        independently of the significance test: a large delta on few runs may</span>
+<span class="sd">        still be non-significant, and a significant difference may be negligible</span>
+<span class="sd">        in size.</span>
+
+<span class="sd">        The sign is oriented by ``direction`` so that a positive delta always</span>
+<span class="sd">        means the algorithm is better than the baseline.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        algo_data : List[float]</span>
+<span class="sd">            Data from the algorithm being tested. NaN entries are dropped.</span>
+<span class="sd">        base_data : List[float]</span>
+<span class="sd">            Data from the baseline algorithm. NaN entries are dropped.</span>
+<span class="sd">        direction : OptimizationDirection, optional</span>
+<span class="sd">            Optimization direction (MINIMIZE or MAXIMIZE).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        EffectSizeResult</span>
+<span class="sd">            Delta in [-1, 1] with its qualitative magnitude, or</span>
+<span class="sd">            (np.nan, &#39;undefined&#39;) when either sample is empty.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">algo_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">algo_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="n">base_array</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">base_data</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+        <span class="n">algo_array</span> <span class="o">=</span> <span class="n">algo_array</span><span class="p">[</span><span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">algo_array</span><span class="p">)]</span>
+        <span class="n">base_array</span> <span class="o">=</span> <span class="n">base_array</span><span class="p">[</span><span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">base_array</span><span class="p">)]</span>
+
+        <span class="k">if</span> <span class="n">algo_array</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span> <span class="ow">or</span> <span class="n">base_array</span><span class="o">.</span><span class="n">size</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">EffectSizeResult</span><span class="p">(</span><span class="n">delta</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">,</span> <span class="n">magnitude</span><span class="o">=</span><span class="s1">&#39;undefined&#39;</span><span class="p">)</span>
+
+        <span class="n">differences</span> <span class="o">=</span> <span class="n">algo_array</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">-</span> <span class="n">base_array</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">dominance</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">differences</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">))</span> <span class="o">-</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">differences</span> <span class="o">&lt;</span> <span class="mi">0</span><span class="p">))</span>
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">dominance</span> <span class="o">/</span> <span class="p">(</span><span class="n">algo_array</span><span class="o">.</span><span class="n">size</span> <span class="o">*</span> <span class="n">base_array</span><span class="o">.</span><span class="n">size</span><span class="p">)</span>
+
+        <span class="c1"># Positive must mean &quot;algorithm is better&quot;, so flip when smaller is better</span>
+        <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span><span class="p">:</span>
+            <span class="n">delta</span> <span class="o">=</span> <span class="o">-</span><span class="n">delta</span>
+
+        <span class="k">return</span> <span class="n">EffectSizeResult</span><span class="p">(</span>
+            <span class="n">delta</span><span class="o">=</span><span class="n">delta</span><span class="p">,</span>
+            <span class="n">magnitude</span><span class="o">=</span><span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">classify_cliffs_delta</span><span class="p">(</span><span class="n">delta</span><span class="p">)</span>
+        <span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="StatisticsCalculator.perform_friedman_test">
+<a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.data_analysis.StatisticsCalculator.perform_friedman_test">[docs]</a>
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">perform_friedman_test</span><span class="p">(</span>
+            <span class="n">data_matrix</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]],</span>
+            <span class="n">algorithm_names</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span> <span class="o">=</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span><span class="p">,</span>
+            <span class="n">control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">significance_level</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FriedmanResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Run a Friedman test over an algorithm-by-instance matrix, with post-hoc</span>
+<span class="sd">        comparisons against a control algorithm.</span>
+
+<span class="sd">        Each instance (column) is a block in which the algorithms are ranked,</span>
+<span class="sd">        rank 1 being the best under ``direction`` and ties receiving their</span>
+<span class="sd">        average rank. The omnibus statistic comes from</span>
+<span class="sd">        ``scipy.stats.friedmanchisquare``. The post-hoc step compares every other</span>
+<span class="sd">        algorithm against the control using the standardized rank difference</span>
+
+<span class="sd">        .. math:: z_i = (R_i - R_c) / \\sqrt{k(k+1) / (6N)}</span>
+
+<span class="sd">        with two-sided normal p-values corrected by Holm-Bonferroni over the</span>
+<span class="sd">        k-1 comparisons.</span>
+
+<span class="sd">        Instances where any algorithm has a NaN are dropped, since the test needs</span>
+<span class="sd">        complete blocks. When every block is fully tied there is no rank</span>
+<span class="sd">        variation to test and the statistic degenerates to 0/0, so it is reported</span>
+<span class="sd">        as chi^2_F = 0 with p = 1 rather than NaN.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        data_matrix : Union[np.ndarray, List[List[float]]]</span>
+<span class="sd">            Results with shape (n_algorithms, n_instances); entry [i, j] is the</span>
+<span class="sd">            performance of algorithm i on instance j.</span>
+<span class="sd">        algorithm_names : List[str]</span>
+<span class="sd">            Algorithm names, one per row of ``data_matrix``.</span>
+<span class="sd">        direction : OptimizationDirection, optional</span>
+<span class="sd">            Optimization direction (MINIMIZE or MAXIMIZE).</span>
+<span class="sd">        control : Optional[str], optional</span>
+<span class="sd">            Control algorithm for the post-hoc comparisons. Defaults to the last</span>
+<span class="sd">            entry of ``algorithm_names``.</span>
+<span class="sd">        significance_level : float, optional</span>
+<span class="sd">            Threshold applied to the corrected post-hoc p-values (default: 0.05).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        FriedmanResult</span>
+<span class="sd">            Omnibus statistic and p-value, average ranks, and one post-hoc entry</span>
+<span class="sd">            per algorithm.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If fewer than 3 algorithms are supplied (the test is not applicable),</span>
+<span class="sd">            if the number of names does not match the number of rows, if fewer</span>
+<span class="sd">            than 2 complete instances remain, or if ``control`` is not one of</span>
+<span class="sd">            ``algorithm_names``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">data_matrix</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">ndim</span> <span class="o">!=</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;data_matrix must be 2-D with shape (n_algorithms, n_instances), &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;got shape </span><span class="si">{</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="nb">len</span><span class="p">(</span><span class="n">algorithm_names</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;algorithm_names has </span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">algorithm_names</span><span class="p">)</span><span class="si">}</span><span class="s2"> entries but data_matrix &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;has </span><span class="si">{</span><span class="n">matrix</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2"> rows; they must match&quot;</span>
+            <span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">algorithm_names</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The Friedman test needs at least 3 algorithms, got &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">len</span><span class="p">(</span><span class="n">algorithm_names</span><span class="p">)</span><span class="si">}</span><span class="s2">. Use perform_rank_sum_test for a &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;pairwise comparison instead.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Only complete blocks can be ranked, so drop instances with any NaN</span>
+        <span class="n">complete</span> <span class="o">=</span> <span class="o">~</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">matrix</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="n">n_dropped</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">~</span><span class="n">complete</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">n_dropped</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;Dropped </span><span class="si">{</span><span class="n">n_dropped</span><span class="si">}</span><span class="s2"> instance(s) from the Friedman test because &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;at least one algorithm had no value there.&quot;</span>
+            <span class="p">)</span>
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">matrix</span><span class="p">[:,</span> <span class="n">complete</span><span class="p">]</span>
+
+        <span class="n">n_algorithms</span><span class="p">,</span> <span class="n">n_instances</span> <span class="o">=</span> <span class="n">matrix</span><span class="o">.</span><span class="n">shape</span>
+        <span class="k">if</span> <span class="n">n_instances</span> <span class="o">&lt;</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;The Friedman test needs at least 2 complete instances, got &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">n_instances</span><span class="si">}</span><span class="s2">.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="c1"># Rank within each instance; rank 1 is best, ties share the average rank</span>
+        <span class="n">ranked</span> <span class="o">=</span> <span class="n">matrix</span> <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span> <span class="k">else</span> <span class="o">-</span><span class="n">matrix</span>
+        <span class="n">ranks</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">apply_along_axis</span><span class="p">(</span><span class="n">stats</span><span class="o">.</span><span class="n">rankdata</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="n">ranked</span><span class="p">)</span>
+        <span class="n">mean_ranks</span> <span class="o">=</span> <span class="n">ranks</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+        <span class="n">average_ranks</span> <span class="o">=</span> <span class="p">{</span><span class="n">name</span><span class="p">:</span> <span class="nb">float</span><span class="p">(</span><span class="n">rank</span><span class="p">)</span> <span class="k">for</span> <span class="n">name</span><span class="p">,</span> <span class="n">rank</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">algorithm_names</span><span class="p">,</span> <span class="n">mean_ranks</span><span class="p">)}</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ptp</span><span class="p">(</span><span class="n">ranks</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="c1"># Every block is fully tied, which zeroes scipy&#39;s tie correction and</span>
+            <span class="c1"># makes the statistic 0/0. There is no rank variation to test, so</span>
+            <span class="c1"># report the degenerate-but-meaningful &quot;no difference at all&quot;.</span>
+            <span class="n">statistic</span><span class="p">,</span> <span class="n">p_value</span> <span class="o">=</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">statistic</span><span class="p">,</span> <span class="n">p_value</span> <span class="o">=</span> <span class="n">stats</span><span class="o">.</span><span class="n">friedmanchisquare</span><span class="p">(</span><span class="o">*</span><span class="n">matrix</span><span class="p">)</span>
+
+        <span class="n">control_name</span> <span class="o">=</span> <span class="n">control</span> <span class="k">if</span> <span class="n">control</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">algorithm_names</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="k">if</span> <span class="n">control_name</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">algorithm_names</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;control &#39;</span><span class="si">{</span><span class="n">control_name</span><span class="si">}</span><span class="s2">&#39; is not one of algorithm_names: </span><span class="si">{</span><span class="n">algorithm_names</span><span class="si">}</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+        <span class="n">control_rank</span> <span class="o">=</span> <span class="n">average_ranks</span><span class="p">[</span><span class="n">control_name</span><span class="p">]</span>
+
+        <span class="c1"># Standardized rank differences against the control, then Holm over k-1</span>
+        <span class="n">standard_error</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sqrt</span><span class="p">(</span><span class="n">n_algorithms</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_algorithms</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="mf">6.0</span> <span class="o">*</span> <span class="n">n_instances</span><span class="p">))</span>
+        <span class="n">z_scores</span><span class="p">,</span> <span class="n">raw_p</span> <span class="o">=</span> <span class="p">{},</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">algorithm_names</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="n">control_name</span><span class="p">:</span>
+                <span class="k">continue</span>
+            <span class="n">z</span> <span class="o">=</span> <span class="p">(</span><span class="n">average_ranks</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">-</span> <span class="n">control_rank</span><span class="p">)</span> <span class="o">/</span> <span class="n">standard_error</span>
+            <span class="n">z_scores</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">z</span><span class="p">)</span>
+            <span class="n">raw_p</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">stats</span><span class="o">.</span><span class="n">norm</span><span class="o">.</span><span class="n">sf</span><span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">z</span><span class="p">)))</span>
+
+        <span class="n">compared</span> <span class="o">=</span> <span class="p">[</span><span class="n">name</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">algorithm_names</span> <span class="k">if</span> <span class="n">name</span> <span class="o">!=</span> <span class="n">control_name</span><span class="p">]</span>
+        <span class="n">adjusted</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">holm_bonferroni</span><span class="p">([</span><span class="n">raw_p</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">compared</span><span class="p">])</span>
+        <span class="n">adjusted_p</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span><span class="nb">zip</span><span class="p">(</span><span class="n">compared</span><span class="p">,</span> <span class="n">adjusted</span><span class="p">))</span>
+
+        <span class="n">post_hoc</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">name</span> <span class="ow">in</span> <span class="n">algorithm_names</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">name</span> <span class="o">==</span> <span class="n">control_name</span><span class="p">:</span>
+                <span class="n">post_hoc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">FriedmanPostHocResult</span><span class="p">(</span>
+                    <span class="n">algorithm</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                    <span class="n">average_rank</span><span class="o">=</span><span class="n">average_ranks</span><span class="p">[</span><span class="n">name</span><span class="p">],</span>
+                    <span class="n">z_statistic</span><span class="o">=</span><span class="mf">0.0</span>
+                <span class="p">))</span>
+                <span class="k">continue</span>
+
+            <span class="n">p_adj</span> <span class="o">=</span> <span class="n">adjusted_p</span><span class="p">[</span><span class="n">name</span><span class="p">]</span>
+            <span class="n">significant</span> <span class="o">=</span> <span class="n">p_adj</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">p_adj</span> <span class="o">&lt;</span> <span class="n">significance_level</span>
+            <span class="k">if</span> <span class="n">significant</span><span class="p">:</span>
+                <span class="c1"># A lower average rank is better, so it earns the &#39;+&#39;</span>
+                <span class="n">symbol</span> <span class="o">=</span> <span class="s1">&#39;+&#39;</span> <span class="k">if</span> <span class="n">average_ranks</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">control_rank</span> <span class="k">else</span> <span class="s1">&#39;-&#39;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">symbol</span> <span class="o">=</span> <span class="s1">&#39;=&#39;</span>
+
+            <span class="n">post_hoc</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">FriedmanPostHocResult</span><span class="p">(</span>
+                <span class="n">algorithm</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+                <span class="n">average_rank</span><span class="o">=</span><span class="n">average_ranks</span><span class="p">[</span><span class="n">name</span><span class="p">],</span>
+                <span class="n">z_statistic</span><span class="o">=</span><span class="n">z_scores</span><span class="p">[</span><span class="n">name</span><span class="p">],</span>
+                <span class="n">p_value</span><span class="o">=</span><span class="n">raw_p</span><span class="p">[</span><span class="n">name</span><span class="p">],</span>
+                <span class="n">p_adjusted</span><span class="o">=</span><span class="n">p_adj</span><span class="p">,</span>
+                <span class="n">significant</span><span class="o">=</span><span class="n">significant</span><span class="p">,</span>
+                <span class="n">symbol</span><span class="o">=</span><span class="n">symbol</span>
+            <span class="p">))</span>
+
+        <span class="k">return</span> <span class="n">FriedmanResult</span><span class="p">(</span>
+            <span class="n">statistic</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">statistic</span><span class="p">),</span>
+            <span class="n">p_value</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">p_value</span><span class="p">),</span>
+            <span class="n">average_ranks</span><span class="o">=</span><span class="n">average_ranks</span><span class="p">,</span>
+            <span class="n">n_algorithms</span><span class="o">=</span><span class="n">n_algorithms</span><span class="p">,</span>
+            <span class="n">n_instances</span><span class="o">=</span><span class="n">n_instances</span><span class="p">,</span>
+            <span class="n">n_instances_dropped</span><span class="o">=</span><span class="n">n_dropped</span><span class="p">,</span>
+            <span class="n">control</span><span class="o">=</span><span class="n">control_name</span><span class="p">,</span>
+            <span class="n">significance_level</span><span class="o">=</span><span class="n">significance_level</span><span class="p">,</span>
+            <span class="n">post_hoc</span><span class="o">=</span><span class="n">post_hoc</span>
+        <span class="p">)</span></div>
+
 
     <span class="nd">@staticmethod</span>
     <span class="k">def</span><span class="w"> </span><span class="nf">collect_task_data</span><span class="p">(</span>
@@ -781,6 +1274,7 @@
 <span class="sd">            Task index (0-based).</span>
 <span class="sd">        statistic_type : StatisticType</span>
 <span class="sd">            Type of statistic (MEAN returns None as all runs are used).</span>
+<span class="sd">            MEDIAN_IQR selects the same run as MEDIAN.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -806,7 +1300,7 @@
         <span class="n">final_values</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">final_values</span><span class="p">)</span>
         <span class="n">runs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">runs</span><span class="p">)</span>
 
-        <span class="k">if</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">statistic_type</span> <span class="ow">in</span> <span class="p">(</span><span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN</span><span class="p">,</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN_IQR</span><span class="p">):</span>
             <span class="n">target_value</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">median</span><span class="p">(</span><span class="n">final_values</span><span class="p">)</span>
             <span class="n">idx</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">final_values</span> <span class="o">-</span> <span class="n">target_value</span><span class="p">))</span>
         <span class="k">elif</span> <span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MAX</span><span class="p">:</span>
@@ -816,7 +1310,8 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="k">return</span> <span class="kc">None</span>
 
-        <span class="k">return</span> <span class="n">runs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span>
+        <span class="k">return</span> <span class="n">runs</span><span class="p">[</span><span class="n">idx</span><span class="p">]</span></div>
+
 
 
 <span class="c1"># =============================================================================</span>
@@ -863,6 +1358,14 @@
 <span class="sd">        -------</span>
 <span class="sd">        Union[pd.DataFrame, str]</span>
 <span class="sd">            DataFrame for Excel format, LaTeX string for LaTeX format.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If ``friedman_test`` is enabled but the test cannot be applied, for</span>
+<span class="sd">            instance with fewer than 3 algorithms or fewer than 2 complete</span>
+<span class="sd">            instances. The misconfiguration is surfaced rather than silently</span>
+<span class="sd">            producing a table without the requested rows.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Extract problems and determine task count</span>
         <span class="n">problems</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">all_best_values</span><span class="p">[</span><span class="n">algorithm_order</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span><span class="o">.</span><span class="n">keys</span><span class="p">(),</span>
@@ -872,13 +1375,70 @@
         <span class="n">direction</span> <span class="o">=</span> <span class="n">DataUtils</span><span class="o">.</span><span class="n">get_metric_direction</span><span class="p">(</span><span class="n">metric_name</span><span class="p">)</span>
 
         <span class="c1"># Generate data rows</span>
-        <span class="n">rows</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_data_rows</span><span class="p">(</span><span class="n">all_best_values</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">problems</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
+        <span class="n">rows</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">instance_stats</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_data_rows</span><span class="p">(</span>
+            <span class="n">all_best_values</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">problems</span><span class="p">,</span> <span class="n">direction</span>
+        <span class="p">)</span>
+
+        <span class="n">friedman_result</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">friedman_test</span><span class="p">:</span>
+            <span class="n">friedman_result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_run_friedman_test</span><span class="p">(</span><span class="n">instance_stats</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
 
         <span class="c1"># Generate and save table</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">table_format</span> <span class="o">==</span> <span class="n">TableFormat</span><span class="o">.</span><span class="n">EXCEL</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_excel_table</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_excel_table</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span>
+                                              <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">friedman_result</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_latex_table</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
+            <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_generate_latex_table</span><span class="p">(</span><span class="n">rows</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span>
+                                              <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span> <span class="n">friedman_result</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run_friedman_test</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">instance_stats</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]],</span>
+            <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">FriedmanResult</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Run the Friedman test over the instances of this table.</span>
+
+<span class="sd">        The matrix handed to the test is the statistic already displayed in the</span>
+<span class="sd">        cells, so the ranks in the table footer are consistent with the numbers</span>
+<span class="sd">        above them.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        instance_stats : List[Dict[str, float]]</span>
+<span class="sd">            Per-instance statistic of every algorithm, one dict per table row.</span>
+<span class="sd">        algorithm_order : List[str]</span>
+<span class="sd">            Algorithm display order; its last entry is the default control.</span>
+<span class="sd">        direction : OptimizationDirection</span>
+<span class="sd">            Optimization direction (MINIMIZE or MAXIMIZE).</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        FriedmanResult</span>
+<span class="sd">            Omnibus statistic, average ranks and post-hoc comparisons.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If the test cannot be applied to this table.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">instance_stats</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                <span class="s2">&quot;Friedman test requested but the table has no instances to rank.&quot;</span>
+            <span class="p">)</span>
+
+        <span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+            <span class="p">[[</span><span class="n">row</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">algo</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">nan</span><span class="p">)</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">instance_stats</span><span class="p">]</span> <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">],</span>
+            <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span>
+        <span class="p">)</span>
+        <span class="k">return</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">perform_friedman_test</span><span class="p">(</span>
+            <span class="n">matrix</span><span class="p">,</span>
+            <span class="nb">list</span><span class="p">(</span><span class="n">algorithm_order</span><span class="p">),</span>
+            <span class="n">direction</span><span class="o">=</span><span class="n">direction</span><span class="p">,</span>
+            <span class="n">control</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">friedman_control</span><span class="p">,</span>
+            <span class="n">significance_level</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">significance_level</span>
+        <span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_generate_data_rows</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span>
@@ -886,17 +1446,24 @@
             <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
             <span class="n">problems</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
             <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span>
-    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ComparisonCounts</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]]:</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ComparisonCounts</span><span class="p">],</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
+               <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">float</span><span class="p">]]]:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        ...</span>
+<span class="sd">        Build one table row per problem-task instance.</span>
+
+<span class="sd">        Every instance is visited first and only formatted afterwards, because a</span>
+<span class="sd">        Holm correction spans the whole family of comparisons in the table and</span>
+<span class="sd">        can therefore not be resolved while the instances are still being read.</span>
+
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
-<span class="sd">        Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]]]</span>
-<span class="sd">            Tuple of (rows, comparison_counts, algorithm_ranks).</span>
-<span class="sd">            algorithm_ranks[algo] = List[int]</span>
+<span class="sd">        Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]], List[Dict[str, float]]]</span>
+<span class="sd">            Tuple of (rows, comparison_counts, algorithm_ranks, instance_stats).</span>
+<span class="sd">            algorithm_ranks[algo] = List[int]; instance_stats holds the displayed</span>
+<span class="sd">            statistic of every algorithm per instance, which feeds the Friedman test.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">base_algo</span> <span class="o">=</span> <span class="n">algorithm_order</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
-        <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">instances</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">comparison_counts</span> <span class="o">=</span> <span class="p">{</span><span class="n">algo</span><span class="p">:</span> <span class="n">ComparisonCounts</span><span class="p">()</span> <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]}</span>
         <span class="n">algorithm_ranks</span> <span class="o">=</span> <span class="p">{</span><span class="n">algo</span><span class="p">:</span> <span class="p">[]</span> <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">}</span>
 
@@ -915,9 +1482,8 @@
                 <span class="k">continue</span>
 
             <span class="k">for</span> <span class="n">task_idx</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_tasks</span><span class="p">):</span>
-                <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="n">prob</span><span class="p">,</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="n">task_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">}</span>
-
                 <span class="n">algo_stat_values</span> <span class="o">=</span> <span class="p">{}</span>
+                <span class="n">cells</span> <span class="o">=</span> <span class="p">{}</span>
 
                 <span class="n">base_data</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">collect_task_data</span><span class="p">(</span>
                     <span class="n">all_best_values</span><span class="p">,</span> <span class="n">base_algo</span><span class="p">,</span> <span class="n">prob</span><span class="p">,</span> <span class="n">task_idx</span>
@@ -934,32 +1500,98 @@
 
                     <span class="n">algo_stat_values</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="n">stat_value</span>
 
-                    <span class="n">symbol</span> <span class="o">=</span> <span class="s1">&#39;&#39;</span>
+                    <span class="n">result</span> <span class="o">=</span> <span class="kc">None</span>
                     <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">rank_sum_test</span> <span class="ow">and</span> <span class="n">algo</span> <span class="o">!=</span> <span class="n">base_algo</span><span class="p">:</span>
                         <span class="n">result</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">perform_rank_sum_test</span><span class="p">(</span>
                             <span class="n">algo_data</span><span class="p">,</span> <span class="n">base_data</span><span class="p">,</span>
-                            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">significance_level</span><span class="p">,</span> <span class="n">direction</span>
+                            <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">significance_level</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span>
+                            <span class="n">compute_effect_size</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">effect_size</span>
                         <span class="p">)</span>
-                        <span class="n">symbol</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">symbol</span>
 
-                        <span class="k">if</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">comparison_counts</span><span class="p">:</span>
-                            <span class="k">if</span> <span class="n">symbol</span> <span class="o">==</span> <span class="s1">&#39;+&#39;</span><span class="p">:</span>
-                                <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">plus</span> <span class="o">+=</span> <span class="mi">1</span>
-                            <span class="k">elif</span> <span class="n">symbol</span> <span class="o">==</span> <span class="s1">&#39;-&#39;</span><span class="p">:</span>
-                                <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">minus</span> <span class="o">+=</span> <span class="mi">1</span>
-                            <span class="k">else</span><span class="p">:</span>
-                                <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">equal</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">cells</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">stat_value</span><span class="p">,</span> <span class="n">std_value</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
 
-                    <span class="n">cell_content</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_cell_content</span><span class="p">(</span><span class="n">stat_value</span><span class="p">,</span> <span class="n">std_value</span><span class="p">,</span> <span class="n">symbol</span><span class="p">)</span>
-                    <span class="n">row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="n">cell_content</span>
+                <span class="n">instances</span><span class="o">.</span><span class="n">append</span><span class="p">({</span>
+                    <span class="s1">&#39;problem&#39;</span><span class="p">:</span> <span class="n">prob</span><span class="p">,</span>
+                    <span class="s1">&#39;task&#39;</span><span class="p">:</span> <span class="n">task_idx</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span>
+                    <span class="s1">&#39;stats&#39;</span><span class="p">:</span> <span class="n">algo_stat_values</span><span class="p">,</span>
+                    <span class="s1">&#39;cells&#39;</span><span class="p">:</span> <span class="n">cells</span>
+                <span class="p">})</span>
 
-                <span class="n">row_ranks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_row_ranks</span><span class="p">(</span><span class="n">algo_stat_values</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
-                <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">rank</span> <span class="ow">in</span> <span class="n">row_ranks</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-                    <span class="n">algorithm_ranks</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank</span><span class="p">)</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">holm_correction</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_apply_holm_correction</span><span class="p">(</span><span class="n">instances</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">)</span>
 
-                <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+        <span class="n">rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">instance_stats</span> <span class="o">=</span> <span class="p">[]</span>
 
-        <span class="k">return</span> <span class="n">rows</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span>
+        <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span><span class="p">:</span>
+            <span class="n">row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="n">instance</span><span class="p">[</span><span class="s1">&#39;problem&#39;</span><span class="p">],</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="n">instance</span><span class="p">[</span><span class="s1">&#39;task&#39;</span><span class="p">]}</span>
+
+            <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">:</span>
+                <span class="n">stat_value</span><span class="p">,</span> <span class="n">std_value</span><span class="p">,</span> <span class="n">result</span> <span class="o">=</span> <span class="n">instance</span><span class="p">[</span><span class="s1">&#39;cells&#39;</span><span class="p">][</span><span class="n">algo</span><span class="p">]</span>
+                <span class="n">symbol</span> <span class="o">=</span> <span class="n">result</span><span class="o">.</span><span class="n">symbol</span> <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
+
+                <span class="k">if</span> <span class="n">result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">comparison_counts</span><span class="p">:</span>
+                    <span class="k">if</span> <span class="n">symbol</span> <span class="o">==</span> <span class="s1">&#39;+&#39;</span><span class="p">:</span>
+                        <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">plus</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="k">elif</span> <span class="n">symbol</span> <span class="o">==</span> <span class="s1">&#39;-&#39;</span><span class="p">:</span>
+                        <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">minus</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="k">else</span><span class="p">:</span>
+                        <span class="n">comparison_counts</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">equal</span> <span class="o">+=</span> <span class="mi">1</span>
+
+                <span class="n">row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_cell_content</span><span class="p">(</span><span class="n">stat_value</span><span class="p">,</span> <span class="n">std_value</span><span class="p">,</span> <span class="n">symbol</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+
+            <span class="n">row_ranks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_calculate_row_ranks</span><span class="p">(</span><span class="n">instance</span><span class="p">[</span><span class="s1">&#39;stats&#39;</span><span class="p">],</span> <span class="n">direction</span><span class="p">)</span>
+            <span class="k">for</span> <span class="n">algo</span><span class="p">,</span> <span class="n">rank</span> <span class="ow">in</span> <span class="n">row_ranks</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+                <span class="n">algorithm_ranks</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">rank</span><span class="p">)</span>
+
+            <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">row</span><span class="p">)</span>
+            <span class="n">instance_stats</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">instance</span><span class="p">[</span><span class="s1">&#39;stats&#39;</span><span class="p">])</span>
+
+        <span class="k">return</span> <span class="n">rows</span><span class="p">,</span> <span class="n">comparison_counts</span><span class="p">,</span> <span class="n">algorithm_ranks</span><span class="p">,</span> <span class="n">instance_stats</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_apply_holm_correction</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">instances</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
+            <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Holm-correct every comparison of this table in place.</span>
+
+<span class="sd">        The family is all comparisons against the baseline over all instances of</span>
+<span class="sd">        one table generation. Each affected ``ComparisonResult`` gets its</span>
+<span class="sd">        ``p_adjusted`` filled in, and its symbol is relaxed to &#39;=&#39; when the</span>
+<span class="sd">        corrected p-value no longer clears the significance level. The reverse</span>
+<span class="sd">        can never happen, since a Holm-adjusted p-value is never smaller than the</span>
+<span class="sd">        raw one, so the sign of a surviving symbol stays valid.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        instances : List[Dict[str, Any]]</span>
+<span class="sd">            Per-instance records produced by the first pass, modified in place.</span>
+<span class="sd">        algorithm_order : List[str]</span>
+<span class="sd">            Algorithm display order, used to visit the cells deterministically.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        None</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">comparisons</span> <span class="o">=</span> <span class="p">[</span>
+            <span class="n">instance</span><span class="p">[</span><span class="s1">&#39;cells&#39;</span><span class="p">][</span><span class="n">algo</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span>
+            <span class="k">for</span> <span class="n">instance</span> <span class="ow">in</span> <span class="n">instances</span>
+            <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span>
+            <span class="k">if</span> <span class="n">instance</span><span class="p">[</span><span class="s1">&#39;cells&#39;</span><span class="p">][</span><span class="n">algo</span><span class="p">][</span><span class="mi">2</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+        <span class="p">]</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">comparisons</span><span class="p">:</span>
+            <span class="k">return</span>
+
+        <span class="n">adjusted</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">holm_bonferroni</span><span class="p">(</span>
+            <span class="p">[</span><span class="n">comparison</span><span class="o">.</span><span class="n">p_value</span> <span class="k">for</span> <span class="n">comparison</span> <span class="ow">in</span> <span class="n">comparisons</span><span class="p">]</span>
+        <span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">comparison</span><span class="p">,</span> <span class="n">p_adjusted</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">comparisons</span><span class="p">,</span> <span class="n">adjusted</span><span class="p">):</span>
+            <span class="n">comparison</span><span class="o">.</span><span class="n">p_adjusted</span> <span class="o">=</span> <span class="n">p_adjusted</span>
+            <span class="k">if</span> <span class="n">p_adjusted</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">p_adjusted</span> <span class="o">&gt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">significance_level</span><span class="p">:</span>
+                <span class="n">comparison</span><span class="o">.</span><span class="n">symbol</span> <span class="o">=</span> <span class="s1">&#39;=&#39;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_calculate_row_ranks</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span>
@@ -1009,19 +1641,29 @@
             <span class="bp">self</span><span class="p">,</span>
             <span class="n">stat_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span>
             <span class="n">std_value</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span>
-            <span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span>
+            <span class="n">symbol</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+            <span class="n">comparison</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ComparisonResult</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">        Format a table cell with statistic value, optional std deviation, and comparison symbol.</span>
+<span class="sd">        Format a table cell with statistic value, optional dispersion, comparison</span>
+<span class="sd">        symbol, and optional effect size.</span>
+
+<span class="sd">        The dispersion is rendered as ``mean (std)`` for MEAN and ``median[IQR]``</span>
+<span class="sd">        for MEDIAN_IQR. An effect size, when present, is appended as its own</span>
+<span class="sd">        bracketed field so it is never read as part of the significance symbol.</span>
 
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        stat_value : float</span>
 <span class="sd">            Statistical value.</span>
 <span class="sd">        std_value : Optional[float]</span>
-<span class="sd">            Standard deviation (or None).</span>
+<span class="sd">            Dispersion accompanying the statistic: standard deviation for MEAN,</span>
+<span class="sd">            interquartile range for MEDIAN_IQR, None otherwise.</span>
 <span class="sd">        symbol : str</span>
 <span class="sd">            Comparison symbol.</span>
+<span class="sd">        comparison : Optional[ComparisonResult], optional</span>
+<span class="sd">            Comparison the cell belongs to, used only to render its effect size.</span>
+<span class="sd">            Default: None, which appends nothing.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
@@ -1034,6 +1676,8 @@
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">table_format</span> <span class="o">==</span> <span class="n">TableFormat</span><span class="o">.</span><span class="n">EXCEL</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEAN</span><span class="p">:</span>
                 <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2"> (</span><span class="si">{</span><span class="n">std_value</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">)&quot;</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN_IQR</span><span class="p">:</span>
+                <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2">[</span><span class="si">{</span><span class="n">std_value</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">]&quot;</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2">&quot;</span>
 
@@ -1043,13 +1687,44 @@
             <span class="c1"># LaTeX format</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEAN</span><span class="p">:</span>
                 <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2">$ ($</span><span class="si">{</span><span class="n">std_value</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">$)&quot;</span>
+            <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">statistic_type</span> <span class="o">==</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN_IQR</span><span class="p">:</span>
+                <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2">$[$</span><span class="si">{</span><span class="n">std_value</span><span class="si">:</span><span class="s2">.1e</span><span class="si">}</span><span class="s2">$]&quot;</span>
             <span class="k">else</span><span class="p">:</span>
                 <span class="n">cell_content</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$</span><span class="si">{</span><span class="n">stat_value</span><span class="si">:</span><span class="s2">.3e</span><span class="si">}</span><span class="s2">$&quot;</span>
 
             <span class="k">if</span> <span class="n">symbol</span><span class="p">:</span>
                 <span class="n">cell_content</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; $</span><span class="si">{</span><span class="n">symbol</span><span class="si">}</span><span class="s2">$&quot;</span>
 
+        <span class="n">cell_content</span> <span class="o">+=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_format_effect_size</span><span class="p">(</span><span class="n">comparison</span><span class="p">)</span>
+
         <span class="k">return</span> <span class="n">cell_content</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_format_effect_size</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">comparison</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">ComparisonResult</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Render the effect size of a comparison as a separate trailing field.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        comparison : Optional[ComparisonResult]</span>
+<span class="sd">            Comparison whose effect size should be rendered, if it carries one.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        str</span>
+<span class="sd">            Bracketed effect size prefixed by a space, or an empty string when</span>
+<span class="sd">            no effect size was computed.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">comparison</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">comparison</span><span class="o">.</span><span class="n">effect_size</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="s1">&#39;&#39;</span>
+
+        <span class="n">delta</span> <span class="o">=</span> <span class="n">comparison</span><span class="o">.</span><span class="n">effect_size</span>
+        <span class="n">magnitude</span> <span class="o">=</span> <span class="n">comparison</span><span class="o">.</span><span class="n">effect_magnitude</span> <span class="ow">or</span> <span class="s1">&#39;undefined&#39;</span>
+
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">delta</span><span class="p">):</span>
+            <span class="k">return</span> <span class="s1">&#39; [d=N/A]&#39;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">table_format</span> <span class="o">==</span> <span class="n">TableFormat</span><span class="o">.</span><span class="n">EXCEL</span><span class="p">:</span>
+            <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot; [d=</span><span class="si">{</span><span class="n">delta</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">magnitude</span><span class="si">}</span><span class="s2">]&quot;</span>
+        <span class="k">return</span> <span class="sa">f</span><span class="s2">&quot; [$</span><span class="se">\\</span><span class="s2">delta=</span><span class="si">{</span><span class="n">delta</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$ </span><span class="si">{</span><span class="n">magnitude</span><span class="si">}</span><span class="s2">]&quot;</span>
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_find_best_value_in_row</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span>
@@ -1082,8 +1757,10 @@
             <span class="k">if</span> <span class="n">cell</span> <span class="o">!=</span> <span class="s1">&#39;N/A&#39;</span><span class="p">:</span>
                 <span class="k">try</span><span class="p">:</span>
                     <span class="c1"># Cell formats: &quot;1.2e+00&quot;, &quot;1.2e+00 +&quot;, &quot;1.2e+00 (3e-01) +&quot;,</span>
-                    <span class="c1"># and LaTeX &quot;$...$&quot; variants -- strip std and symbol parts</span>
-                    <span class="n">val_str</span> <span class="o">=</span> <span class="n">cell</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;$&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                    <span class="c1"># &quot;1.2e+00[4e-01] +&quot;, a trailing &quot; [d=0.42 large]&quot; effect</span>
+                    <span class="c1"># size, and LaTeX &quot;$...$&quot; variants -- strip dispersion,</span>
+                    <span class="c1"># symbol and effect size parts</span>
+                    <span class="n">val_str</span> <span class="o">=</span> <span class="n">cell</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;[&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;$&#39;</span><span class="p">,</span> <span class="s1">&#39;&#39;</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
                     <span class="n">val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">val_str</span><span class="p">)</span>
 
                     <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span><span class="p">:</span>
@@ -1099,13 +1776,73 @@
 
         <span class="k">return</span> <span class="n">best_algo</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_build_friedman_rows</span><span class="p">(</span>
+            <span class="bp">self</span><span class="p">,</span>
+            <span class="n">friedman_result</span><span class="p">:</span> <span class="n">FriedmanResult</span><span class="p">,</span>
+            <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Render a Friedman result as table rows.</span>
+
+<span class="sd">        Produces two rows: the average ranks, labelled with the omnibus</span>
+<span class="sd">        chi-squared statistic and its p-value, and the Holm-corrected post-hoc</span>
+<span class="sd">        p-values against the control algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        friedman_result : FriedmanResult</span>
+<span class="sd">            Result to render.</span>
+<span class="sd">        algorithm_order : List[str]</span>
+<span class="sd">            Algorithm display order.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        List[Dict[str, Any]]</span>
+<span class="sd">            Two row dictionaries keyed like the data rows.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">is_latex</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">table_format</span> <span class="o">==</span> <span class="n">TableFormat</span><span class="o">.</span><span class="n">LATEX</span>
+
+        <span class="k">if</span> <span class="n">is_latex</span><span class="p">:</span>
+            <span class="n">rank_label</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Friedman Rank ($</span><span class="se">\\</span><span class="s2">chi^2_F=</span><span class="si">{</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">statistic</span><span class="si">:</span><span class="s2">.4g</span><span class="si">}</span><span class="s2">$, &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;$p=</span><span class="si">{</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">p_value</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">$)&quot;</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">rank_label</span> <span class="o">=</span> <span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Friedman Rank (chi2=</span><span class="si">{</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">statistic</span><span class="si">:</span><span class="s2">.4g</span><span class="si">}</span><span class="s2">, &quot;</span>
+                          <span class="sa">f</span><span class="s2">&quot;p=</span><span class="si">{</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">p_value</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">)&quot;</span><span class="p">)</span>
+
+        <span class="n">rank_row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="n">rank_label</span><span class="p">,</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">:</span>
+            <span class="n">rank</span> <span class="o">=</span> <span class="n">friedman_result</span><span class="o">.</span><span class="n">average_ranks</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span>
+            <span class="n">rank_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$</span><span class="si">{</span><span class="n">rank</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">$&quot;</span> <span class="k">if</span> <span class="n">is_latex</span> <span class="k">else</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">rank</span><span class="si">:</span><span class="s2">.2f</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="n">post_hoc</span> <span class="o">=</span> <span class="p">{</span><span class="n">entry</span><span class="o">.</span><span class="n">algorithm</span><span class="p">:</span> <span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">friedman_result</span><span class="o">.</span><span class="n">post_hoc</span><span class="p">}</span>
+        <span class="k">if</span> <span class="n">is_latex</span><span class="p">:</span>
+            <span class="c1"># &#39;_&#39; is a LaTeX control character, so escape it out of both the</span>
+            <span class="c1"># label and the control algorithm&#39;s name</span>
+            <span class="n">control_label</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">control</span><span class="p">)</span><span class="o">.</span><span class="n">replace</span><span class="p">(</span><span class="s1">&#39;_&#39;</span><span class="p">,</span> <span class="s1">&#39;-&#39;</span><span class="p">)</span>
+            <span class="n">p_label</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Friedman $p_</span><span class="se">{{</span><span class="s2">Holm</span><span class="se">}}</span><span class="s2">$ (vs </span><span class="si">{</span><span class="n">control_label</span><span class="si">}</span><span class="s2">)&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">p_label</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;Friedman p_Holm (vs </span><span class="si">{</span><span class="n">friedman_result</span><span class="o">.</span><span class="n">control</span><span class="si">}</span><span class="s2">)&quot;</span>
+
+        <span class="n">p_row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="n">p_label</span><span class="p">,</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">}</span>
+        <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">:</span>
+            <span class="n">entry</span> <span class="o">=</span> <span class="n">post_hoc</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">algo</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">entry</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">or</span> <span class="n">entry</span><span class="o">.</span><span class="n">p_adjusted</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">p_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="s1">&#39;Control&#39;</span>
+            <span class="k">elif</span> <span class="n">is_latex</span><span class="p">:</span>
+                <span class="n">p_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;$</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">p_adjusted</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2">$ $</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">symbol</span><span class="si">}</span><span class="s2">$&quot;</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="n">p_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">p_adjusted</span><span class="si">:</span><span class="s2">.2e</span><span class="si">}</span><span class="s2"> </span><span class="si">{</span><span class="n">entry</span><span class="o">.</span><span class="n">symbol</span><span class="si">}</span><span class="s2">&quot;</span>
+
+        <span class="k">return</span> <span class="p">[</span><span class="n">rank_row</span><span class="p">,</span> <span class="n">p_row</span><span class="p">]</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">_generate_excel_table</span><span class="p">(</span>
             <span class="bp">self</span><span class="p">,</span>
             <span class="n">rows</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]],</span>
             <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
             <span class="n">comparison_counts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ComparisonCounts</span><span class="p">],</span>
             <span class="n">algorithm_ranks</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span><span class="p">,</span>
+            <span class="n">friedman_result</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">FriedmanResult</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Generate and save a formatted Excel table.</span>
@@ -1118,14 +1855,20 @@
 <span class="sd">            Algorithm display order.</span>
 <span class="sd">        comparison_counts : Dict[str, ComparisonCounts]</span>
 <span class="sd">            Comparison result counts.</span>
+<span class="sd">        algorithm_ranks : Dict[str, List[int]]</span>
+<span class="sd">            Per-instance ranks used for the Average Rank row.</span>
 <span class="sd">        direction : OptimizationDirection</span>
 <span class="sd">            Optimization direction.</span>
+<span class="sd">        friedman_result : Optional[FriedmanResult], optional</span>
+<span class="sd">            Friedman result to append as extra rows, or None to omit them.</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        pd.DataFrame</span>
 <span class="sd">            DataFrame containing the table data.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">num_summary_rows</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Always has Average Rank row</span>
+
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">rank_sum_test</span><span class="p">:</span>
             <span class="n">summary_row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="s1">&#39;+/-/=&#39;</span><span class="p">,</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">}</span>
             <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]:</span>
@@ -1133,6 +1876,13 @@
                 <span class="n">summary_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">counts</span><span class="o">.</span><span class="n">plus</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">counts</span><span class="o">.</span><span class="n">minus</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">counts</span><span class="o">.</span><span class="n">equal</span><span class="si">}</span><span class="s2">&quot;</span>
             <span class="n">summary_row</span><span class="p">[</span><span class="n">algorithm_order</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]]</span> <span class="o">=</span> <span class="s1">&#39;Base&#39;</span>
             <span class="n">rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">summary_row</span><span class="p">)</span>
+            <span class="n">num_summary_rows</span> <span class="o">+=</span> <span class="mi">1</span>
+
+        <span class="c1"># Average Rank must stay the last row, so Friedman goes just before it</span>
+        <span class="k">if</span> <span class="n">friedman_result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">friedman_rows</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_friedman_rows</span><span class="p">(</span><span class="n">friedman_result</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">)</span>
+            <span class="n">rows</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">friedman_rows</span><span class="p">)</span>
+            <span class="n">num_summary_rows</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">friedman_rows</span><span class="p">)</span>
 
         <span class="n">avg_rank_row</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;Problem&#39;</span><span class="p">:</span> <span class="s1">&#39;Average Rank&#39;</span><span class="p">,</span> <span class="s1">&#39;Task&#39;</span><span class="p">:</span> <span class="s1">&#39;&#39;</span><span class="p">}</span>
         <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">:</span>
@@ -1157,7 +1907,8 @@
         <span class="n">df</span><span class="o">.</span><span class="n">to_excel</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">index</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
 
         <span class="c1"># Apply Excel formatting</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_excel_formatting</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">direction</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_apply_excel_formatting</span><span class="p">(</span><span class="n">output_file</span><span class="p">,</span> <span class="n">df</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">,</span> <span class="n">direction</span><span class="p">,</span>
+                                     <span class="n">num_summary_rows</span><span class="p">)</span>
 
         <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Excel table saved to: </span><span class="si">{</span><span class="n">output_file</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">df</span>
@@ -1167,9 +1918,15 @@
             <span class="n">output_file</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span>
             <span class="n">df</span><span class="p">:</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">,</span>
             <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
-            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span><span class="p">,</span>
+            <span class="n">num_summary_rows</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;...&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Style the saved workbook and bold the best value of every data row.</span>
+
+<span class="sd">        ``num_summary_rows`` tells the bolding logic how many trailing rows are</span>
+<span class="sd">        footers rather than data; it is derived from the config when omitted.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">wb</span> <span class="o">=</span> <span class="n">load_workbook</span><span class="p">(</span><span class="n">output_file</span><span class="p">)</span>
         <span class="n">ws</span> <span class="o">=</span> <span class="n">wb</span><span class="o">.</span><span class="n">active</span>
 
@@ -1204,9 +1961,10 @@
             <span class="n">ws</span><span class="o">.</span><span class="n">column_dimensions</span><span class="p">[</span><span class="n">column_letter</span><span class="p">]</span><span class="o">.</span><span class="n">width</span> <span class="o">=</span> <span class="n">max_length</span> <span class="o">+</span> <span class="mi">2</span>
 
         <span class="c1"># Bold the best value in each data row</span>
-        <span class="n">num_summary_rows</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Always has Average Rank row</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">rank_sum_test</span><span class="p">:</span>
-            <span class="n">num_summary_rows</span> <span class="o">+=</span> <span class="mi">1</span>  <span class="c1"># Add +/-/= row</span>
+        <span class="k">if</span> <span class="n">num_summary_rows</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">num_summary_rows</span> <span class="o">=</span> <span class="mi">1</span>  <span class="c1"># Always has Average Rank row</span>
+            <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span><span class="o">.</span><span class="n">rank_sum_test</span><span class="p">:</span>
+                <span class="n">num_summary_rows</span> <span class="o">+=</span> <span class="mi">1</span>  <span class="c1"># Add +/-/= row</span>
 
         <span class="n">num_data_rows</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">df</span><span class="p">)</span> <span class="o">-</span> <span class="n">num_summary_rows</span>
 
@@ -1220,8 +1978,9 @@
 
                 <span class="k">if</span> <span class="n">cell_value</span> <span class="ow">and</span> <span class="n">cell_value</span> <span class="o">!=</span> <span class="s1">&#39;N/A&#39;</span><span class="p">:</span>
                     <span class="k">try</span><span class="p">:</span>
-                        <span class="c1"># Handles &quot;1.2e+00&quot;, &quot;1.2e+00 +&quot;, &quot;1.2e+00 (3e-01) +&quot;</span>
-                        <span class="n">val_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cell_value</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
+                        <span class="c1"># Handles &quot;1.2e+00&quot;, &quot;1.2e+00 +&quot;, &quot;1.2e+00 (3e-01) +&quot;,</span>
+                        <span class="c1"># &quot;1.2e+00[4e-01] +&quot; and a trailing &quot; [d=0.42 large]&quot;</span>
+                        <span class="n">val_str</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cell_value</span><span class="p">)</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;(&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s1">&#39;[&#39;</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span><span class="o">.</span><span class="n">split</span><span class="p">()[</span><span class="mi">0</span><span class="p">]</span>
                         <span class="n">val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">val_str</span><span class="p">)</span>
 
                         <span class="k">if</span> <span class="n">direction</span> <span class="o">==</span> <span class="n">OptimizationDirection</span><span class="o">.</span><span class="n">MINIMIZE</span><span class="p">:</span>
@@ -1267,9 +2026,15 @@
             <span class="n">algorithm_order</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">],</span>
             <span class="n">comparison_counts</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">ComparisonCounts</span><span class="p">],</span>
             <span class="n">algorithm_ranks</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span>
-            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span>
+            <span class="n">direction</span><span class="p">:</span> <span class="n">OptimizationDirection</span><span class="p">,</span>
+            <span class="n">friedman_result</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">FriedmanResult</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;...&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Render the table as a standalone LaTeX document and save it.</span>
+
+<span class="sd">        ``friedman_result`` adds the average-rank and post-hoc footer rows when</span>
+<span class="sd">        supplied; the Average Rank row stays last, as in the Excel output.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
         <span class="n">df</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span><span class="n">rows</span><span class="p">)</span>
 
         <span class="c1"># Build table structure</span>
@@ -1324,6 +2089,16 @@
             <span class="n">summary_str</span> <span class="o">+=</span> <span class="s2">&quot; &amp; Base </span><span class="se">\\\\\n</span><span class="s2">&quot;</span>
             <span class="n">latex_str</span> <span class="o">+=</span> <span class="n">summary_str</span>
             <span class="n">latex_str</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">hline</span><span class="se">\n</span><span class="s2">&quot;</span>
+
+        <span class="c1"># Friedman footer rows, kept above Average Rank like in the Excel output</span>
+        <span class="k">if</span> <span class="n">friedman_result</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">for</span> <span class="n">friedman_row</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_build_friedman_rows</span><span class="p">(</span><span class="n">friedman_result</span><span class="p">,</span> <span class="n">algorithm_order</span><span class="p">):</span>
+                <span class="n">friedman_str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">multicolumn</span><span class="si">{2}</span><span class="s2">{|c|}{&quot;</span> <span class="o">+</span> <span class="nb">str</span><span class="p">(</span><span class="n">friedman_row</span><span class="p">[</span><span class="s1">&#39;Problem&#39;</span><span class="p">])</span> <span class="o">+</span> <span class="s2">&quot;}&quot;</span>
+                <span class="k">for</span> <span class="n">algo</span> <span class="ow">in</span> <span class="n">algorithm_order</span><span class="p">:</span>
+                    <span class="n">friedman_str</span> <span class="o">+=</span> <span class="sa">f</span><span class="s2">&quot; &amp; </span><span class="si">{</span><span class="n">friedman_row</span><span class="p">[</span><span class="n">algo</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span>
+                <span class="n">friedman_str</span> <span class="o">+=</span> <span class="s2">&quot; </span><span class="se">\\\\\n</span><span class="s2">&quot;</span>
+                <span class="n">latex_str</span> <span class="o">+=</span> <span class="n">friedman_str</span>
+                <span class="n">latex_str</span> <span class="o">+=</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">hline</span><span class="se">\n</span><span class="s2">&quot;</span>
 
         <span class="c1"># Average Rank row with best rank highlighted</span>
         <span class="n">avg_rank_str</span> <span class="o">=</span> <span class="s2">&quot;</span><span class="se">\\</span><span class="s2">multicolumn</span><span class="si">{2}</span><span class="s2">{|c|}{Average Rank}&quot;</span>
@@ -2365,6 +3140,10 @@
             <span class="n">statistic_type</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s1">&#39;mean&#39;</span><span class="p">,</span>
             <span class="n">significance_level</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.05</span><span class="p">,</span>
             <span class="n">rank_sum_test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+            <span class="n">holm_correction</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">effect_size</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">friedman_test</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+            <span class="n">friedman_control</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
             <span class="n">log_scale</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
             <span class="n">show_pf</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
             <span class="n">show_nd</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
@@ -2408,7 +3187,8 @@
 <span class="sd">            Output figure format: &#39;pdf&#39;, &#39;png&#39;, &#39;svg&#39;, etc.</span>
 <span class="sd">            Default: &#39;pdf&#39;</span>
 <span class="sd">        statistic_type : str, optional</span>
-<span class="sd">            Type of statistic: &#39;mean&#39;, &#39;median&#39;, &#39;max&#39;, &#39;min&#39;.</span>
+<span class="sd">            Type of statistic: &#39;mean&#39;, &#39;median&#39;, &#39;max&#39;, &#39;min&#39;, &#39;median_iqr&#39;.</span>
+<span class="sd">            &#39;mean&#39; renders as ``mean (std)`` and &#39;median_iqr&#39; as ``median[IQR]``.</span>
 <span class="sd">            Default: &#39;mean&#39;</span>
 <span class="sd">        significance_level : float, optional</span>
 <span class="sd">            P-value threshold for statistical significance testing.</span>
@@ -2416,6 +3196,24 @@
 <span class="sd">        rank_sum_test : bool, optional</span>
 <span class="sd">            Whether to perform Wilcoxon rank-sum test.</span>
 <span class="sd">            Default: True</span>
+<span class="sd">        holm_correction : bool, optional</span>
+<span class="sd">            Whether to Holm-Bonferroni correct the rank-sum p-values over all</span>
+<span class="sd">            comparisons against the baseline in the table. Symbols then follow</span>
+<span class="sd">            the corrected p-values, which is stricter than the raw ones.</span>
+<span class="sd">            Default: False</span>
+<span class="sd">        effect_size : bool, optional</span>
+<span class="sd">            Whether to report Cliff&#39;s delta next to each comparison, as its own</span>
+<span class="sd">            bracketed field rather than folded into the &#39;+&#39;/&#39;-&#39;/&#39;=&#39; symbol.</span>
+<span class="sd">            Default: False</span>
+<span class="sd">        friedman_test : bool, optional</span>
+<span class="sd">            Whether to append Friedman rows (average ranks plus Holm-corrected</span>
+<span class="sd">            post-hoc comparisons against a control) to the table. Requires at</span>
+<span class="sd">            least 3 algorithms and 2 instances, and raises otherwise.</span>
+<span class="sd">            Default: False</span>
+<span class="sd">        friedman_control : Optional[str], optional</span>
+<span class="sd">            Control algorithm of the Friedman post-hoc comparisons. Defaults to</span>
+<span class="sd">            the baseline, i.e. the last algorithm of the display order.</span>
+<span class="sd">            Default: None</span>
 <span class="sd">        log_scale : bool, optional</span>
 <span class="sd">            Whether to use logarithmic scale for convergence plot y-axis.</span>
 <span class="sd">            Default: False</span>
@@ -2461,6 +3259,10 @@
             <span class="n">statistic_type</span><span class="o">=</span><span class="n">stat_type</span><span class="p">,</span>
             <span class="n">significance_level</span><span class="o">=</span><span class="n">significance_level</span><span class="p">,</span>
             <span class="n">rank_sum_test</span><span class="o">=</span><span class="n">rank_sum_test</span><span class="p">,</span>
+            <span class="n">holm_correction</span><span class="o">=</span><span class="n">holm_correction</span><span class="p">,</span>
+            <span class="n">effect_size</span><span class="o">=</span><span class="n">effect_size</span><span class="p">,</span>
+            <span class="n">friedman_test</span><span class="o">=</span><span class="n">friedman_test</span><span class="p">,</span>
+            <span class="n">friedman_control</span><span class="o">=</span><span class="n">friedman_control</span><span class="p">,</span>
             <span class="n">save_path</span><span class="o">=</span><span class="n">Path</span><span class="p">(</span><span class="n">save_path</span><span class="p">)</span>
         <span class="p">)</span>
 

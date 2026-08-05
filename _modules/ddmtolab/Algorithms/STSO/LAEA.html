@@ -1,0 +1,701 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STSO.LAEA &mdash; DDMTOLab 1.0.10 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gui.html">Desktop GUI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STSO.LAEA</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STSO.LAEA</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">LLM-Assisted Evolutionary Algorithm (LAEA)</span>
+
+<span class="sd">This module implements LAEA for expensive single-objective optimization</span>
+<span class="sd">problems. The surrogate is not a trained model but a large language model</span>
+<span class="sd">prompted with the archive as in-context examples: a regression prompt supplies</span>
+<span class="sd">the value used to pick the single solution that is really evaluated, and a</span>
+<span class="sd">classification prompt supplies the good/bad labels that steer the next</span>
+<span class="sd">generation&#39;s estimation-of-distribution model.</span>
+
+<span class="sd">The port follows the reference implementation (class ``LSEA`` in</span>
+<span class="sd">https://github.com/hhyqhh/LAEA) rather than the paper, including its</span>
+<span class="sd">variable-width histogram EDA, its quadratic local search, and its one-real-</span>
+<span class="sd">evaluation-per-generation budget policy. The reference builds on pymoo; this</span>
+<span class="sd">version is native and works in the platform&#39;s normalized [0, 1] space, where</span>
+<span class="sd">the EDA bounds are 0 and 1.</span>
+
+<span class="sd">Cost note: each generation issues ``2 * n_initial`` LLM calls -- one regression</span>
+<span class="sd">and one classification query per offspring -- and consumes exactly one real</span>
+<span class="sd">function evaluation. The default setting therefore spends about 25,000 calls</span>
+<span class="sd">to reach ``max_nfes=300``. Set ``max_llm_calls`` to cap this, and keep the</span>
+<span class="sd">cache file so the run can be replayed offline.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Hao, H., Zhang, X., &amp; Zhou, A. (2024). Large Language Models as Surrogate Models in Evolutionary Algorithms: A Preliminary Study. arXiv preprint arXiv:2406.10675.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2026.08.03</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">copy</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
+
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.LLM_Methods.llm_budget</span><span class="w"> </span><span class="kn">import</span> <span class="n">LLMBudget</span><span class="p">,</span> <span class="n">LLMBudgetExceeded</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.LLM_Methods.llm_cache</span><span class="w"> </span><span class="kn">import</span> <span class="n">LLMCache</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.LLM_Methods.llm_client</span><span class="w"> </span><span class="kn">import</span> <span class="n">LLMCacheMiss</span><span class="p">,</span> <span class="n">LLMClient</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.LLM_Methods.llm_surrogate</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">LLM_Classification</span><span class="p">,</span>
+    <span class="n">LLM_Regression</span><span class="p">,</span>
+    <span class="n">load_prompt</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">warnings</span><span class="o">.</span><span class="n">filterwarnings</span><span class="p">(</span><span class="s2">&quot;ignore&quot;</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">local_search</span><span class="p">(</span><span class="n">Xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Quadratic interpolation refinement along each coordinate.</span>
+
+<span class="sd">    For every triple of consecutive solutions a parabola is fitted per</span>
+<span class="sd">    dimension and the first solution of the triple is moved to its vertex.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    Xs : ndarray</span>
+<span class="sd">        Solutions sorted by fitness, shape (n, d).</span>
+<span class="sd">    ys : ndarray</span>
+<span class="sd">        Matching objective values, shape (n,).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    ndarray</span>
+<span class="sd">        Refined copy of ``Xs``.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">Xs_new</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">Xs</span><span class="p">)</span>
+    <span class="n">TINY</span> <span class="o">=</span> <span class="mf">1e-50</span>
+    <span class="n">No</span><span class="p">,</span> <span class="n">Dim</span> <span class="o">=</span> <span class="n">Xs</span><span class="o">.</span><span class="n">shape</span>
+    <span class="k">for</span> <span class="n">r0</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">No</span> <span class="o">-</span> <span class="mi">2</span><span class="p">):</span>
+        <span class="n">r1</span> <span class="o">=</span> <span class="n">r0</span> <span class="o">+</span> <span class="mi">1</span>
+        <span class="n">r2</span> <span class="o">=</span> <span class="n">r0</span> <span class="o">+</span> <span class="mi">2</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">Dim</span><span class="p">):</span>
+            <span class="k">if</span> <span class="p">(</span><span class="nb">abs</span><span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">TINY</span> <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r2</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">TINY</span>
+                    <span class="ow">and</span> <span class="nb">abs</span><span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r2</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span> <span class="o">&gt;</span> <span class="n">TINY</span><span class="p">):</span>
+                <span class="n">a</span> <span class="o">=</span> <span class="p">((</span><span class="n">ys</span><span class="p">[</span><span class="n">r1</span><span class="p">]</span> <span class="o">-</span> <span class="n">ys</span><span class="p">[</span><span class="n">r0</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span>
+                     <span class="o">-</span> <span class="p">(</span><span class="n">ys</span><span class="p">[</span><span class="n">r0</span><span class="p">]</span> <span class="o">-</span> <span class="n">ys</span><span class="p">[</span><span class="n">r2</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r2</span><span class="p">,</span> <span class="n">d</span><span class="p">]))</span> <span class="o">/</span> <span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r2</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span>
+                <span class="n">b</span> <span class="o">=</span> <span class="p">(</span><span class="n">ys</span><span class="p">[</span><span class="n">r1</span><span class="p">]</span> <span class="o">-</span> <span class="n">ys</span><span class="p">[</span><span class="n">r0</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span> <span class="o">-</span> <span class="n">a</span> <span class="o">*</span> <span class="p">(</span><span class="n">Xs</span><span class="p">[</span><span class="n">r1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">+</span> <span class="n">Xs</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span>
+                <span class="k">if</span> <span class="nb">abs</span><span class="p">(</span><span class="n">a</span><span class="p">)</span> <span class="o">&gt;</span> <span class="n">TINY</span><span class="p">:</span>
+                    <span class="n">Xs_new</span><span class="p">[</span><span class="n">r0</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">b</span> <span class="o">/</span> <span class="p">(</span><span class="mf">2.0</span> <span class="o">*</span> <span class="n">a</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">Xs_new</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">VWH</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Variable-width histogram estimation-of-distribution model.</span>
+
+<span class="sd">    Each dimension is modelled by an ``m``-bin histogram whose interior bin</span>
+<span class="sd">    edges track the spread of the current population, with the two outer bins</span>
+<span class="sd">    kept at a small fixed probability so that the model can still escape the</span>
+<span class="sd">    region it has converged on.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    m : int, optional</span>
+<span class="sd">        Number of histogram bins per dimension (default: 15).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">15</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">=</span> <span class="n">m</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">D</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">LB</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">originalLB</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">originalUB</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Prob</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Range</span> <span class="o">=</span> <span class="kc">None</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">init</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">LB</span><span class="p">,</span> <span class="n">UB</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize a uniform histogram over the box [LB, UB].&quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">D</span> <span class="o">=</span> <span class="n">D</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">LB</span> <span class="o">=</span> <span class="n">LB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">=</span> <span class="n">UB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">originalLB</span> <span class="o">=</span> <span class="n">LB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">originalUB</span> <span class="o">=</span> <span class="n">UB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Prob</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">])</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Range</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+                      <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+                      <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span> <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">]))</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">update</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Xs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Re-fit the bin edges and bin probabilities on the solutions ``Xs``.&quot;&quot;&quot;</span>
+        <span class="n">NP</span> <span class="o">=</span> <span class="n">Xs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">Xs_t</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">Xs</span><span class="p">)</span>
+        <span class="n">Xs_t</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+
+        <span class="n">LB</span> <span class="o">=</span> <span class="n">Xs_t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">Xs_t</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">Xs_t</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:])</span>
+        <span class="n">UB</span> <span class="o">=</span> <span class="n">Xs_t</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">+</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">Xs_t</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">Xs_t</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="p">:])</span>
+
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">LB</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">originalLB</span>
+        <span class="n">LB</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">originalLB</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">UB</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">originalUB</span>
+        <span class="n">UB</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">originalUB</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">LB</span> <span class="o">=</span> <span class="n">LB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">=</span> <span class="n">UB</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">Range</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+                                   <span class="o">+</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+                                   <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+                                             <span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">]))</span>
+
+        <span class="n">epsilon</span> <span class="o">=</span> <span class="mf">1e-10</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">((</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">2</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="n">Xs</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="n">NP</span><span class="p">,</span> <span class="mi">1</span><span class="p">]))</span>
+                         <span class="o">/</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">UB</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">LB</span><span class="p">,</span> <span class="p">[</span><span class="n">NP</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span> <span class="o">+</span> <span class="n">epsilon</span><span class="p">))</span>
+
+        <span class="k">if</span> <span class="p">(</span><span class="n">index</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">3</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">()</span> <span class="ow">or</span> <span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">index</span><span class="p">)</span><span class="o">.</span><span class="n">any</span><span class="p">():</span>
+            <span class="n">index</span><span class="p">[</span><span class="n">index</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">3</span>
+            <span class="n">index</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">isnan</span><span class="p">(</span><span class="n">index</span><span class="p">)]</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="n">Prob</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">])</span>
+        <span class="n">Prob</span><span class="p">[</span><span class="mi">1</span><span class="p">:</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_update_umda</span><span class="p">(</span><span class="n">index</span><span class="p">)</span>
+
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Range</span><span class="p">[</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">Range</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">Prob</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.1</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">Range</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="p">:]</span> <span class="o">&gt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">Range</span><span class="p">[</span><span class="o">-</span><span class="mi">2</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">Prob</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">,</span> <span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.1</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">Prob</span> <span class="o">=</span> <span class="n">Prob</span> <span class="o">/</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">Prob</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_update_umda</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">index</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Count how many solutions fall into each interior bin.&quot;&quot;&quot;</span>
+        <span class="n">NM</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">2</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="n">index</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">Prob1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">([</span><span class="n">NM</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">])</span>
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+                <span class="n">Prob1</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">index</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">d</span><span class="p">]),</span> <span class="n">d</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+        <span class="k">return</span> <span class="n">Prob1</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">sample</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">N</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Draw ``N`` solutions from the current histogram.&quot;&quot;&quot;</span>
+        <span class="n">probs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">cumsum</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">Prob</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sample_umda</span><span class="p">(</span>
+            <span class="n">probs</span><span class="p">,</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">([</span><span class="n">N</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">])</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span><span class="n">probs</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">M</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:],</span> <span class="p">[</span><span class="n">N</span><span class="p">,</span> <span class="mi">1</span><span class="p">]),</span>
+            <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">([</span><span class="n">N</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">]),</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">Range</span>
+        <span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_sample_umda</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">Probs</span><span class="p">,</span> <span class="n">prob0</span><span class="p">,</span> <span class="n">prob1</span><span class="p">,</span> <span class="n">ranges</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Pick a bin by inverse-CDF, then a uniform point inside that bin.&quot;&quot;&quot;</span>
+        <span class="n">NM</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">M</span>
+        <span class="n">N</span> <span class="o">=</span> <span class="n">prob0</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">pop</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">shape</span><span class="o">=</span><span class="n">prob0</span><span class="o">.</span><span class="n">shape</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">D</span><span class="p">):</span>
+            <span class="k">for</span> <span class="n">k</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">NM</span><span class="p">):</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">==</span> <span class="n">NM</span> <span class="o">-</span> <span class="mi">1</span><span class="p">:</span>
+                        <span class="n">index</span> <span class="o">=</span> <span class="n">NM</span> <span class="o">-</span> <span class="mi">1</span>
+                    <span class="k">elif</span> <span class="n">prob0</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">Probs</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="n">d</span><span class="p">]:</span>
+                        <span class="n">index</span> <span class="o">=</span> <span class="n">i</span>
+                        <span class="k">break</span>
+                <span class="n">pop</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">=</span> <span class="n">ranges</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">+</span> <span class="n">prob1</span><span class="p">[</span><span class="n">k</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">*</span> <span class="p">(</span><span class="n">ranges</span><span class="p">[</span><span class="n">index</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">d</span><span class="p">]</span> <span class="o">-</span> <span class="n">ranges</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="n">d</span><span class="p">])</span>
+        <span class="k">return</span> <span class="n">pop</span>
+
+
+<div class="viewcode-block" id="LAEA">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.LAEA.LAEA">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LAEA</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    LLM-Assisted Evolutionary Algorithm for expensive optimization problems.</span>
+
+<span class="sd">    Each generation:</span>
+
+<span class="sd">    1. take the ``tao`` best archive members as in-context examples;</span>
+<span class="sd">    2. label them good/bad at quantile ``rate`` and fit both LLM surrogates;</span>
+<span class="sd">    3. sample offspring from the VWH model, refined by quadratic local search</span>
+<span class="sd">       and crossed with it;</span>
+<span class="sd">    4. ask the regression surrogate to rank the offspring and the</span>
+<span class="sd">       classification surrogate to label them;</span>
+<span class="sd">    5. really evaluate only the top-ranked offspring, and carry the</span>
+<span class="sd">       positively-labelled offspring forward as the unevaluated population that</span>
+<span class="sd">       widens the next VWH update.</span>
+
+<span class="sd">    Attributes</span>
+<span class="sd">    ----------</span>
+<span class="sd">    algorithm_information : dict</span>
+<span class="sd">        Dictionary containing algorithm capabilities and requirements</span>
+<span class="sd">    llm_information : dict</span>
+<span class="sd">        Dictionary describing how the algorithm uses a language model</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="n">llm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;llm_role&#39;</span><span class="p">:</span> <span class="s1">&#39;surrogate&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;backend&#39;</span><span class="p">:</span> <span class="s1">&#39;openai_compatible&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;default_model&#39;</span><span class="p">:</span> <span class="s1">&#39;deepseek-chat&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_llm_calls&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, L]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;prompt_version&#39;</span><span class="p">:</span> <span class="s1">&#39;laea_reg_v1 + laea_cla_v1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;calls_per_generation&#39;</span><span class="p">:</span> <span class="s1">&#39;2 * n_initial&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;offline_replay&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;deterministic&#39;</span><span class="p">:</span> <span class="s1">&#39;cache_only&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="LAEA.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.LAEA.LAEA.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tao</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">pb</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">pc</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+                 <span class="n">llm_backend</span><span class="o">=</span><span class="s1">&#39;replay&#39;</span><span class="p">,</span> <span class="n">llm_model</span><span class="o">=</span><span class="s1">&#39;deepseek-chat&#39;</span><span class="p">,</span> <span class="n">llm_base_url</span><span class="o">=</span><span class="s1">&#39;https://api.deepseek.com&#39;</span><span class="p">,</span>
+                 <span class="n">llm_api_key_env</span><span class="o">=</span><span class="s1">&#39;DEEPSEEK_API_KEY&#39;</span><span class="p">,</span> <span class="n">llm_temperature</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_max_tokens</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+                 <span class="n">llm_max_retries</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">llm_parallel</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">llm_beta</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">llm_seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">max_llm_calls</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">llm_price_prompt</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_price_completion</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_cache_path</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+                 <span class="n">strict_source</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;LAEA&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize LAEA algorithm.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task, also the population size and the</span>
+<span class="sd">            number of offspring per generation (default: 50)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 300)</span>
+<span class="sd">        tao : int, optional</span>
+<span class="sd">            Number of best archive members shown to the LLM as examples (default: 50)</span>
+<span class="sd">        rate : float, optional</span>
+<span class="sd">            Quantile splitting good from bad solutions when labelling (default: 0.3)</span>
+<span class="sd">        pb : float, optional</span>
+<span class="sd">            Fraction of the population refined by local search (default: 0.2)</span>
+<span class="sd">        pc : float, optional</span>
+<span class="sd">            Per-variable probability of crossing an offspring with a</span>
+<span class="sd">            locally-refined solution (default: 0.2)</span>
+<span class="sd">        m : int, optional</span>
+<span class="sd">            Number of histogram bins per dimension in the VWH model (default: 15)</span>
+<span class="sd">        llm_backend : str, optional</span>
+<span class="sd">            &#39;openai_compatible&#39; to call a real endpoint, &#39;replay&#39; to serve only</span>
+<span class="sd">            from the cache, or &#39;mock&#39; for offline synthetic responses</span>
+<span class="sd">            (default: &#39;replay&#39;)</span>
+<span class="sd">        llm_model : str, optional</span>
+<span class="sd">            Model identifier (default: &#39;deepseek-chat&#39;)</span>
+<span class="sd">        llm_base_url : str, optional</span>
+<span class="sd">            Endpoint root, passed through verbatim (default: &#39;https://api.deepseek.com&#39;)</span>
+<span class="sd">        llm_api_key_env : str, optional</span>
+<span class="sd">            Environment variable holding the API key (default: &#39;DEEPSEEK_API_KEY&#39;)</span>
+<span class="sd">        llm_temperature : float, optional</span>
+<span class="sd">            Sampling temperature (default: 0.0)</span>
+<span class="sd">        llm_max_tokens : int, optional</span>
+<span class="sd">            Completion token cap. The reference uses 10 (default: 10)</span>
+<span class="sd">        llm_max_retries : int, optional</span>
+<span class="sd">            Attempts per query before falling back to a random prediction (default: 3)</span>
+<span class="sd">        llm_parallel : int, optional</span>
+<span class="sd">            Worker threads used to issue the per-offspring queries (default: 1)</span>
+<span class="sd">        llm_beta : int, optional</span>
+<span class="sd">            Decimal places kept when rounding features in the prompt (default: 3)</span>
+<span class="sd">        llm_seed : int, optional</span>
+<span class="sd">            Seed for the fallback RNG of the surrogates (default: 42)</span>
+<span class="sd">        max_llm_calls : int, optional</span>
+<span class="sd">            Cap on LLM calls per run. The run stops early and returns partial</span>
+<span class="sd">            results when it is reached (default: None, unlimited)</span>
+<span class="sd">        llm_price_prompt : float, optional</span>
+<span class="sd">            USD per million prompt tokens, used only to report an estimated</span>
+<span class="sd">            spend (default: 0.0)</span>
+<span class="sd">        llm_price_completion : float, optional</span>
+<span class="sd">            USD per million completion tokens (default: 0.0)</span>
+<span class="sd">        llm_cache_path : str, optional</span>
+<span class="sd">            JSONL cache file. Empty means ``&lt;save_path&gt;/llm_cache/&lt;name&gt;.jsonl``</span>
+<span class="sd">            (default: &#39;&#39;)</span>
+<span class="sd">        strict_source : bool, optional</span>
+<span class="sd">            Reproduce the reference regression parser, which accepts only the</span>
+<span class="sd">            &#39;Value&#39; JSON key even though its own prompt asks for &#39;Target&#39;</span>
+<span class="sd">            (default: False)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;LAEA&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">50</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">300</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">tao</span> <span class="o">=</span> <span class="n">tao</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rate</span> <span class="o">=</span> <span class="n">rate</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pb</span> <span class="o">=</span> <span class="n">pb</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">pc</span> <span class="o">=</span> <span class="n">pc</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">m</span> <span class="o">=</span> <span class="n">m</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_backend</span> <span class="o">=</span> <span class="n">llm_backend</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_model</span> <span class="o">=</span> <span class="n">llm_model</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_base_url</span> <span class="o">=</span> <span class="n">llm_base_url</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_api_key_env</span> <span class="o">=</span> <span class="n">llm_api_key_env</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_temperature</span> <span class="o">=</span> <span class="n">llm_temperature</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_max_tokens</span> <span class="o">=</span> <span class="n">llm_max_tokens</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_max_retries</span> <span class="o">=</span> <span class="n">llm_max_retries</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_parallel</span> <span class="o">=</span> <span class="n">llm_parallel</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_beta</span> <span class="o">=</span> <span class="n">llm_beta</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_seed</span> <span class="o">=</span> <span class="n">llm_seed</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_llm_calls</span> <span class="o">=</span> <span class="n">max_llm_calls</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_price_prompt</span> <span class="o">=</span> <span class="n">llm_price_prompt</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_price_completion</span> <span class="o">=</span> <span class="n">llm_price_completion</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_cache_path</span> <span class="o">=</span> <span class="n">llm_cache_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">strict_source</span> <span class="o">=</span> <span class="n">strict_source</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_stats</span> <span class="o">=</span> <span class="kc">None</span></div>
+
+
+<div class="viewcode-block" id="LAEA.optimize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.LAEA.LAEA.optimize">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">optimize</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Execute the LAEA algorithm.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        Results</span>
+<span class="sd">            Optimization results containing decision variables, objectives, and runtime</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
+        <span class="n">problem</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">problem</span>
+        <span class="n">nt</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">n_tasks</span>
+        <span class="n">dims</span> <span class="o">=</span> <span class="n">problem</span><span class="o">.</span><span class="n">dims</span>
+        <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+        <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">n_local</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">pb</span><span class="p">))</span>
+            <span class="k">if</span> <span class="n">n_local</span> <span class="o">&lt;</span> <span class="mi">3</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="sa">f</span><span class="s2">&quot;task </span><span class="si">{</span><span class="n">i</span><span class="si">}</span><span class="s2">: floor(n_initial * pb) = </span><span class="si">{</span><span class="n">n_local</span><span class="si">}</span><span class="s2">, but the crossover step needs &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;at least 3 locally-refined solutions; increase n_initial or pb&quot;</span>
+                <span class="p">)</span>
+
+        <span class="n">budget</span> <span class="o">=</span> <span class="n">LLMBudget</span><span class="p">(</span><span class="n">max_llm_calls</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">max_llm_calls</span><span class="p">,</span>
+                           <span class="n">price_per_1m_prompt</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_price_prompt</span><span class="p">,</span>
+                           <span class="n">price_per_1m_completion</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_price_completion</span><span class="p">)</span>
+        <span class="n">cache_path</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">llm_cache_path</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">cache_path</span><span class="p">:</span>
+            <span class="n">cache_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="s1">&#39;llm_cache&#39;</span><span class="p">,</span> <span class="sa">f</span><span class="s1">&#39;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s1">.jsonl&#39;</span><span class="p">)</span>
+        <span class="n">client</span> <span class="o">=</span> <span class="n">LLMClient</span><span class="p">(</span>
+            <span class="n">backend</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_backend</span><span class="p">,</span> <span class="n">model</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_model</span><span class="p">,</span> <span class="n">base_url</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_base_url</span><span class="p">,</span>
+            <span class="n">api_key_env</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_api_key_env</span><span class="p">,</span> <span class="n">temperature</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_temperature</span><span class="p">,</span>
+            <span class="n">max_tokens</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_max_tokens</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_seed</span><span class="p">,</span>
+            <span class="n">cache</span><span class="o">=</span><span class="n">LLMCache</span><span class="p">(</span><span class="n">path</span><span class="o">=</span><span class="n">cache_path</span><span class="p">),</span> <span class="n">budget</span><span class="o">=</span><span class="n">budget</span>
+        <span class="p">)</span>
+        <span class="n">surrogate_kwargs</span> <span class="o">=</span> <span class="nb">dict</span><span class="p">(</span>
+            <span class="n">client</span><span class="o">=</span><span class="n">client</span><span class="p">,</span> <span class="n">max_retries</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_max_retries</span><span class="p">,</span> <span class="n">beta</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_beta</span><span class="p">,</span>
+            <span class="n">parallel</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_parallel</span><span class="p">,</span> <span class="n">show_progress</span><span class="o">=</span><span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">,</span> <span class="n">seed</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_seed</span>
+        <span class="p">)</span>
+
+        <span class="c1"># Fail before the initial design is evaluated rather than after it</span>
+        <span class="n">client</span><span class="o">.</span><span class="n">preflight</span><span class="p">()</span>
+
+        <span class="c1"># Generate initial samples using Latin Hypercube Sampling</span>
+        <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
+        <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
+        <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="c1"># Per-task state: archive, survivor population, unevaluated population,</span>
+        <span class="c1"># distribution model and the two LLM surrogates</span>
+        <span class="n">archive_decs</span> <span class="o">=</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">archive_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">pop_decs</span> <span class="o">=</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">pop_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">unevaluated_decs</span> <span class="o">=</span> <span class="p">[</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="n">eda</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">):</span>
+            <span class="n">model</span> <span class="o">=</span> <span class="n">VWH</span><span class="p">(</span><span class="n">m</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">m</span><span class="p">)</span>
+            <span class="n">model</span><span class="o">.</span><span class="n">init</span><span class="p">(</span><span class="n">D</span><span class="o">=</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">LB</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]),</span> <span class="n">UB</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">]))</span>
+            <span class="n">eda</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
+
+        <span class="n">m1</span> <span class="o">=</span> <span class="p">[</span><span class="n">LLM_Regression</span><span class="p">(</span><span class="n">introduction</span><span class="o">=</span><span class="n">load_prompt</span><span class="p">(</span><span class="s1">&#39;laea_reg_v1.txt&#39;</span><span class="p">),</span>
+                             <span class="n">strict_source</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">strict_source</span><span class="p">,</span> <span class="o">**</span><span class="n">surrogate_kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+        <span class="n">m2</span> <span class="o">=</span> <span class="p">[</span><span class="n">LLM_Classification</span><span class="p">(</span><span class="n">introduction</span><span class="o">=</span><span class="n">load_prompt</span><span class="p">(</span><span class="s1">&#39;laea_cla_v1.txt&#39;</span><span class="p">),</span>
+                                 <span class="o">**</span><span class="n">surrogate_kwargs</span><span class="p">)</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)]</span>
+
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span>
+                    <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
+
+        <span class="n">stopped_early</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
+            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="k">break</span>
+
+            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                <span class="n">pop_size</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+
+                <span class="c1"># Training data: the tao best archive members</span>
+                <span class="n">t_decs</span><span class="p">,</span> <span class="n">t_objs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_raw_training_data</span><span class="p">(</span><span class="n">archive_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">archive_objs</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="c1"># Label them and fit both surrogates on the same examples</span>
+                <span class="n">labels</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_label</span><span class="p">(</span><span class="n">t_objs</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">rate</span><span class="p">)</span>
+                <span class="n">m1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">t_decs</span><span class="p">,</span> <span class="n">t_objs</span><span class="p">)</span>
+                <span class="n">m2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">fit</span><span class="p">(</span><span class="n">t_decs</span><span class="p">,</span> <span class="n">labels</span><span class="p">)</span>
+
+                <span class="c1"># Sample offspring from the distribution model</span>
+                <span class="n">off_decs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_reproduction</span><span class="p">(</span><span class="n">eda</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span>
+                                              <span class="n">unevaluated_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">pop_size</span><span class="p">,</span> <span class="n">dims</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+                <span class="c1"># Surrogate-assisted selection: 2 * pop_size LLM calls</span>
+                <span class="k">try</span><span class="p">:</span>
+                    <span class="n">objs_pre</span> <span class="o">=</span> <span class="n">m1</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">off_decs</span><span class="p">)</span>
+                    <span class="n">labels_pre</span> <span class="o">=</span> <span class="n">m2</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">predict</span><span class="p">(</span><span class="n">off_decs</span><span class="p">)</span>
+                <span class="k">except</span> <span class="p">(</span><span class="n">LLMBudgetExceeded</span><span class="p">,</span> <span class="n">LLMCacheMiss</span><span class="p">)</span> <span class="k">as</span> <span class="n">exc</span><span class="p">:</span>
+                    <span class="n">stopped_early</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="nb">type</span><span class="p">(</span><span class="n">exc</span><span class="p">)</span><span class="o">.</span><span class="vm">__name__</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">exc</span><span class="si">}</span><span class="s2">&quot;</span>
+                    <span class="k">break</span>
+
+                <span class="n">best_dec</span> <span class="o">=</span> <span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">off_decs</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">objs_pre</span><span class="o">.</span><span class="n">flatten</span><span class="p">())[</span><span class="mi">0</span><span class="p">],</span> <span class="p">:])</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="n">selected_decs</span> <span class="o">=</span> <span class="n">off_decs</span><span class="p">[</span><span class="n">labels_pre</span> <span class="o">==</span> <span class="mi">1</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="k">if</span> <span class="n">selected_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&gt;</span> <span class="n">pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">:</span>
+                    <span class="n">r_index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">selected_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+                    <span class="n">selected_decs</span> <span class="o">=</span> <span class="n">selected_decs</span><span class="p">[</span><span class="n">r_index</span><span class="p">[:</span><span class="nb">int</span><span class="p">(</span><span class="n">pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)],</span> <span class="p">:]</span>
+                <span class="n">unevaluated_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">selected_decs</span>
+
+                <span class="c1"># Only the top-ranked offspring is really evaluated</span>
+                <span class="n">best_obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">best_dec</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                <span class="n">archive_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">archive_decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">best_dec</span><span class="p">])</span>
+                <span class="n">archive_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">([</span><span class="n">archive_objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">best_obj</span><span class="p">])</span>
+
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+
+                <span class="c1"># Survival: keep the pop_size best archive members</span>
+                <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">archive_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">())[:</span><span class="n">pop_size</span><span class="p">]</span>
+                <span class="n">pop_decs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">archive_decs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span>
+                <span class="n">pop_objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">archive_objs</span><span class="p">[</span><span class="n">i</span><span class="p">][</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span>
+
+            <span class="k">if</span> <span class="n">stopped_early</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">break</span>
+
+        <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+        <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_stats</span> <span class="o">=</span> <span class="n">budget</span><span class="o">.</span><span class="n">report</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">stopped_early</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">warnings</span><span class="o">.</span><span class="n">warn</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2"> stopped after </span><span class="si">{</span><span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span><span class="si">}</span><span class="s2"> evaluations: </span><span class="si">{</span><span class="n">stopped_early</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+                          <span class="ne">RuntimeWarning</span><span class="p">)</span>
+
+        <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span> <span class="o">=</span> <span class="n">build_staircase_history</span><span class="p">(</span><span class="n">archive_decs</span><span class="p">,</span> <span class="n">archive_objs</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+
+        <span class="n">results</span> <span class="o">=</span> <span class="n">build_save_results</span><span class="p">(</span>
+            <span class="n">all_decs</span><span class="o">=</span><span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="o">=</span><span class="n">all_objs</span><span class="p">,</span> <span class="n">runtime</span><span class="o">=</span><span class="n">runtime</span><span class="p">,</span>
+            <span class="n">max_nfes</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span> <span class="n">bounds</span><span class="o">=</span><span class="n">problem</span><span class="o">.</span><span class="n">bounds</span><span class="p">,</span>
+            <span class="n">save_path</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_path</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">save_data</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">save_data</span><span class="p">,</span> <span class="n">llm_stats</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">llm_stats</span>
+        <span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">results</span></div>
+
+
+    <span class="c1"># ==================== Internal Methods ====================</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_raw_training_data</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">archive_decs</span><span class="p">,</span> <span class="n">archive_objs</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Select the ``tao`` best archive members as in-context examples.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        tuple of ndarray</span>
+<span class="sd">            Decision variables of shape (k, d) and flat objective values of</span>
+<span class="sd">            shape (k,), with k = min(len(archive), tao).</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="n">archive_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="bp">self</span><span class="o">.</span><span class="n">tao</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">archive_decs</span><span class="p">,</span> <span class="n">archive_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">archive_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">argsort</span><span class="p">()</span>
+        <span class="k">return</span> <span class="n">archive_decs</span><span class="p">[</span><span class="n">index</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">tao</span><span class="p">],</span> <span class="p">:],</span> <span class="n">archive_objs</span><span class="p">[</span><span class="n">index</span><span class="p">[:</span><span class="bp">self</span><span class="o">.</span><span class="n">tao</span><span class="p">],</span> <span class="p">:]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_label</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">rate</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Split objective values into +1 (better) and -1 (worse) at a quantile.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        objs : ndarray</span>
+<span class="sd">            Flat objective values.</span>
+<span class="sd">        rate : float</span>
+<span class="sd">            Quantile of the split boundary.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray</span>
+<span class="sd">            Labels in {+1, -1}, same shape as ``objs``.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">objs_sorted</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sort</span><span class="p">(</span><span class="n">copy</span><span class="o">.</span><span class="n">deepcopy</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+        <span class="n">split_bound</span> <span class="o">=</span> <span class="n">objs_sorted</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">objs_sorted</span><span class="p">)</span> <span class="o">*</span> <span class="n">rate</span><span class="p">)]</span>
+
+        <span class="n">labels</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
+        <span class="n">labels</span><span class="p">[</span><span class="n">objs</span> <span class="o">&lt;=</span> <span class="n">split_bound</span><span class="p">]</span> <span class="o">=</span> <span class="mi">1</span>
+        <span class="n">labels</span><span class="p">[</span><span class="n">objs</span> <span class="o">&gt;</span> <span class="n">split_bound</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="mi">1</span>
+        <span class="k">return</span> <span class="n">labels</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_reproduction</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">eda</span><span class="p">,</span> <span class="n">pop_decs</span><span class="p">,</span> <span class="n">pop_objs</span><span class="p">,</span> <span class="n">unevaluated_decs</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">,</span> <span class="n">dim</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Generate ``pop_size`` offspring from the VWH model.</span>
+
+<span class="sd">        The model is updated on the survivors plus the better half of the</span>
+<span class="sd">        unevaluated population, which widens the distribution with regions the</span>
+<span class="sd">        classifier liked but that were never really evaluated. Sampled</span>
+<span class="sd">        offspring are then crossed variable-wise with locally-refined elites.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        ndarray</span>
+<span class="sd">            Offspring of shape (pop_size, dim), inside [0, 1].</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argsort</span><span class="p">(</span><span class="n">pop_objs</span><span class="o">.</span><span class="n">flatten</span><span class="p">())</span>
+        <span class="n">xs</span> <span class="o">=</span> <span class="n">pop_decs</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">ys</span> <span class="o">=</span> <span class="n">pop_objs</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+
+        <span class="n">eda</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">xs</span><span class="p">,</span> <span class="n">unevaluated_decs</span><span class="p">[:</span><span class="nb">int</span><span class="p">(</span><span class="n">pop_size</span> <span class="o">/</span> <span class="mi">2</span><span class="p">),</span> <span class="p">:]],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+        <span class="n">off_decs</span> <span class="o">=</span> <span class="n">eda</span><span class="o">.</span><span class="n">sample</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+
+        <span class="n">n_local</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">pop_size</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">pb</span><span class="p">))</span>
+        <span class="n">xs_ls</span> <span class="o">=</span> <span class="n">local_search</span><span class="p">(</span><span class="n">xs</span><span class="p">[:</span><span class="n">n_local</span><span class="p">,</span> <span class="p">:],</span> <span class="n">ys</span><span class="p">[:</span><span class="n">n_local</span><span class="p">])</span>
+
+        <span class="n">index</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">floor</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span> <span class="o">*</span> <span class="p">(</span><span class="n">xs_ls</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="mi">2</span><span class="p">))</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="nb">int</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">xtmp</span> <span class="o">=</span> <span class="n">xs_ls</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:]</span>
+        <span class="n">mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">random</span><span class="p">((</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dim</span><span class="p">))</span> <span class="o">&lt;</span> <span class="bp">self</span><span class="o">.</span><span class="n">pc</span>
+        <span class="n">off_decs</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="n">xtmp</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span>
+
+        <span class="c1"># Boundary repair, halfway back towards the matching parent</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">off_decs</span> <span class="o">&lt;</span> <span class="mf">0.0</span>
+        <span class="n">off_decs</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="n">xs</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span>
+        <span class="n">pos</span> <span class="o">=</span> <span class="n">off_decs</span> <span class="o">&gt;</span> <span class="mf">1.0</span>
+        <span class="n">off_decs</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">(</span><span class="n">xs</span><span class="p">[</span><span class="n">pos</span><span class="p">]</span> <span class="o">+</span> <span class="mf">1.0</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">off_decs</span></div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

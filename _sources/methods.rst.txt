@@ -10,7 +10,7 @@ Batch Experiments
 
 .. code-block:: python
 
-    from Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
 
 The batch experiment module provides a complete framework for running multiple optimization algorithms on multiple benchmark problems, supporting parallel processing, automatic logging, and configuration management.
 
@@ -51,7 +51,7 @@ Use the ``add_problem`` method to add optimization problems:
 
 .. code-block:: python
 
-    from Problems.MTSO.cec17_mtso import CEC17MTSO
+    from ddmtolab.Problems.MTSO.cec17_mtso import CEC17MTSO
     cec17mtso = CEC17MTSO()
 
     # Add problems to batch experiment
@@ -71,9 +71,9 @@ Use the ``add_algorithm`` method to add optimization algorithms:
 
 .. code-block:: python
 
-    from Algorithms.STSO.GA import GA
-    from Algorithms.STSO.DE import DE
-    from Algorithms.STSO.PSO import PSO
+    from ddmtolab.Algorithms.STSO.GA import GA
+    from ddmtolab.Algorithms.STSO.DE import DE
+    from ddmtolab.Algorithms.STSO.PSO import PSO
 
     # Add algorithms with parameters
     batch_exp.add_algorithm(algorithm_class=GA, algorithm_name='GA',
@@ -96,13 +96,44 @@ Execute the batch experiment using the ``run`` method:
 
 .. code-block:: python
 
-    batch_exp.run(n_runs=30, verbose=True, max_workers=8)
+    batch_exp.run(n_runs=30, verbose=True, max_workers=8, base_seed=42)
 
 **Parameters:**
 
 - ``n_runs``: Number of independent runs for each algorithm on each problem
 - ``verbose``: Whether to print detailed progress information, default: ``True``
 - ``max_workers``: Maximum number of parallel worker processes, default: CPU core count
+- ``base_seed``: Base seed for system-level random-seed control, default: ``None`` (unseeded)
+
+Reproducible Runs
+~~~~~~~~~~~~~~~~~
+
+Passing ``base_seed`` executes run ``r`` (1-indexed) under seed
+``base_seed + r - 1``. The seed is applied to the global ``random``, NumPy and
+PyTorch (including CUDA) generators inside the worker process, *before* the
+problem and the algorithm are constructed, so every individual run is
+reproducible from its own seed:
+
+.. code-block:: python
+
+    batch_exp.run(n_runs=30, max_workers=8, base_seed=42)
+
+Because each run is seeded independently rather than the batch as a whole,
+changing ``max_workers`` does not change any result -- the degree of
+parallelism and reproducibility are decoupled. Re-running the same experiment
+with the same ``base_seed`` reproduces it run for run.
+
+The per-run seed is recorded in the ``Seed`` column of the timing summary CSV,
+and ``base_seed`` itself is written to ``experiment_config.yaml``, so a batch
+loaded with ``BatchExperiment.from_config`` repeats under the same seeds. With
+``base_seed=None`` no seeding is performed and the ``Seed`` column stays empty.
+
+.. note::
+
+   A fixed seed does not guarantee bit-identical results across different
+   machines or library versions, and a few algorithms that train neural
+   networks may still vary because of non-deterministic PyTorch kernels, which
+   seeding alone does not control.
 
 **Example Output:**
 
@@ -215,7 +246,7 @@ Data Analysis
 
 .. code-block:: python
 
-    from Methods.data_analysis import DataAnalyzer
+    from ddmtolab.Methods.data_analysis import DataAnalyzer
 
 The data analysis module provides comprehensive analysis and visualization for optimization results, including metric calculation, statistical comparison tables, convergence curves, runtime analysis, Pareto front visualization, etc.
 
@@ -248,9 +279,13 @@ Initialize the ``DataAnalyzer`` with configuration options:
         save_path='./Results',           # Results save path
         table_format='excel',            # Table format: 'excel' or 'latex'
         figure_format='pdf',             # Figure format: 'pdf', 'png', 'svg'
-        statistic_type='mean',           # Statistic: 'mean', 'median', 'max', 'min'
+        statistic_type='mean',           # 'mean', 'median', 'max', 'min', 'median_iqr'
         significance_level=0.05,         # Significance level for tests
         rank_sum_test=True,              # Whether to perform rank-sum test
+        holm_correction=False,           # Holm-Bonferroni correct the p-values
+        effect_size=False,               # Report Cliff's delta per comparison
+        friedman_test=False,             # Append Friedman rows to the table
+        friedman_control=None,           # Control algorithm for the post-hoc
         log_scale=False,                 # Whether to use log scale
         show_pf=True,                    # Whether to show true Pareto front
         show_nd=True,                    # Whether to show only non-dominated
@@ -292,6 +327,80 @@ Reference definitions support three methods:
 2. **Callable Function**: Accepts ``(n_points, n_objectives)`` parameters, returns reference array
 3. **Array Data**: Directly provide list, tuple, or NumPy array
 
+Statistical Comparison
+~~~~~~~~~~~~~~~~~~~~~~
+
+By default each problem-task instance is compared against the baseline (the
+last entry of ``algorithm_order``) with a Wilcoxon rank-sum test, annotating
+cells with ``+`` (better), ``-`` (worse) or ``=`` (no significant difference).
+Four further methods are available, all **disabled by default** so existing
+scripts keep producing identical output:
+
+.. code-block:: python
+
+    analyzer = DataAnalyzer(
+        data_path='./Data',
+        statistic_type='median_iqr',   # report median[IQR] instead of mean (std)
+        holm_correction=True,          # correct for testing many instances
+        effect_size=True,              # how large the difference is
+        friedman_test=True,            # rank all algorithms at once
+    )
+    analyzer.run()
+
+**Holm-Bonferroni correction** (``holm_correction``)
+    A table compares every algorithm against the baseline on every instance, so
+    a handful of "significant" results is expected by chance alone. The
+    correction treats all those comparisons as one family, sorts the p-values,
+    scales the i-th smallest of m by ``m - i`` and enforces monotonicity. The
+    ``+``/``-``/``=`` symbols then follow the corrected p-values, which is
+    stricter: a comparison can only lose significance this way, never gain it.
+    The raw p-value stays available in ``ComparisonResult.p_value`` and the
+    corrected one in ``p_adjusted``.
+
+**Cliff's delta** (``effect_size``)
+    Significance says a difference is unlikely to be noise; it says nothing
+    about how big it is. Cliff's delta measures exactly that, as the difference
+    between the probability that one algorithm beats the other and the reverse.
+    It is reported as a separate bracketed field in the cell, never folded into
+    the symbol, with the usual thresholds: ``negligible`` (``|delta| < 0.147``),
+    ``small`` (< 0.33), ``medium`` (< 0.474), ``large`` otherwise. The sign is
+    oriented so that a positive value always means the algorithm is better.
+
+**Friedman test** (``friedman_test``, ``friedman_control``)
+    A single omnibus test over all algorithms and instances at once, rather
+    than many pairwise ones. It appends two rows to the table: the average rank
+    of each algorithm, labelled with the chi-squared statistic and its p-value,
+    and Holm-corrected post-hoc comparisons against a control algorithm
+    (``friedman_control``, defaulting to the baseline). It needs at least three
+    algorithms and two instances, and raises a ``ValueError`` otherwise rather
+    than reporting a meaningless number.
+
+**median[IQR]** (``statistic_type='median_iqr'``)
+    Reports the median with its interquartile range, rendered as
+    ``median[IQR]``. Useful when the distribution over runs is skewed enough
+    that ``mean (std)`` misrepresents it. The existing ``'mean'`` and
+    ``'median'`` statistics are unchanged.
+
+The methods are also usable directly, independently of table generation:
+
+.. code-block:: python
+
+    from ddmtolab.Methods.data_analysis import StatisticsCalculator, OptimizationDirection
+
+    # Holm-Bonferroni over a family of p-values, order preserved
+    StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])
+    # -> [0.03, 0.04, 0.04]
+
+    # Effect size of one comparison
+    effect = StatisticsCalculator.cliffs_delta(algo_values, baseline_values,
+                                               direction=OptimizationDirection.MINIMIZE)
+    print(effect.delta, effect.magnitude)
+
+    # Friedman over an algorithms x instances matrix
+    result = StatisticsCalculator.perform_friedman_test(
+        data_matrix, ['A', 'B', 'C'], control='C')
+    print(result.statistic, result.p_value, result.average_ranks)
+
 Complete Analysis Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -299,7 +408,7 @@ Complete Analysis Pipeline
 
 .. code-block:: python
 
-    from Methods.data_analysis import DataAnalyzer
+    from ddmtolab.Methods.data_analysis import DataAnalyzer
 
     # Create analyzer instance (settings optional for SO)
     analyzer = DataAnalyzer()
@@ -401,7 +510,7 @@ The system supports three types of reference definitions:
 
 .. code-block:: python
 
-   from Methods.data_utils import DataUtils
+   from ddmtolab.Methods.data_analysis import DataUtils
 
    reference = DataUtils.load_reference(
        settings=SETTINGS,
@@ -429,7 +538,7 @@ Most common for benchmark problems:
 
 .. code-block:: python
 
-   from Methods.Algo_Methods.uniform_point import uniform_point
+   from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
 
    # Define reference generation function
    def DTLZ1_PF(N, M):
@@ -614,9 +723,9 @@ Test Data Analysis
 
 .. code-block:: python
 
-    from Methods.test_data_analysis import TestDataAnalyzer
+    from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 
-The ``TestDataAnalyzer`` is a lightweight version of ``DataAnalyzer`` for quickly analyzing single test runs. It directly reads files with ``_test.pkl`` suffix without statistical tests or multi-run aggregation, suitable for algorithm development and debugging.
+The ``TestDataAnalyzer`` is a lightweight version of ``DataAnalyzer`` for quickly analyzing single test runs. It directly reads the ``.pkl`` files written by a single run, without statistical tests or multi-run aggregation, suitable for algorithm development and debugging.
 
 Module Features
 ~~~~~~~~~~~~~~~
@@ -633,17 +742,17 @@ Class Initialization
 .. code-block:: python
 
     analyzer = TestDataAnalyzer(
-        data_path='./TestData',          # Test data directory
+        data_path='./Data',              # Test data directory
         settings=None,                   # Problem settings (for MO)
         algorithm_order=None,            # Algorithm display order
-        save_path='./TestResults',       # Results save path
+        save_path='./Results',           # Results save path
         figure_format='pdf',             # Figure format
         log_scale=False,                 # Log scale
         show_pf=True,                    # Show true Pareto front
         show_nd=True,                    # Show only non-dominated
         best_so_far=True,                # Use best-so-far values
         clear_results=True,              # Clear results folder
-        file_suffix='_test.pkl'          # Test file suffix
+        file_suffix='.pkl'               # Result file suffix
     )
 
 Basic Usage
@@ -651,11 +760,11 @@ Basic Usage
 
 .. code-block:: python
 
-    from Methods.test_data_analysis import TestDataAnalyzer
+    from ddmtolab.Methods.test_data_analysis import TestDataAnalyzer
 
     # Create analyzer (settings optional for SO)
-    analyzer = TestDataAnalyzer(data_path='./TestData',
-                               save_path='./TestResults')
+    analyzer = TestDataAnalyzer(data_path='./Data',
+                               save_path='./Results')
 
     # Execute complete analysis
     results = analyzer.run()
@@ -665,15 +774,14 @@ Output Structure
 
 .. code-block:: text
 
-    ./TestResults/
-    ├── test_results_table.tex           # Results comparison table
-    ├── convergence_summary_table.tex    # Convergence summary table
-    ├── Task1_convergence.pdf            # Task1 convergence
-    ├── Task2_convergence.pdf            # Task2 convergence (if any)
+    ./Results/
+    ├── test_results.xlsx                # Results comparison table
+    ├── P1-Task1_convergence.pdf         # Task 1 convergence
+    ├── P1-Task2_convergence.pdf         # Task 2 convergence (if any)
     ├── runtime_comparison.pdf           # Runtime comparison
     └── ND_Solutions/                    # Non-dominated solutions
-        ├── Task1-GA.pdf
-        ├── Task1-DE.pdf
+        ├── P1-Task1-GA.pdf
+        ├── P1-Task1-DE.pdf
         └── ...
 
 Comparison with DataAnalyzer
@@ -687,7 +795,7 @@ Comparison with DataAnalyzer
      - TestDataAnalyzer
      - DataAnalyzer
    * - Data Source
-     - Single test files (``*_test.pkl``)
+     - Single-run files (``*.pkl``) in one directory
      - Multiple repeated experiments
    * - File Structure
      - Direct test files in directory
@@ -696,7 +804,7 @@ Comparison with DataAnalyzer
      - No statistical tests
      - Wilcoxon rank-sum test
    * - Table Format
-     - LaTeX only
+     - Excel (``test_results.xlsx``)
      - Excel and LaTeX
    * - Use Case
      - Development and quick validation
@@ -707,7 +815,7 @@ Problem Definition (MTOP)
 
 .. code-block:: python
 
-    from Methods.mtop import MTOP
+    from ddmtolab.Methods.mtop import MTOP
 
 The ``MTOP`` (Multitask Optimization Problem) class provides a unified interface for defining single-task and multitask optimization problems with support for objectives, constraints, and variable bounds.
 
@@ -836,7 +944,7 @@ Animation Generator
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator, create_optimization_animation
+    from ddmtolab.Methods.animation_generator import AnimationGenerator, create_optimization_animation
 
 The animation generator module provides comprehensive visualization tools for optimization processes, supporting both single-objective and multiobjective optimization with multiple comparison modes.
 
@@ -877,7 +985,7 @@ Quick Start
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator
+    from ddmtolab.Methods.animation_generator import AnimationGenerator
 
     # Create generator and run
     generator = AnimationGenerator(data_path='./Data', save_path='./Results')
@@ -887,7 +995,7 @@ Quick Start
 
 .. code-block:: python
 
-    from Methods.animation_generator import create_optimization_animation
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Generate animation for a single result file
     create_optimization_animation(
@@ -995,7 +1103,7 @@ Instantiate the ``AnimationGenerator`` class for batch processing:
 
 .. code-block:: python
 
-    from Methods.animation_generator import AnimationGenerator
+    from ddmtolab.Methods.animation_generator import AnimationGenerator
 
     generator = AnimationGenerator(
         data_path='./Data',           # Directory containing .pkl files
@@ -1152,10 +1260,10 @@ Batch Processing
 
 .. code-block:: python
 
-    # Scan ./TestData and save to ./TestResults
+    # Scan ./Data and save to ./Results
     results = create_optimization_animation(
-        data_path='./TestData',
-        save_path='./TestResults',
+        data_path='./Data',
+        save_path='./Results',
         max_nfes=10000,
         fps=10,
         dpi=100
@@ -1199,7 +1307,7 @@ Complete Example
 
 .. code-block:: python
 
-    from Methods.optimization_animator import create_optimization_animation
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Individual animations
     create_optimization_animation(
@@ -1248,22 +1356,16 @@ Complete Example
 Command Line Usage
 ~~~~~~~~~~~~~~~~~~
 
-The animation generator can be used from the command line:
+Running the module directly executes a demo that scans ``./Data`` and writes GIFs to
+``./Results`` with the default settings. It takes no positional arguments:
 
 .. code-block:: bash
 
-    # Single file
-    python -m Methods.optimization_animator results.pkl output.gif 10 100
+    python -m ddmtolab.Methods.animation_generator
 
-    # Auto-scan mode (no arguments)
-    python -m Methods.optimization_animator
-
-**Arguments:**
-
-1. ``pkl_file``: Path to .pkl file
-2. ``output_file``: Output path (optional)
-3. ``fps``: Frames per second (optional, default: 10)
-4. ``dpi``: Resolution (optional, default: 100)
+To control the data path, output format, frame rate or resolution, call
+``create_optimization_animation`` (or construct ``AnimationGenerator``) from Python as
+shown above.
 
 Output Structure
 ~~~~~~~~~~~~~~~~
@@ -1300,8 +1402,8 @@ Console Output Example
     ======================================================================
     Optimization Animation Generator
     ======================================================================
-    Data path: ./TestData
-    Save path: ./TestResults
+    Data path: ./Data
+    Save path: ./Results
     Found 4 result files
     Animation params: FPS=10, DPI=100, Interval=100ms, Format=GIF
     Max NFEs: [5000, 10000]
@@ -1313,14 +1415,14 @@ Console Output Example
     Original algorithms: ['BO-LCB-BCKT', 'BO', 'MTBO', 'RAMTEA']
     Ordered algorithms: ['BO', 'MTBO', 'RAMTEA', 'BO-LCB-BCKT']
     Generating animation... (this may take a while)
-    Animation saved to: ./TestResults/test_animation.gif
+    Animation saved to: ./Results/test_animation.gif
       ✓ Success
 
     ======================================================================
     Processing Complete!
     Merged animation: Success
     ======================================================================
-    Animations saved to: ./TestResults
+    Animations saved to: ./Results
     ======================================================================
 
 Best Practices
@@ -1361,8 +1463,8 @@ Combine with ``BatchExperiment`` for complete workflow:
 
 .. code-block:: python
 
-    from Methods.batch_experiment import BatchExperiment
-    from Methods.optimization_animator import create_optimization_animation
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Methods.animation_generator import create_optimization_animation
 
     # Step 1: Run batch experiments
     batch_exp = BatchExperiment(base_path='./Data')
@@ -1424,7 +1526,7 @@ Performance Metrics
 
 .. code-block:: python
 
-    from Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spacing, Spread
+    from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spacing, Spread
 
 The performance metrics module provides comprehensive implementations of optimization algorithm evaluation metrics with a unified interface design.
 
@@ -1506,7 +1608,7 @@ Usage Examples
 
 .. code-block:: python
 
-    from Methods.metrics import IGD, HV, GD, IGDp, DeltaP, Spacing, Spread
+    from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, DeltaP, Spacing, Spread
     import numpy as np
 
     # Obtained solutions and true Pareto front
@@ -1546,7 +1648,7 @@ Usage Examples
 
 .. code-block:: python
 
-    from Methods.metrics import FR, CV
+    from ddmtolab.Methods.metrics import FR, CV
     import numpy as np
 
     # Constraint values (n_solutions x n_constraints)
@@ -1574,7 +1676,7 @@ Algorithm Utilities
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.algo_utils import *
+    from ddmtolab.Methods.Algo_Methods.algo_utils import *
 
 The algorithm utilities module provides a complete toolkit for building optimization algorithms, including population initialization, evaluation, selection, mutation, crossover, and auxiliary functions.
 
@@ -1634,7 +1736,7 @@ Bayesian Optimization Utilities
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.bo_utils import *
+    from ddmtolab.Methods.Algo_Methods.bo_utils import *
 
 The BO utilities module provides core Bayesian optimization functionalities based on BoTorch and GPyTorch, including single-task and multitask Gaussian process modeling.
 
@@ -1664,7 +1766,7 @@ Similarity Evaluation
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.sim_evaluation import *
+    from ddmtolab.Methods.Algo_Methods.sim_evaluation import *
 
 The similarity evaluation module computes inter-task similarity for knowledge transfer decisions.
 
@@ -1682,7 +1784,7 @@ Uniform Point Generation
 
 .. code-block:: python
 
-    from Methods.Algo_Methods.uniform_point import *
+    from ddmtolab.Methods.Algo_Methods.uniform_point import *
 
 The uniform point generation module provides various methods for generating uniformly distributed points for multiobjective optimization and decision space sampling.
 

@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.MTMO.EMT_ET &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
     <link rel="search" title="Search" href="../../../../search.html" /> 
@@ -94,71 +94,6 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_platemo_tournament_selection</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">,</span> <span class="o">*</span><span class="n">fitness</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Exact port of PlatEMO&#39;s ``TournamentSelection`` (MToP ``TournamentSelection.m``).</span>
-
-<span class="sd">    Candidates are compared lexicographically on the given fitness keys (lower is</span>
-<span class="sd">    better). Solutions sharing identical fitness values also share a rank, so a</span>
-<span class="sd">    tournament among tied candidates is won by the (random) first draw, i.e.</span>
-<span class="sd">    uniformly at random. The shared ``tournament_selection`` helper instead ranks</span>
-<span class="sd">    with a total order, which would always let the lowest-index candidate win --</span>
-<span class="sd">    a systematic bias here, because the G transferred individuals are all given</span>
-<span class="sd">    the same top fitness as the incumbent best.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">fits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fitness</span><span class="p">])</span>
-    <span class="n">_</span><span class="p">,</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">fits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-    <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
-    <span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fits</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
-    <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">loc</span><span class="p">[</span><span class="n">parents</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">parents</span><span class="p">[</span><span class="n">best</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_sbx_crossover_unclipped</span><span class="p">(</span><span class="n">par_dec1</span><span class="p">,</span> <span class="n">par_dec2</span><span class="p">,</span> <span class="n">mu</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Simulated binary crossover (MToP ``GA_Crossover``).</span>
-
-<span class="sd">    Unlike the shared ``crossover`` helper the offspring are NOT clipped to</span>
-<span class="sd">    [0, 1] here: the MATLAB reference clips only once at the end of Generation,</span>
-<span class="sd">    after polynomial mutation has acted on the raw crossover output.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="n">par_dec1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
-    <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
-    <span class="n">mask</span> <span class="o">=</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span>
-    <span class="n">beta</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="n">beta</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]))</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-    <span class="n">beta</span> <span class="o">*=</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">d</span><span class="p">)</span>
-    <span class="n">beta</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
-
-    <span class="n">off_dec1</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span><span class="p">)</span>
-    <span class="n">off_dec2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span>
-
-
-<span class="k">def</span><span class="w"> </span><span class="nf">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">dec</span><span class="p">,</span> <span class="n">mu</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    Polynomial mutation (MToP ``GA_Mutation``) with per-gene probability 1/D.</span>
-
-<span class="sd">    Operates on the possibly out-of-bounds crossover output and does NOT clip;</span>
-<span class="sd">    the caller clips once afterwards, matching the MATLAB reference.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">d</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-    <span class="n">dec</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
-    <span class="n">prob_m</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">d</span>
-    <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
-        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">prob_m</span><span class="p">:</span>
-            <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
-            <span class="k">if</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">:</span>
-                <span class="n">delta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
-            <span class="k">else</span><span class="p">:</span>
-                <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
-            <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="n">delta</span>
-    <span class="k">return</span> <span class="n">dec</span>
-
-
 <span class="k">def</span><span class="w"> </span><span class="nf">_emt_et_generation</span><span class="p">(</span><span class="n">parents</span><span class="p">,</span> <span class="n">muc</span><span class="p">,</span> <span class="n">mum</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Offspring generation matching ``EMT_ET.Generation`` exactly.</span>
@@ -195,9 +130,9 @@
     <span class="n">off_decs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
     <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
     <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">):</span>
-        <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span> <span class="o">=</span> <span class="n">_sbx_crossover_unclipped</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">half</span><span class="p">,</span> <span class="p">:],</span> <span class="n">muc</span><span class="p">)</span>
-        <span class="n">c1</span> <span class="o">=</span> <span class="n">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
-        <span class="n">c2</span> <span class="o">=</span> <span class="n">_poly_mutation_unclipped</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span> <span class="o">=</span> <span class="n">sbx_crossover_unclipped</span><span class="p">(</span><span class="n">parents</span><span class="p">[</span><span class="n">i</span><span class="p">,</span> <span class="p">:],</span> <span class="n">parents</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">half</span><span class="p">,</span> <span class="p">:],</span> <span class="n">muc</span><span class="p">)</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="n">poly_mutation_unclipped</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="n">poly_mutation_unclipped</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
         <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
         <span class="n">off_decs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
         <span class="n">count</span> <span class="o">+=</span> <span class="mi">2</span>
@@ -273,9 +208,9 @@
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
-<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
 <span class="sd">        name : str, optional</span>
-<span class="sd">            Name for the experiment (default: &#39;EMTET_test&#39;)</span>
+<span class="sd">            Name for the experiment (default: &#39;EMT-ET&#39;)</span>
 <span class="sd">        disable_tqdm : bool, optional</span>
 <span class="sd">            Whether to disable progress bar (default: True)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
@@ -377,7 +312,7 @@
                 <span class="c1"># G immigrants are all given the best possible fitness of 1.</span>
                 <span class="n">mating_fitness</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">concatenate</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="n">n_t</span> <span class="o">+</span> <span class="mi">1</span><span class="p">),</span>
                                                  <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">transfer_decs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])])</span>
-                <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">_platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_t</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">mating_fitness</span><span class="p">)</span>
+                <span class="n">mating_pool</span> <span class="o">=</span> <span class="n">platemo_tournament_selection</span><span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="n">n_t</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">G</span><span class="p">,</span> <span class="n">mating_fitness</span><span class="p">)</span>
 
                 <span class="n">off_decs</span><span class="p">,</span> <span class="n">parent_idx</span> <span class="o">=</span> <span class="n">_emt_et_generation</span><span class="p">(</span><span class="n">decs</span><span class="p">[</span><span class="n">t</span><span class="p">][</span><span class="n">mating_pool</span><span class="p">],</span> <span class="bp">self</span><span class="o">.</span><span class="n">muc</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">mum</span><span class="p">)</span>
                 <span class="c1"># Offspring are copies of their parent, so they inherit its</span>

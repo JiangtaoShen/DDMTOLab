@@ -51,7 +51,9 @@ The ``add_task`` method is the primary way to add optimization tasks:
         dim,                 # Decision variable dimension (required)
         constraint_func=None,  # Constraint function (optional)
         lower_bound=None,    # Lower bounds (optional, default 0)
-        upper_bound=None     # Upper bounds (optional, default 1)
+        upper_bound=None,    # Upper bounds (optional, default 1)
+        budget=None,         # Evaluation budget of the task (optional)
+        metadata=None        # Free-form descriptor dict (optional)
     ) -> int:               # Returns task index
 
 **Example: 2 Tasks with [1,3] Objectives and [2,0] Constraints**:
@@ -284,6 +286,49 @@ MTOP automatically handles batch evaluation of functions. If a function raises a
         x = np.atleast_2d(x)
         return np.sum(x**2, axis=1, keepdims=True)
 
+.. _declaring-budget-metadata:
+
+Declaring a Budget and Metadata
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A task can carry its own evaluation budget :math:`N^k` and a free-form
+descriptor, so the problem definition states how expensive it is instead of
+every call site repeating it:
+
+.. code-block:: python
+
+    problem = MTOP()
+    problem.add_task(
+        expensive_simulation, dim=10,
+        budget=200,                                  # this task affords 200 evaluations
+        metadata={'source': 'CFD', 'fidelity': 'high'}
+    )
+
+Both broadcast across tasks exactly the way ``dim`` does -- a single value
+applies to every task, a tuple gives one value per task:
+
+.. code-block:: python
+
+    problem.add_task((cheap_model, expensive_model), dim=(10, 10),
+                     budget=(1000, 100))            # per-task budgets
+
+An algorithm reads the declared budget through ``resolve_budget``, which is
+already wired into the algorithms that support it. An explicitly passed
+``max_nfes`` always wins, so existing calls behave exactly as before; the
+declared budget is consulted only when the caller leaves ``max_nfes`` unset:
+
+.. code-block:: python
+
+    from ddmtolab.Algorithms.MTMO.ParEGO_KT import ParEGO_KT
+
+    ParEGO_KT(problem).optimize()                    # uses the declared budget
+    ParEGO_KT(problem, max_nfes=150).optimize()      # explicit argument wins
+
+``metadata`` is never populated or interpreted by the platform; it is stored
+per task and returned by ``get_task_info`` for the caller's own bookkeeping.
+Budgets must be positive integers and metadata must be a dict, both validated
+when the task is added.
+
 Querying Task Information
 --------------------------
 
@@ -310,6 +355,10 @@ Query basic problem properties:
     print(f"Unified eval mode: {problem.unified_eval_mode}")
     print(f"Fill value: {problem.fill_value}")
 
+    # Declared evaluation budgets and descriptors (None / {} when undeclared)
+    print(f"Task budgets: {problem.budgets}")
+    print(f"Task metadata: {problem.metadata}")
+
 Detailed Task Information
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -328,7 +377,13 @@ Get complete information for a specific task:
      'lower_bounds': array([[-2., -2., -2., -2.]]),
      'upper_bounds': array([[2., 2., 2., 2.]]),
      'objective_func': <function obj2>,
-     'constraint_funcs': [<function wrapper>]}
+     'constraint_funcs': [<function wrapper>],
+     'budget': None,
+     'metadata': {}}
+
+``budget`` is the evaluation budget the task declared, or ``None`` when it
+declared none, and ``metadata`` is the descriptor supplied when the task was
+added, or ``{}``. See :ref:`declaring-budget-metadata`.
 
 Problem Summary
 ~~~~~~~~~~~~~~~
@@ -555,7 +610,7 @@ Single-Task Single-Objective (STSO)
      - 1
      - 50 (configurable)
      - 1 / 0
-     - Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Sphere, Weierstrass (P1-P8)
+     - Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Schwefel 2.22, Sphere, Weierstrass (P1-P9)
    * - ``CEC10CSO``
      - 1
      - 1000 (configurable)
@@ -568,8 +623,8 @@ Single-Task Single-Objective (STSO)
 
    from ddmtolab.Problems.STSO.classical_so import CLASSICALSO
 
-   problem_suite = CLASSICALSO(dim=30)
-   problem = problem_suite.P1()  # Ackley function
+   problem_suite = CLASSICALSO()
+   problem = problem_suite.P1(D=30)  # Ackley function
 
 Single-Task Multiobjective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Methods.batch_experiment &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../genindex.html" />
     <link rel="search" title="Search" href="../../../search.html" /> 
@@ -85,6 +85,8 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">multiprocessing</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">mp</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ProcessPoolExecutor</span><span class="p">,</span> <span class="n">as_completed</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">importlib</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">set_seed</span>
 
 
 <div class="viewcode-block" id="BatchExperiment">
@@ -290,16 +292,19 @@
             <span class="n">dumped</span> <span class="o">=</span> <span class="n">dumped</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">dumped</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_runs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_runs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">base_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Save experiment configuration to YAML file with custom formatting</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            n_runs: Number of independent runs</span>
 <span class="sd">            max_workers: Maximum number of worker processes</span>
+<span class="sd">            base_seed: Base seed used for system-level random-seed control, or None</span>
+<span class="sd">                      if the runs were not seeded</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="c1"># Add run settings</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;n_runs&#39;</span><span class="p">:</span> <span class="n">n_runs</span><span class="p">,</span> <span class="s1">&#39;max_workers&#39;</span><span class="p">:</span> <span class="n">max_workers</span><span class="p">,</span>
+                                                  <span class="s1">&#39;base_seed&#39;</span><span class="p">:</span> <span class="n">base_seed</span><span class="p">,</span>
                                                   <span class="s1">&#39;start_time&#39;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()}</span>
 
         <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_yaml_scalar</span>  <span class="c1"># YAML-safe scalar renderer</span>
@@ -340,6 +345,7 @@
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">run_settings:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  n_runs: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;n_runs&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  max_workers: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;max_workers&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  base_seed: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;base_seed&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  start_time: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;start_time&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
 
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;💾 Configuration saved to: </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
@@ -481,6 +487,7 @@
         <span class="n">algo_params</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;algo_params&#39;</span><span class="p">]</span>
         <span class="n">save_path</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;save_path&#39;</span><span class="p">]</span>
         <span class="n">file_name</span> <span class="o">=</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;file_name&#39;</span><span class="p">]</span>
+        <span class="n">seed</span> <span class="o">=</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;seed&#39;</span><span class="p">)</span>
 
         <span class="c1"># Record start time for performance measurement</span>
         <span class="n">exp_start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
@@ -488,6 +495,11 @@
         <span class="n">error_msg</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span>
 
         <span class="k">try</span><span class="p">:</span>
+            <span class="c1"># Fix every random stream before anything stochastic happens, so the</span>
+            <span class="c1"># whole run is reproducible from this single seed</span>
+            <span class="k">if</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">set_seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+
             <span class="c1"># Recreate problem instance in child process to avoid pickling issues</span>
             <span class="n">problem_instance</span> <span class="o">=</span> <span class="n">problem_creator</span><span class="p">(</span><span class="o">**</span><span class="n">problem_params</span><span class="p">)</span>
 
@@ -518,12 +530,14 @@
             <span class="s1">&#39;Filename&#39;</span><span class="p">:</span> <span class="n">file_name</span><span class="p">,</span>
             <span class="s1">&#39;Time(s)&#39;</span><span class="p">:</span> <span class="nb">round</span><span class="p">(</span><span class="n">exp_duration</span><span class="p">,</span> <span class="mi">4</span><span class="p">),</span>
             <span class="s1">&#39;Status&#39;</span><span class="p">:</span> <span class="n">status</span><span class="p">,</span>
-            <span class="s1">&#39;Error&#39;</span><span class="p">:</span> <span class="n">error_msg</span>
+            <span class="s1">&#39;Error&#39;</span><span class="p">:</span> <span class="n">error_msg</span><span class="p">,</span>
+            <span class="s1">&#39;Seed&#39;</span><span class="p">:</span> <span class="n">seed</span> <span class="k">if</span> <span class="n">seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
         <span class="p">}</span>
 
 <div class="viewcode-block" id="BatchExperiment.run">
 <a class="viewcode-back" href="../../../api.html#ddmtolab.Methods.batch_experiment.BatchExperiment.run">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_runs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_runs</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="n">verbose</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+            <span class="n">base_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Run all experiments using multi-core parallel processing</span>
 
@@ -533,11 +547,19 @@
 <span class="sd">            verbose: Whether to print detailed progress information</span>
 <span class="sd">            max_workers: Maximum number of worker processes, defaults to CPU count if None</span>
 <span class="sd">                        If None and loaded from config, uses config value</span>
+<span class="sd">            base_seed: Base seed for system-level random-seed control. When given, run</span>
+<span class="sd">                      ``r`` (1-indexed) is executed under seed ``base_seed + r - 1``,</span>
+<span class="sd">                      applied to the global ``random``, NumPy and PyTorch (including</span>
+<span class="sd">                      CUDA) generators before the problem and algorithm are built, so</span>
+<span class="sd">                      each individual run is reproducible from its seed. The per-run</span>
+<span class="sd">                      seed is recorded in the timing summary. If None and loaded from</span>
+<span class="sd">                      config, uses config value; if still None, no seeding is performed</span>
+<span class="sd">                      and runs use the interpreter&#39;s default random state.</span>
 
 <span class="sd">        Returns:</span>
 <span class="sd">            List[Dict]: One timing/status record per executed run, with keys</span>
 <span class="sd">            &#39;Algorithm&#39;, &#39;Problem&#39;, &#39;Run&#39;, &#39;Filename&#39;, &#39;Time(s)&#39;, &#39;Status&#39;,</span>
-<span class="sd">            &#39;Error&#39;. Empty list if nothing was run.</span>
+<span class="sd">            &#39;Error&#39;, &#39;Seed&#39;. Empty list if nothing was run.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">problems</span><span class="p">:</span>
             <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Error: No problems added!&quot;</span><span class="p">)</span>
@@ -553,6 +575,8 @@
                 <span class="n">n_runs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loaded_run_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;n_runs&#39;</span><span class="p">,</span> <span class="mi">30</span><span class="p">)</span>
             <span class="k">if</span> <span class="n">max_workers</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">max_workers</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loaded_run_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;max_workers&#39;</span><span class="p">,</span> <span class="n">mp</span><span class="o">.</span><span class="n">cpu_count</span><span class="p">())</span>
+            <span class="k">if</span> <span class="n">base_seed</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="n">base_seed</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_loaded_run_settings</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;base_seed&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="c1"># Use default values</span>
             <span class="k">if</span> <span class="n">n_runs</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
@@ -564,9 +588,11 @@
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;n_runs must be a positive integer, got </span><span class="si">{</span><span class="n">n_runs</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">max_workers</span><span class="p">,</span> <span class="nb">int</span><span class="p">)</span> <span class="ow">or</span> <span class="n">max_workers</span> <span class="o">&lt;</span> <span class="mi">1</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;max_workers must be a positive integer, got </span><span class="si">{</span><span class="n">max_workers</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">base_seed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">base_seed</span><span class="p">,</span> <span class="nb">int</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;base_seed must be an integer or None, got </span><span class="si">{</span><span class="n">base_seed</span><span class="si">!r}</span><span class="s2">&quot;</span><span class="p">)</span>
 
         <span class="c1"># Save configuration before running</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">save_config</span><span class="p">(</span><span class="n">n_runs</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">save_config</span><span class="p">(</span><span class="n">n_runs</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">,</span> <span class="n">base_seed</span><span class="p">)</span>
 
         <span class="n">total_experiments</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">problems</span><span class="p">)</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">algorithms</span><span class="p">)</span> <span class="o">*</span> <span class="n">n_runs</span>
         <span class="n">timing_records</span> <span class="o">=</span> <span class="p">[]</span>
@@ -601,7 +627,8 @@
                         <span class="s1">&#39;run_id&#39;</span><span class="p">:</span> <span class="n">run_id</span><span class="p">,</span>
                         <span class="s1">&#39;algo_params&#39;</span><span class="p">:</span> <span class="n">algo_params</span><span class="p">,</span>
                         <span class="s1">&#39;save_path&#39;</span><span class="p">:</span> <span class="n">save_path</span><span class="p">,</span>
-                        <span class="s1">&#39;file_name&#39;</span><span class="p">:</span> <span class="n">file_name</span>
+                        <span class="s1">&#39;file_name&#39;</span><span class="p">:</span> <span class="n">file_name</span><span class="p">,</span>
+                        <span class="s1">&#39;seed&#39;</span><span class="p">:</span> <span class="kc">None</span> <span class="k">if</span> <span class="n">base_seed</span> <span class="ow">is</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">base_seed</span> <span class="o">+</span> <span class="n">run_id</span> <span class="o">-</span> <span class="mi">1</span>
                     <span class="p">}</span>
                     <span class="n">all_tasks</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">task</span><span class="p">)</span>
 
@@ -654,7 +681,8 @@
                         <span class="s1">&#39;Filename&#39;</span><span class="p">:</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;file_name&#39;</span><span class="p">],</span>
                         <span class="s1">&#39;Time(s)&#39;</span><span class="p">:</span> <span class="mf">0.0</span><span class="p">,</span>
                         <span class="s1">&#39;Status&#39;</span><span class="p">:</span> <span class="s2">&quot;Failed&quot;</span><span class="p">,</span>
-                        <span class="s1">&#39;Error&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+                        <span class="s1">&#39;Error&#39;</span><span class="p">:</span> <span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">),</span>
+                        <span class="s1">&#39;Seed&#39;</span><span class="p">:</span> <span class="n">task</span><span class="p">[</span><span class="s1">&#39;seed&#39;</span><span class="p">]</span> <span class="k">if</span> <span class="n">task</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;seed&#39;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="s1">&#39;&#39;</span>
                     <span class="p">})</span>
                     <span class="n">completed_count</span> <span class="o">+=</span> <span class="mi">1</span>
 
@@ -717,7 +745,7 @@
         <span class="k">try</span><span class="p">:</span>
             <span class="c1"># utf-8-sig so Excel on Windows opens the file with correct encoding</span>
             <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">csv_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">newline</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8-sig&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">csvfile</span><span class="p">:</span>
-                <span class="n">fieldnames</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Algorithm&#39;</span><span class="p">,</span> <span class="s1">&#39;Problem&#39;</span><span class="p">,</span> <span class="s1">&#39;Run&#39;</span><span class="p">,</span> <span class="s1">&#39;Filename&#39;</span><span class="p">,</span> <span class="s1">&#39;Time(s)&#39;</span><span class="p">,</span> <span class="s1">&#39;Status&#39;</span><span class="p">,</span> <span class="s1">&#39;Error&#39;</span><span class="p">]</span>
+                <span class="n">fieldnames</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;Algorithm&#39;</span><span class="p">,</span> <span class="s1">&#39;Problem&#39;</span><span class="p">,</span> <span class="s1">&#39;Run&#39;</span><span class="p">,</span> <span class="s1">&#39;Filename&#39;</span><span class="p">,</span> <span class="s1">&#39;Time(s)&#39;</span><span class="p">,</span> <span class="s1">&#39;Status&#39;</span><span class="p">,</span> <span class="s1">&#39;Error&#39;</span><span class="p">,</span> <span class="s1">&#39;Seed&#39;</span><span class="p">]</span>
                 <span class="n">writer</span> <span class="o">=</span> <span class="n">csv</span><span class="o">.</span><span class="n">DictWriter</span><span class="p">(</span><span class="n">csvfile</span><span class="p">,</span> <span class="n">fieldnames</span><span class="o">=</span><span class="n">fieldnames</span><span class="p">)</span>
                 <span class="n">writer</span><span class="o">.</span><span class="n">writeheader</span><span class="p">()</span>
                 <span class="n">writer</span><span class="o">.</span><span class="n">writerows</span><span class="p">(</span><span class="n">timing_records</span><span class="p">)</span>

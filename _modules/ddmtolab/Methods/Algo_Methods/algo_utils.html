@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Methods.Algo_Methods.algo_utils &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
     <link rel="search" title="Search" href="../../../../search.html" /> 
@@ -85,6 +85,7 @@
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">random</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">asdict</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">scipy.spatial.distance</span><span class="w"> </span><span class="kn">import</span> <span class="n">cdist</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">sklearn.cluster</span><span class="w"> </span><span class="kn">import</span> <span class="n">KMeans</span>
@@ -93,14 +94,54 @@
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Any</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Tuple</span><span class="p">,</span> <span class="n">Union</span><span class="p">,</span> <span class="n">Optional</span>
 
 
+<div class="viewcode-block" id="set_seed">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.set_seed">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">set_seed</span><span class="p">(</span><span class="n">seed</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Fix every random generator the platform draws from, in one call.</span>
+
+<span class="sd">    All stochastic stages of the platform (initial sampling, data splitting,</span>
+<span class="sd">    surrogate training, and the stochastic optimization operators) draw from the</span>
+<span class="sd">    global ``random``, NumPy and PyTorch streams, so seeding those three streams</span>
+<span class="sd">    makes a whole run reproducible.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    seed : int</span>
+<span class="sd">        Seed applied to the ``random``, NumPy and PyTorch (including CUDA)</span>
+<span class="sd">        generators.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    int</span>
+<span class="sd">        The seed that was applied, so callers can record it alongside results.</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    PyTorch is seeded only if it is installed; the platform does not require it</span>
+<span class="sd">    for algorithms that are purely NumPy-based.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">seed</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="k">try</span><span class="p">:</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
+    <span class="k">except</span> <span class="ne">ImportError</span><span class="p">:</span>
+        <span class="k">pass</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">torch</span><span class="o">.</span><span class="n">manual_seed</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">is_available</span><span class="p">():</span>
+            <span class="n">torch</span><span class="o">.</span><span class="n">cuda</span><span class="o">.</span><span class="n">manual_seed_all</span><span class="p">(</span><span class="n">seed</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">seed</span></div>
+
+
+
 <div class="viewcode-block" id="Results">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.Results">[docs]</a>
 <span class="nd">@dataclass</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">Results</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Container for optimization results.</span>
-
-<span class="sd">    :no-index:</span>
 
 <span class="sd">    Attributes</span>
 <span class="sd">    ----------</span>
@@ -115,7 +156,13 @@
 <span class="sd">    runtime : float</span>
 <span class="sd">        Total runtime in seconds</span>
 <span class="sd">    max_nfes : List[int]</span>
-<span class="sd">        Maximum function evaluations per task</span>
+<span class="sd">        Function evaluations each task actually consumed, which the recorded</span>
+<span class="sd">        history spans. This is a measurement, not the requested budget: an</span>
+<span class="sd">        algorithm may overshoot its budget on the last generation, and in</span>
+<span class="sd">        multitask algorithms that share one population the split across tasks is</span>
+<span class="sd">        decided at run time and is rarely even. Analysis code relies on it to</span>
+<span class="sd">        scale the horizontal axis of convergence curves, so it must never be</span>
+<span class="sd">        filled with the declared ``max_nfes`` argument.</span>
 <span class="sd">    best_cons : Optional[List[np.ndarray]]</span>
 <span class="sd">        Best constraint values for each task (None if unconstrained)</span>
 <span class="sd">    all_cons : Optional[List[List[np.ndarray]]]</span>
@@ -168,7 +215,11 @@
 <span class="sd">    runtime : float</span>
 <span class="sd">        Total runtime in seconds</span>
 <span class="sd">    max_nfes : List[int]</span>
-<span class="sd">        Maximum function evaluations per task</span>
+<span class="sd">        Function evaluations each task actually consumed, i.e. the algorithm&#39;s</span>
+<span class="sd">        own per-task counter at the end of the run, not the budget it was asked</span>
+<span class="sd">        for. Pass the measured counts: analysis code uses this to scale the</span>
+<span class="sd">        horizontal axis of convergence curves, so a declared budget here</span>
+<span class="sd">        silently mis-scales every plot.</span>
 <span class="sd">    all_cons : List[List[np.ndarray]], optional</span>
 <span class="sd">        Constraint values history for all tasks (default: None)</span>
 <span class="sd">    bounds : List[Tuple[np.ndarray, np.ndarray]], optional</span>
@@ -237,6 +288,8 @@
 
 
 
+<div class="viewcode-block" id="get_algorithm_information">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.get_algorithm_information">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="n">algorithm_class</span><span class="p">:</span> <span class="nb">type</span><span class="p">,</span> <span class="n">print_info</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get algorithm information from any algorithm class.</span>
@@ -265,7 +318,8 @@
     <span class="k">if</span> <span class="n">print_info</span><span class="p">:</span>
         <span class="nb">print</span><span class="p">(</span><span class="n">info</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">algo_info</span>
+    <span class="k">return</span> <span class="n">algo_info</span></div>
+
 
 
 <div class="viewcode-block" id="init_history">
@@ -311,6 +365,8 @@
 
 
 
+<div class="viewcode-block" id="vstack_groups">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.vstack_groups">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">vstack_groups</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="nb">tuple</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span> <span class="kc">None</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span>
     <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
@@ -341,7 +397,8 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">(</span><span class="n">arg</span><span class="p">))</span>
 
-    <span class="k">return</span> <span class="n">results</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">results</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
+
 
 
 <div class="viewcode-block" id="append_history">
@@ -382,6 +439,8 @@
 
 
 
+<div class="viewcode-block" id="select_by_index">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.select_by_index">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">select_by_index</span><span class="p">(</span><span class="n">index</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="o">*</span><span class="n">arrays</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Select rows from arrays by index.</span>
@@ -410,9 +469,12 @@
         <span class="k">else</span><span class="p">:</span>
             <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">arr</span><span class="p">[</span><span class="n">index</span><span class="p">,</span> <span class="p">:])</span>
 
-    <span class="k">return</span> <span class="n">results</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="k">return</span> <span class="n">results</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">results</span><span class="p">)</span> <span class="o">&gt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">results</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span></div>
 
 
+
+<div class="viewcode-block" id="par_list">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.par_list">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">par_list</span><span class="p">(</span><span class="n">par</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]],</span> <span class="n">n_tasks</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Convert a parameter to a list for multi-task scenarios.</span>
@@ -436,9 +498,54 @@
         <span class="n">par_per_task</span> <span class="o">=</span> <span class="p">[</span><span class="n">par</span><span class="p">]</span> <span class="o">*</span> <span class="n">n_tasks</span>
     <span class="k">else</span><span class="p">:</span>
         <span class="n">par_per_task</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">par</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">par_per_task</span>
+    <span class="k">return</span> <span class="n">par_per_task</span></div>
 
 
+
+<div class="viewcode-block" id="resolve_budget">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.resolve_budget">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">resolve_budget</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">max_nfes</span><span class="p">,</span> <span class="n">n_tasks</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Resolve the per-task evaluation budget $N^k$ an algorithm should run under.</span>
+
+<span class="sd">    The budget can come from two places: the task itself, when it was declared</span>
+<span class="sd">    through ``MTOP.add_task(..., budget=...)``, or the algorithm&#39;s ``max_nfes``</span>
+<span class="sd">    argument. An explicitly supplied ``max_nfes`` always wins, so passing the</span>
+<span class="sd">    argument keeps the historical behaviour unchanged; the task-declared budget</span>
+<span class="sd">    is used only when the caller left ``max_nfes`` unset.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    problem : MTOP</span>
+<span class="sd">        Problem instance, optionally carrying per-task budgets.</span>
+<span class="sd">    max_nfes : int, List[int] or None</span>
+<span class="sd">        Budget explicitly requested by the caller, if any.</span>
+<span class="sd">    n_tasks : int</span>
+<span class="sd">        Number of tasks.</span>
+<span class="sd">    default : int, optional</span>
+<span class="sd">        Fallback used when neither source provides a budget.</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    List[int] or None</span>
+<span class="sd">        Per-task budgets, or None when no source provides one and no default</span>
+<span class="sd">        is given, in which case the algorithm applies its own default.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">par_list</span><span class="p">(</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">n_tasks</span><span class="p">)</span>
+
+    <span class="n">declared</span> <span class="o">=</span> <span class="nb">getattr</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="s1">&#39;budgets&#39;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">declared</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="nb">len</span><span class="p">(</span><span class="n">declared</span><span class="p">)</span> <span class="o">==</span> <span class="n">n_tasks</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">b</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">declared</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">b</span><span class="p">)</span> <span class="k">for</span> <span class="n">b</span> <span class="ow">in</span> <span class="n">declared</span><span class="p">]</span>
+
+    <span class="k">if</span> <span class="n">default</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">par_list</span><span class="p">(</span><span class="n">default</span><span class="p">,</span> <span class="n">n_tasks</span><span class="p">)</span>
+    <span class="k">return</span> <span class="kc">None</span></div>
+
+
+
+<div class="viewcode-block" id="build_staircase_history">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.build_staircase_history">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">build_staircase_history</span><span class="p">(</span>
         <span class="n">db_decs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
         <span class="n">db_objs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
@@ -507,7 +614,8 @@
 
     <span class="k">if</span> <span class="n">db_cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span><span class="p">,</span> <span class="n">all_cons</span>
-    <span class="k">return</span> <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span>
+    <span class="k">return</span> <span class="n">all_decs</span><span class="p">,</span> <span class="n">all_objs</span></div>
+
 
 
 <div class="viewcode-block" id="reorganize_initial_data">
@@ -747,6 +855,8 @@
 
 
 
+<div class="viewcode-block" id="evaluation_single">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.evaluation_single">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">evaluation_single</span><span class="p">(</span>
         <span class="n">problem</span><span class="p">,</span>
         <span class="n">decs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
@@ -823,7 +933,8 @@
         <span class="n">objs</span> <span class="o">=</span> <span class="n">_pad_to_size</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">m_max</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">)</span>
         <span class="n">cons</span> <span class="o">=</span> <span class="n">_pad_to_size</span><span class="p">(</span><span class="n">cons</span><span class="p">,</span> <span class="n">c_max</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span>
+    <span class="k">return</span> <span class="n">objs</span><span class="p">,</span> <span class="n">cons</span></div>
+
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">_pad_to_size</span><span class="p">(</span><span class="n">arr</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">target_size</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">fill_value</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
@@ -851,6 +962,8 @@
     <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">pad</span><span class="p">(</span><span class="n">arr</span><span class="p">,</span> <span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">pad_width</span><span class="p">)),</span> <span class="n">mode</span><span class="o">=</span><span class="s1">&#39;constant&#39;</span><span class="p">,</span> <span class="n">constant_values</span><span class="o">=</span><span class="n">fill_value</span><span class="p">)</span>
 
 
+<div class="viewcode-block" id="crossover">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.crossover">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">crossover</span><span class="p">(</span>
         <span class="n">par_dec1</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
         <span class="n">par_dec2</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
@@ -888,9 +1001,12 @@
     <span class="n">off_dec2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span><span class="p">)</span>
     <span class="n">off_dec1</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
     <span class="n">off_dec2</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">off_dec2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span>
+    <span class="k">return</span> <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span></div>
 
 
+
+<div class="viewcode-block" id="mutation">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.mutation">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">mutation</span><span class="p">(</span><span class="n">dec</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">mu</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mi">5</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Perform polynomial mutation on a decision vector.</span>
@@ -920,7 +1036,8 @@
                 <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">mutated_dec</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
                 <span class="n">mutated_dec</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="n">delta</span>
     <span class="n">mutated_dec</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">mutated_dec</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">mutated_dec</span>
+    <span class="k">return</span> <span class="n">mutated_dec</span></div>
+
 
 
 <div class="viewcode-block" id="ga_generation">
@@ -969,6 +1086,132 @@
         <span class="n">offdec1</span> <span class="o">=</span> <span class="n">mutation</span><span class="p">(</span><span class="n">offdec1</span><span class="p">,</span> <span class="n">mu</span><span class="o">=</span><span class="n">mum</span><span class="p">)</span>
         <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">vstack</span><span class="p">((</span><span class="n">offdecs</span><span class="p">,</span> <span class="n">offdec1</span><span class="p">))</span>
 
+    <span class="k">return</span> <span class="n">offdecs</span></div>
+
+
+
+<div class="viewcode-block" id="sbx_crossover_unclipped">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.sbx_crossover_unclipped">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">sbx_crossover_unclipped</span><span class="p">(</span><span class="n">par_dec1</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">par_dec2</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">mu</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Simulated binary crossover (MTO-Platform ``GA_Crossover``).</span>
+
+<span class="sd">    Unlike :func:`crossover`, offspring are NOT clipped to [0, 1] here: the</span>
+<span class="sd">    MATLAB reference clips only once at the end of ``Generation``, after</span>
+<span class="sd">    mutation has acted on the raw crossover output.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    par_dec1 : np.ndarray</span>
+<span class="sd">        First parent decision vector, shape (d,)</span>
+<span class="sd">    par_dec2 : np.ndarray</span>
+<span class="sd">        Second parent decision vector, shape (d,)</span>
+<span class="sd">    mu : float</span>
+<span class="sd">        Distribution index for crossover</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    off_dec1 : np.ndarray</span>
+<span class="sd">        First offspring decision vector, unclipped, shape (d,)</span>
+<span class="sd">    off_dec2 : np.ndarray</span>
+<span class="sd">        Second offspring decision vector, unclipped, shape (d,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">par_dec1</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">beta</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">mask</span> <span class="o">=</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">[</span><span class="n">mask</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">[</span><span class="o">~</span><span class="n">mask</span><span class="p">]))</span> <span class="o">**</span> <span class="p">(</span><span class="o">-</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+    <span class="n">beta</span> <span class="o">*=</span> <span class="p">(</span><span class="o">-</span><span class="mf">1.0</span><span class="p">)</span> <span class="o">**</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">d</span><span class="p">)</span>
+    <span class="n">beta</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">d</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">0.5</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+
+    <span class="n">off_dec1</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span><span class="p">)</span>
+    <span class="n">off_dec2</span> <span class="o">=</span> <span class="mf">0.5</span> <span class="o">*</span> <span class="p">((</span><span class="mi">1</span> <span class="o">+</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec2</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">beta</span><span class="p">)</span> <span class="o">*</span> <span class="n">par_dec1</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">off_dec1</span><span class="p">,</span> <span class="n">off_dec2</span></div>
+
+
+
+<div class="viewcode-block" id="poly_mutation_unclipped">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.poly_mutation_unclipped">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">poly_mutation_unclipped</span><span class="p">(</span><span class="n">dec</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">mu</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Polynomial mutation (MTO-Platform ``GA_Mutation``) with probability 1/D per gene.</span>
+
+<span class="sd">    Operates on the possibly out-of-bounds crossover output and does NOT clip;</span>
+<span class="sd">    the caller clips once afterwards, matching the MATLAB reference.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    dec : np.ndarray</span>
+<span class="sd">        Decision vector to mutate, shape (d,)</span>
+<span class="sd">    mu : float</span>
+<span class="sd">        Distribution index for mutation</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    dec : np.ndarray</span>
+<span class="sd">        Mutated decision vector, unclipped, shape (d,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">d</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+    <span class="n">dec</span> <span class="o">=</span> <span class="n">dec</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+    <span class="n">prob_m</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">/</span> <span class="n">d</span>
+    <span class="c1"># Out-of-bounds input can overflow the power terms; the resulting inf/nan is</span>
+    <span class="c1"># clipped by the caller, so only the warning is suppressed here</span>
+    <span class="k">with</span> <span class="n">np</span><span class="o">.</span><span class="n">errstate</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">,</span> <span class="n">invalid</span><span class="o">=</span><span class="s1">&#39;ignore&#39;</span><span class="p">):</span>
+        <span class="k">for</span> <span class="n">j</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
+            <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span> <span class="o">&lt;</span> <span class="n">prob_m</span><span class="p">:</span>
+                <span class="n">u</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">u</span> <span class="o">&lt;=</span> <span class="mf">0.5</span><span class="p">:</span>
+                    <span class="n">delta</span> <span class="o">=</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="n">u</span> <span class="o">+</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">u</span><span class="p">)</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">])</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">-</span> <span class="mi">1</span>
+                <span class="k">else</span><span class="p">:</span>
+                    <span class="n">delta</span> <span class="o">=</span> <span class="mi">1</span> <span class="o">-</span> <span class="p">(</span><span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="mi">1</span> <span class="o">-</span> <span class="n">u</span><span class="p">)</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="p">(</span><span class="n">u</span> <span class="o">-</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">**</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span> <span class="o">**</span> <span class="p">(</span><span class="mi">1</span> <span class="o">/</span> <span class="p">(</span><span class="n">mu</span> <span class="o">+</span> <span class="mi">1</span><span class="p">))</span>
+                <span class="n">dec</span><span class="p">[</span><span class="n">j</span><span class="p">]</span> <span class="o">+=</span> <span class="n">delta</span>
+    <span class="k">return</span> <span class="n">dec</span></div>
+
+
+
+<div class="viewcode-block" id="ga_generation_matlab">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.ga_generation_matlab">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">ga_generation_matlab</span><span class="p">(</span><span class="n">parents</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">muc</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">mum</span><span class="p">:</span> <span class="nb">float</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Offspring generation matching MTO-Platform ``GA.Generation`` exactly.</span>
+
+<span class="sd">    A random permutation is split in halves and parent i is paired with parent</span>
+<span class="sd">    i + floor(N/2) for i = 1..ceil(N/2); each pair yields two children (SBX then</span>
+<span class="sd">    polynomial mutation), and the single clip to [0, 1] happens only after</span>
+<span class="sd">    mutation. For odd N this produces N + 1 offspring (the middle permutation</span>
+<span class="sd">    index is used twice), exactly as in MATLAB.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    parents : np.ndarray</span>
+<span class="sd">        Parent population, shape (n, d)</span>
+<span class="sd">    muc : float</span>
+<span class="sd">        Distribution index for crossover</span>
+<span class="sd">    mum : float</span>
+<span class="sd">        Distribution index for mutation</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    offdecs : np.ndarray</span>
+<span class="sd">        Offspring decision variables, shape (2 * ceil(n / 2), d)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">n</span><span class="p">,</span> <span class="n">d</span> <span class="o">=</span> <span class="n">parents</span><span class="o">.</span><span class="n">shape</span>
+    <span class="n">order</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">permutation</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+    <span class="n">half</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">2</span>
+    <span class="n">n_pairs</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">n</span> <span class="o">/</span> <span class="mi">2</span><span class="p">))</span>
+    <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">((</span><span class="mi">2</span> <span class="o">*</span> <span class="n">n_pairs</span><span class="p">,</span> <span class="n">d</span><span class="p">))</span>
+    <span class="n">count</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">n_pairs</span><span class="p">):</span>
+        <span class="n">p1</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="n">order</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="p">:]</span>
+        <span class="n">p2</span> <span class="o">=</span> <span class="n">parents</span><span class="p">[</span><span class="n">order</span><span class="p">[</span><span class="n">i</span> <span class="o">+</span> <span class="n">half</span><span class="p">],</span> <span class="p">:]</span>
+        <span class="n">c1</span><span class="p">,</span> <span class="n">c2</span> <span class="o">=</span> <span class="n">sbx_crossover_unclipped</span><span class="p">(</span><span class="n">p1</span><span class="p">,</span> <span class="n">p2</span><span class="p">,</span> <span class="n">muc</span><span class="p">)</span>
+        <span class="n">c1</span> <span class="o">=</span> <span class="n">poly_mutation_unclipped</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">c2</span> <span class="o">=</span> <span class="n">poly_mutation_unclipped</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="n">mum</span><span class="p">)</span>
+        <span class="n">offdecs</span><span class="p">[</span><span class="n">count</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c1</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">offdecs</span><span class="p">[</span><span class="n">count</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">c2</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+        <span class="n">count</span> <span class="o">+=</span> <span class="mi">2</span>
     <span class="k">return</span> <span class="n">offdecs</span></div>
 
 
@@ -1022,6 +1265,8 @@
 
 
 
+<div class="viewcode-block" id="space_transfer">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.space_transfer">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">space_transfer</span><span class="p">(</span>
         <span class="n">problem</span><span class="p">:</span> <span class="s1">&#39;MTOP&#39;</span><span class="p">,</span>
         <span class="n">decs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
@@ -1185,7 +1430,8 @@
     <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="n">results</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">new_cons</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">results</span><span class="p">)</span>
+    <span class="k">return</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">results</span><span class="p">)</span></div>
+
 
 
 <div class="viewcode-block" id="nd_sort">
@@ -1341,6 +1587,94 @@
 
 
 
+<div class="viewcode-block" id="nsga2_sort">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.nsga2_sort">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">nsga2_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">cons</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tuple</span><span class="p">[</span>
+        <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Sort solutions by the NSGA-II criteria (PlatEMO/MToP ``NSGA2Sort``).</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    objs : np.ndarray</span>
+<span class="sd">        Objective value matrix of shape (pop_size, n_obj)</span>
+<span class="sd">    cons : np.ndarray, optional</span>
+<span class="sd">        Constraint matrix of shape (pop_size, n_con). If None or empty, no</span>
+<span class="sd">        constraints are considered (default: None)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    rank : np.ndarray</span>
+<span class="sd">        Ranking of each solution (0-based index after sorting) of shape (pop_size,).</span>
+<span class="sd">        rank[i] indicates the position of solution i in the sorted order</span>
+<span class="sd">    front_no : np.ndarray</span>
+<span class="sd">        Non-dominated front number of each solution of shape (pop_size,)</span>
+<span class="sd">    crowd_dis : np.ndarray</span>
+<span class="sd">        Crowding distance of each solution of shape (pop_size,)</span>
+
+<span class="sd">    Notes</span>
+<span class="sd">    -----</span>
+<span class="sd">    Solutions are sorted first by front number (ascending), then by crowding</span>
+<span class="sd">    distance (descending). Larger crowding distance values indicate better</span>
+<span class="sd">    diversity preservation.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">pop_size</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+    <span class="c1"># Perform non-dominated sorting</span>
+    <span class="k">if</span> <span class="n">cons</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">cons</span><span class="o">.</span><span class="n">size</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+        <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cons</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">front_no</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">nd_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pop_size</span><span class="p">)</span>
+
+    <span class="c1"># Calculate crowding distance for diversity preservation</span>
+    <span class="n">crowd_dis</span> <span class="o">=</span> <span class="n">crowding_distance</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">front_no</span><span class="p">)</span>
+
+    <span class="c1"># Sort by front number (ascending), then by crowding distance (descending)</span>
+    <span class="n">sorted_indices</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="o">-</span><span class="n">crowd_dis</span><span class="p">,</span> <span class="n">front_no</span><span class="p">))</span>
+
+    <span class="c1"># Create rank array: rank[i] gives the sorted position of solution i</span>
+    <span class="n">rank</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">pop_size</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
+    <span class="n">rank</span><span class="p">[</span><span class="n">sorted_indices</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">pop_size</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">rank</span><span class="p">,</span> <span class="n">front_no</span><span class="p">,</span> <span class="n">crowd_dis</span></div>
+
+
+
+<div class="viewcode-block" id="platemo_tournament_selection">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.platemo_tournament_selection">[docs]</a>
+<span class="k">def</span><span class="w"> </span><span class="nf">platemo_tournament_selection</span><span class="p">(</span><span class="n">K</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">N</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="o">*</span><span class="n">fitness</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Exact port of PlatEMO&#39;s ``TournamentSelection``.</span>
+
+<span class="sd">    Candidates are compared lexicographically on the given fitness keys (lower</span>
+<span class="sd">    values are better). Solutions with identical fitness values share the same</span>
+<span class="sd">    rank, so a tournament among tied candidates is decided by the (random) draw</span>
+<span class="sd">    order, i.e. uniformly at random. This differs from ranking with a composite</span>
+<span class="sd">    total order, which would break ties deterministically.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    K : int</span>
+<span class="sd">        Tournament size</span>
+<span class="sd">    N : int</span>
+<span class="sd">        Number of parents to select</span>
+<span class="sd">    *fitness : np.ndarray</span>
+<span class="sd">        One or more fitness vectors of equal length (primary key first)</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    index : np.ndarray</span>
+<span class="sd">        Indices of the selected parents, shape (N,)</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">fits</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">column_stack</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">f</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">fitness</span><span class="p">])</span>
+    <span class="n">_</span><span class="p">,</span> <span class="n">loc</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">unique</span><span class="p">(</span><span class="n">fits</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">return_inverse</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    <span class="n">loc</span> <span class="o">=</span> <span class="n">loc</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+    <span class="n">parents</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">fits</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">K</span><span class="p">,</span> <span class="n">N</span><span class="p">))</span>
+    <span class="n">best</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span><span class="n">loc</span><span class="p">[</span><span class="n">parents</span><span class="p">],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+    <span class="k">return</span> <span class="n">parents</span><span class="p">[</span><span class="n">best</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">N</span><span class="p">)]</span></div>
+
+
+
 <div class="viewcode-block" id="tournament_selection">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.tournament_selection">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">tournament_selection</span><span class="p">(</span>
@@ -1406,6 +1740,8 @@
 
 
 
+<div class="viewcode-block" id="selection_elit">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.selection_elit">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">selection_elit</span><span class="p">(</span>
         <span class="n">objs</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span>
         <span class="n">n</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
@@ -1444,9 +1780,12 @@
 
     <span class="n">indices</span> <span class="o">=</span> <span class="n">rank</span><span class="p">[:</span><span class="n">n</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">indices</span>
+    <span class="k">return</span> <span class="n">indices</span></div>
 
 
+
+<div class="viewcode-block" id="trim_excess_evaluations">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.trim_excess_evaluations">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">trim_excess_evaluations</span><span class="p">(</span>
         <span class="n">all_decs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span>
         <span class="n">all_objs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span>
@@ -1549,9 +1888,12 @@
     <span class="k">if</span> <span class="n">has_cons</span> <span class="ow">and</span> <span class="n">all_cons_trimmed</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">all_decs_trimmed</span><span class="p">,</span> <span class="n">all_objs_trimmed</span><span class="p">,</span> <span class="n">nfes_per_task_updated</span><span class="p">,</span> <span class="n">all_cons_trimmed</span>
     <span class="k">else</span><span class="p">:</span>
-        <span class="k">return</span> <span class="n">all_decs_trimmed</span><span class="p">,</span> <span class="n">all_objs_trimmed</span><span class="p">,</span> <span class="n">nfes_per_task_updated</span>
+        <span class="k">return</span> <span class="n">all_decs_trimmed</span><span class="p">,</span> <span class="n">all_objs_trimmed</span><span class="p">,</span> <span class="n">nfes_per_task_updated</span></div>
 
 
+
+<div class="viewcode-block" id="normalize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.normalize">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">normalize</span><span class="p">(</span>
         <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]],</span>
         <span class="n">axis</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span><span class="p">,</span>
@@ -1670,9 +2012,12 @@
     <span class="k">if</span> <span class="n">single_input</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">normalized</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">stat1_list</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">stat2_list</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">normalized</span><span class="p">,</span> <span class="n">stat1_list</span><span class="p">,</span> <span class="n">stat2_list</span>
+    <span class="k">return</span> <span class="n">normalized</span><span class="p">,</span> <span class="n">stat1_list</span><span class="p">,</span> <span class="n">stat2_list</span></div>
 
 
+
+<div class="viewcode-block" id="denormalize">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.denormalize">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">denormalize</span><span class="p">(</span>
         <span class="n">data</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span> <span class="n">List</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]]],</span>
         <span class="n">stat1</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]],</span>
@@ -1779,9 +2124,12 @@
     <span class="k">if</span> <span class="n">single_input</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">restored</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">restored</span>
+    <span class="k">return</span> <span class="n">restored</span></div>
 
 
+
+<div class="viewcode-block" id="remove_duplicates">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.remove_duplicates">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">remove_duplicates</span><span class="p">(</span><span class="n">new_decs</span><span class="p">,</span> <span class="n">existing_decs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tol</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Remove duplicate solutions from new decision variables.</span>
@@ -1832,9 +2180,12 @@
 
         <span class="n">unique_decs</span> <span class="o">=</span> <span class="n">unique_decs</span><span class="p">[</span><span class="n">final_indices</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">unique_decs</span>
+    <span class="k">return</span> <span class="n">unique_decs</span></div>
 
 
+
+<div class="viewcode-block" id="kmeans_clustering">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.kmeans_clustering">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">kmeans_clustering</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">k</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    K-means clustering using sklearn.</span>
@@ -1861,9 +2212,12 @@
     <span class="n">kmeans</span> <span class="o">=</span> <span class="n">KMeans</span><span class="p">(</span><span class="n">n_clusters</span><span class="o">=</span><span class="n">k</span><span class="p">,</span> <span class="n">n_init</span><span class="o">=</span><span class="s1">&#39;auto&#39;</span><span class="p">,</span> <span class="n">random_state</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
     <span class="n">labels</span> <span class="o">=</span> <span class="n">kmeans</span><span class="o">.</span><span class="n">fit_predict</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
 
-    <span class="k">return</span> <span class="n">labels</span>
+    <span class="k">return</span> <span class="n">labels</span></div>
 
 
+
+<div class="viewcode-block" id="ibea_fitness">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.ibea_fitness">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">ibea_fitness</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">kappa</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Calculate fitness values for the population using IBEA indicator.</span>
@@ -1902,9 +2256,12 @@
     <span class="c1"># Calculate fitness</span>
     <span class="n">fitness</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="n">I</span> <span class="o">/</span> <span class="n">C</span> <span class="o">/</span> <span class="n">kappa</span><span class="p">),</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span>
 
-    <span class="k">return</span> <span class="n">fitness</span><span class="p">,</span> <span class="n">I</span><span class="p">,</span> <span class="n">C</span>
+    <span class="k">return</span> <span class="n">fitness</span><span class="p">,</span> <span class="n">I</span><span class="p">,</span> <span class="n">C</span></div>
 
 
+
+<div class="viewcode-block" id="is_duplicate">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.is_duplicate">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">is_duplicate</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">X</span><span class="p">,</span> <span class="n">epsilon</span><span class="o">=</span><span class="mf">1e-10</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Check if position(s) x are duplicates in X or within themselves.</span>
@@ -1972,7 +2329,8 @@
             <span class="k">if</span> <span class="n">is_unique</span><span class="p">:</span>
                 <span class="n">final_unique</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">i</span><span class="p">)</span>
 
-        <span class="k">return</span> <span class="n">results</span>
+        <span class="k">return</span> <span class="n">results</span></div>
+
 
 
 <span class="c1"># =============================================================================</span>
@@ -2053,6 +2411,8 @@
 
 
 
+<div class="viewcode-block" id="newrbe_surrogate">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.newrbe_surrogate">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">newrbe_surrogate</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">Y_train</span><span class="p">,</span> <span class="n">spread</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Build an exact Gaussian RBF interpolant equivalent to MATLAB&#39;s</span>
@@ -2101,9 +2461,12 @@
         <span class="n">A_query</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">b</span> <span class="o">*</span> <span class="n">cdist</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">X_train</span><span class="p">))</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">A_query</span> <span class="o">@</span> <span class="n">w</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">predict</span>
+    <span class="k">return</span> <span class="n">predict</span></div>
 
 
+
+<div class="viewcode-block" id="newrb_surrogate">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.newrb_surrogate">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">newrb_surrogate</span><span class="p">(</span><span class="n">X_train</span><span class="p">,</span> <span class="n">Y_train</span><span class="p">,</span> <span class="n">goal</span><span class="o">=</span><span class="mf">0.1</span><span class="p">,</span> <span class="n">spread</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">max_neurons</span><span class="o">=</span><span class="mi">8</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Build an approximating Gaussian RBF network equivalent to MATLAB&#39;s</span>
@@ -2166,7 +2529,8 @@
         <span class="n">A_query</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">exp</span><span class="p">(</span><span class="o">-</span><span class="p">(</span><span class="n">b</span> <span class="o">*</span> <span class="n">cdist</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">centers</span><span class="p">))</span> <span class="o">**</span> <span class="mi">2</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">A_query</span> <span class="o">@</span> <span class="n">w</span><span class="p">[:</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span> <span class="o">+</span> <span class="n">w</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
 
-    <span class="k">return</span> <span class="n">predict</span>
+    <span class="k">return</span> <span class="n">predict</span></div>
+
 
 
 <span class="c1"># =============================================================================</span>
@@ -2459,6 +2823,8 @@
 <span class="c1"># Dimension Alignment</span>
 <span class="c1"># =============================================================================</span>
 
+<div class="viewcode-block" id="align_dimensions">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.align_dimensions">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">align_dimensions</span><span class="p">(</span><span class="n">dec</span><span class="p">,</span> <span class="n">target_dim</span><span class="p">,</span> <span class="n">fill</span><span class="o">=</span><span class="s1">&#39;random&#39;</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Align decision variable dimensions to target dimension.</span>
@@ -2503,13 +2869,16 @@
                 <span class="n">padding</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">n</span><span class="p">,</span> <span class="n">target_dim</span> <span class="o">-</span> <span class="n">current_dim</span><span class="p">))</span>
             <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">hstack</span><span class="p">([</span><span class="n">dec</span><span class="p">,</span> <span class="n">padding</span><span class="p">])</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="k">return</span> <span class="n">dec</span><span class="p">[:,</span> <span class="p">:</span><span class="n">target_dim</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">return</span> <span class="n">dec</span><span class="p">[:,</span> <span class="p">:</span><span class="n">target_dim</span><span class="p">]</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span></div>
+
 
 
 <span class="c1"># =============================================================================</span>
 <span class="c1"># Constrained Sort</span>
 <span class="c1"># =============================================================================</span>
 
+<div class="viewcode-block" id="constrained_sort">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.constrained_sort">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">constrained_sort</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">cvs</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Sort indices by constraint violation first, then by objective value (ascending).</span>
@@ -2526,13 +2895,16 @@
 <span class="sd">    sorted_indices : np.ndarray</span>
 <span class="sd">        Indices that would sort the population by (cvs, objs) ascending, shape (n,)</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">cvs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()))</span>
+    <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">lexsort</span><span class="p">((</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">(),</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">cvs</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()))</span></div>
+
 
 
 <span class="c1"># =============================================================================</span>
 <span class="c1"># CMA-ES Utilities</span>
 <span class="c1"># =============================================================================</span>
 
+<div class="viewcode-block" id="cmaes_init_params">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.cmaes_init_params">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">cmaes_init_params</span><span class="p">(</span><span class="n">dim</span><span class="p">,</span> <span class="n">lam</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">sigma0</span><span class="o">=</span><span class="mf">0.3</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Initialize CMA-ES parameters for a given dimension.</span>
@@ -2578,9 +2950,12 @@
         <span class="s1">&#39;B&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span> <span class="s1">&#39;D&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span>
         <span class="s1">&#39;C&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span> <span class="s1">&#39;invsqrtC&#39;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="n">dim</span><span class="p">),</span>
         <span class="s1">&#39;sigma&#39;</span><span class="p">:</span> <span class="n">sigma0</span><span class="p">,</span> <span class="s1">&#39;eigenFE&#39;</span><span class="p">:</span> <span class="mi">0</span>
-    <span class="p">}</span>
+    <span class="p">}</span></div>
 
 
+
+<div class="viewcode-block" id="cmaes_sample">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.cmaes_sample">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">cmaes_sample</span><span class="p">(</span><span class="n">m_dec</span><span class="p">,</span> <span class="n">sigma</span><span class="p">,</span> <span class="n">B</span><span class="p">,</span> <span class="n">D</span><span class="p">,</span> <span class="n">lam</span><span class="p">,</span> <span class="n">clip</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Generate offspring using CMA-ES sampling.</span>
@@ -2612,9 +2987,12 @@
     <span class="n">offdecs</span> <span class="o">=</span> <span class="n">m_dec</span> <span class="o">+</span> <span class="n">sigma</span> <span class="o">*</span> <span class="p">((</span><span class="n">z</span> <span class="o">*</span> <span class="n">D</span><span class="p">)</span> <span class="o">@</span> <span class="n">B</span><span class="o">.</span><span class="n">T</span><span class="p">)</span>
     <span class="k">if</span> <span class="n">clip</span><span class="p">:</span>
         <span class="n">offdecs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">offdecs</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="k">return</span> <span class="n">offdecs</span>
+    <span class="k">return</span> <span class="n">offdecs</span></div>
 
 
+
+<div class="viewcode-block" id="cmaes_update">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Methods.Algo_Methods.algo_utils.cmaes_update">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">cmaes_update</span><span class="p">(</span><span class="n">params</span><span class="p">,</span> <span class="n">sorted_decs</span><span class="p">,</span> <span class="n">nfes</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Update CMA-ES parameters given fitness-sorted offspring.</span>
@@ -2693,7 +3071,8 @@
 
         <span class="n">p</span><span class="p">[</span><span class="s1">&#39;invsqrtC&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span> <span class="o">@</span> <span class="n">np</span><span class="o">.</span><span class="n">diag</span><span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;D&#39;</span><span class="p">])</span> <span class="o">@</span> <span class="n">p</span><span class="p">[</span><span class="s1">&#39;B&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">T</span>
 
-    <span class="k">return</span> <span class="n">restarted</span>
+    <span class="k">return</span> <span class="n">restarted</span></div>
+
 </pre></div>
 
            </div>

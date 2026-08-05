@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Methods.Algo_Methods.bo_utils &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
     <link rel="search" title="Search" href="../../../../search.html" /> 
@@ -658,8 +658,9 @@
     <span class="n">objs</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">],</span>
     <span class="n">dims</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span>
     <span class="n">nt</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
-    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+    <span class="n">data_type</span><span class="p">:</span> <span class="n">torch</span><span class="o">.</span><span class="n">dtype</span> <span class="o">=</span> <span class="n">torch</span><span class="o">.</span><span class="n">float</span><span class="p">,</span>
+    <span class="n">return_acq_value</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+<span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">    Get the next sampling point using Multi-Task Bayesian Optimization.</span>
 
@@ -677,11 +678,20 @@
 <span class="sd">        Total number of tasks</span>
 <span class="sd">    data_type : torch.dtype, optional</span>
 <span class="sd">        Data type for tensors (default: torch.float)</span>
+<span class="sd">    return_acq_value : bool, optional</span>
+<span class="sd">        Whether to also return the acquisition value attained at the returned</span>
+<span class="sd">        point (default: False). The value is the *log* expected improvement,</span>
+<span class="sd">        so callers comparing tasks under different evaluation costs should</span>
+<span class="sd">        work in log space, i.e. compare ``log_ei - log(cost)`` rather than</span>
+<span class="sd">        dividing. Default False keeps the historical single return value.</span>
 
 <span class="sd">    Returns</span>
 <span class="sd">    -------</span>
 <span class="sd">    candidate_np : np.ndarray</span>
 <span class="sd">        Next sampling point, shape: (1, dims[task_id])</span>
+<span class="sd">    acq_value : float</span>
+<span class="sd">        Log expected improvement at ``candidate_np``. Only returned when</span>
+<span class="sd">        ``return_acq_value`` is True.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="c1"># Define search bounds [0, 1]^max_dim with fixed task index</span>
     <span class="c1"># (integer-valued task feature, matching mtgp_build)</span>
@@ -704,7 +714,7 @@
     <span class="p">)</span>
 
     <span class="c1"># Optimize acquisition function and extract decision variables</span>
-    <span class="n">candidate</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">optimize_acqf</span><span class="p">(</span>
+    <span class="n">candidate</span><span class="p">,</span> <span class="n">acq_value</span> <span class="o">=</span> <span class="n">optimize_acqf</span><span class="p">(</span>
         <span class="n">logEI</span><span class="p">,</span>
         <span class="n">bounds</span><span class="o">=</span><span class="n">bounds</span><span class="p">,</span>
         <span class="n">q</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
@@ -712,6 +722,9 @@
         <span class="n">raw_samples</span><span class="o">=</span><span class="mi">20</span>
     <span class="p">)</span>
     <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">candidate</span><span class="p">[:,</span> <span class="p">:</span><span class="n">dims</span><span class="p">[</span><span class="n">task_id</span><span class="p">]]</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">numpy</span><span class="p">()</span>
+
+    <span class="k">if</span> <span class="n">return_acq_value</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="nb">float</span><span class="p">(</span><span class="n">acq_value</span><span class="o">.</span><span class="n">detach</span><span class="p">()</span><span class="o">.</span><span class="n">cpu</span><span class="p">()</span><span class="o">.</span><span class="n">item</span><span class="p">())</span>
 
     <span class="k">return</span> <span class="n">candidate_np</span></div>
 

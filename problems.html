@@ -8,14 +8,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Problems &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
       <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="_static/documentation_options.js?v=377e76b0"></script>
-      <script src="_static/doctools.js?v=9a2dae69"></script>
-      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -64,6 +65,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#multitask-selective-evaluation">Multitask Selective Evaluation</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#unified-evaluation-mode">Unified Evaluation Mode</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#automatic-vectorization">Automatic Vectorization</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#declaring-a-budget-and-metadata">Declaring a Budget and Metadata</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#querying-task-information">Querying Task Information</a><ul>
@@ -160,7 +162,9 @@
     <span class="n">dim</span><span class="p">,</span>                 <span class="c1"># Decision variable dimension (required)</span>
     <span class="n">constraint_func</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>  <span class="c1"># Constraint function (optional)</span>
     <span class="n">lower_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>    <span class="c1"># Lower bounds (optional, default 0)</span>
-    <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span>     <span class="c1"># Upper bounds (optional, default 1)</span>
+    <span class="n">upper_bound</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>    <span class="c1"># Upper bounds (optional, default 1)</span>
+    <span class="n">budget</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>         <span class="c1"># Evaluation budget of the task (optional)</span>
+    <span class="n">metadata</span><span class="o">=</span><span class="kc">None</span>        <span class="c1"># Free-form descriptor dict (optional)</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>               <span class="c1"># Returns task index</span>
 </pre></div>
 </div>
@@ -373,6 +377,40 @@
 </pre></div>
 </div>
 </section>
+<section id="declaring-a-budget-and-metadata">
+<span id="declaring-budget-metadata"></span><h3>Declaring a Budget and Metadata<a class="headerlink" href="#declaring-a-budget-and-metadata" title="Link to this heading"></a></h3>
+<p>A task can carry its own evaluation budget <span class="math notranslate nohighlight">\(N^k\)</span> and a free-form
+descriptor, so the problem definition states how expensive it is instead of
+every call site repeating it:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">problem</span> <span class="o">=</span> <span class="n">MTOP</span><span class="p">()</span>
+<span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">(</span>
+    <span class="n">expensive_simulation</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span>
+    <span class="n">budget</span><span class="o">=</span><span class="mi">200</span><span class="p">,</span>                                  <span class="c1"># this task affords 200 evaluations</span>
+    <span class="n">metadata</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;source&#39;</span><span class="p">:</span> <span class="s1">&#39;CFD&#39;</span><span class="p">,</span> <span class="s1">&#39;fidelity&#39;</span><span class="p">:</span> <span class="s1">&#39;high&#39;</span><span class="p">}</span>
+<span class="p">)</span>
+</pre></div>
+</div>
+<p>Both broadcast across tasks exactly the way <code class="docutils literal notranslate"><span class="pre">dim</span></code> does – a single value
+applies to every task, a tuple gives one value per task:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">problem</span><span class="o">.</span><span class="n">add_task</span><span class="p">((</span><span class="n">cheap_model</span><span class="p">,</span> <span class="n">expensive_model</span><span class="p">),</span> <span class="n">dim</span><span class="o">=</span><span class="p">(</span><span class="mi">10</span><span class="p">,</span> <span class="mi">10</span><span class="p">),</span>
+                 <span class="n">budget</span><span class="o">=</span><span class="p">(</span><span class="mi">1000</span><span class="p">,</span> <span class="mi">100</span><span class="p">))</span>            <span class="c1"># per-task budgets</span>
+</pre></div>
+</div>
+<p>An algorithm reads the declared budget through <code class="docutils literal notranslate"><span class="pre">resolve_budget</span></code>, which is
+already wired into the algorithms that support it. An explicitly passed
+<code class="docutils literal notranslate"><span class="pre">max_nfes</span></code> always wins, so existing calls behave exactly as before; the
+declared budget is consulted only when the caller leaves <code class="docutils literal notranslate"><span class="pre">max_nfes</span></code> unset:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Algorithms.MTMO.ParEGO_KT</span><span class="w"> </span><span class="kn">import</span> <span class="n">ParEGO_KT</span>
+
+<span class="n">ParEGO_KT</span><span class="p">(</span><span class="n">problem</span><span class="p">)</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>                    <span class="c1"># uses the declared budget</span>
+<span class="n">ParEGO_KT</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="mi">150</span><span class="p">)</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>      <span class="c1"># explicit argument wins</span>
+</pre></div>
+</div>
+<p><code class="docutils literal notranslate"><span class="pre">metadata</span></code> is never populated or interpreted by the platform; it is stored
+per task and returned by <code class="docutils literal notranslate"><span class="pre">get_task_info</span></code> for the caller’s own bookkeeping.
+Budgets must be positive integers and metadata must be a dict, both validated
+when the task is added.</p>
+</section>
 </section>
 <section id="querying-task-information">
 <h2>Querying Task Information<a class="headerlink" href="#querying-task-information" title="Link to this heading"></a></h2>
@@ -394,6 +432,10 @@
 <span class="c1"># Unified evaluation mode status</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Unified eval mode: </span><span class="si">{</span><span class="n">problem</span><span class="o">.</span><span class="n">unified_eval_mode</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fill value: </span><span class="si">{</span><span class="n">problem</span><span class="o">.</span><span class="n">fill_value</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="c1"># Declared evaluation budgets and descriptors (None / {} when undeclared)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task budgets: </span><span class="si">{</span><span class="n">problem</span><span class="o">.</span><span class="n">budgets</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Task metadata: </span><span class="si">{</span><span class="n">problem</span><span class="o">.</span><span class="n">metadata</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </pre></div>
 </div>
 </section>
@@ -409,9 +451,14 @@
  <span class="s1">&#39;lower_bounds&#39;</span><span class="p">:</span> <span class="n">array</span><span class="p">([[</span><span class="o">-</span><span class="mf">2.</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.</span><span class="p">,</span> <span class="o">-</span><span class="mf">2.</span><span class="p">]]),</span>
  <span class="s1">&#39;upper_bounds&#39;</span><span class="p">:</span> <span class="n">array</span><span class="p">([[</span><span class="mf">2.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">,</span> <span class="mf">2.</span><span class="p">]]),</span>
  <span class="s1">&#39;objective_func&#39;</span><span class="p">:</span> <span class="o">&lt;</span><span class="n">function</span> <span class="n">obj2</span><span class="o">&gt;</span><span class="p">,</span>
- <span class="s1">&#39;constraint_funcs&#39;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">function</span> <span class="n">wrapper</span><span class="o">&gt;</span><span class="p">]}</span>
+ <span class="s1">&#39;constraint_funcs&#39;</span><span class="p">:</span> <span class="p">[</span><span class="o">&lt;</span><span class="n">function</span> <span class="n">wrapper</span><span class="o">&gt;</span><span class="p">],</span>
+ <span class="s1">&#39;budget&#39;</span><span class="p">:</span> <span class="kc">None</span><span class="p">,</span>
+ <span class="s1">&#39;metadata&#39;</span><span class="p">:</span> <span class="p">{}}</span>
 </pre></div>
 </div>
+<p><code class="docutils literal notranslate"><span class="pre">budget</span></code> is the evaluation budget the task declared, or <code class="docutils literal notranslate"><span class="pre">None</span></code> when it
+declared none, and <code class="docutils literal notranslate"><span class="pre">metadata</span></code> is the descriptor supplied when the task was
+added, or <code class="docutils literal notranslate"><span class="pre">{}</span></code>. See <a class="reference internal" href="#declaring-budget-metadata"><span class="std std-ref">Declaring a Budget and Metadata</span></a>.</p>
 </section>
 <section id="problem-summary">
 <h3>Problem Summary<a class="headerlink" href="#problem-summary" title="Link to this heading"></a></h3>
@@ -656,7 +703,7 @@
 <td><p>1</p></td>
 <td><p>50 (configurable)</p></td>
 <td><p>1 / 0</p></td>
-<td><p>Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Sphere, Weierstrass (P1-P8)</p></td>
+<td><p>Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Schwefel 2.22, Sphere, Weierstrass (P1-P9)</p></td>
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">CEC10CSO</span></code></p></td>
 <td><p>1</p></td>
@@ -669,8 +716,8 @@
 <p><strong>Usage Example:</strong></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Problems.STSO.classical_so</span><span class="w"> </span><span class="kn">import</span> <span class="n">CLASSICALSO</span>
 
-<span class="n">problem_suite</span> <span class="o">=</span> <span class="n">CLASSICALSO</span><span class="p">(</span><span class="n">dim</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
-<span class="n">problem</span> <span class="o">=</span> <span class="n">problem_suite</span><span class="o">.</span><span class="n">P1</span><span class="p">()</span>  <span class="c1"># Ackley function</span>
+<span class="n">problem_suite</span> <span class="o">=</span> <span class="n">CLASSICALSO</span><span class="p">()</span>
+<span class="n">problem</span> <span class="o">=</span> <span class="n">problem_suite</span><span class="o">.</span><span class="n">P1</span><span class="p">(</span><span class="n">D</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>  <span class="c1"># Ackley function</span>
 </pre></div>
 </div>
 </section>

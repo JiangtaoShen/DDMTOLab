@@ -7,14 +7,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ddmtolab.Algorithms.MTSO.MTBO &mdash; DDMTOLab 1.0.10 documentation</title>
       <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
-      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=e59714d7" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
 
   
       <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
       <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
       <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
-      <script src="../../../../_static/doctools.js?v=9a2dae69"></script>
-      <script src="../../../../_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
     <script src="../../../../_static/js/theme.js"></script>
     <link rel="index" title="Index" href="../../../../genindex.html" />
     <link rel="search" title="Search" href="../../../../search.html" /> 
@@ -80,6 +80,22 @@
 <span class="sd">This module implements MTBO for expensive multi-task optimization with knowledge transfer via multi-task Gaussian</span>
 <span class="sd">processes.</span>
 
+<span class="sd">Cost-sensitive evaluation (paper Sec. 2.4 / 3.3): each task carries an</span>
+<span class="sd">evaluation cost c_k, and the budget is a shared amount of cost rather than a</span>
+<span class="sd">per-task count of evaluations. The next evaluation maximizes the expected</span>
+<span class="sd">improvement per unit cost, EI(x, k) / c_k, so a cheap task can absorb many</span>
+<span class="sd">evaluations while an expensive one is entered only when it is worth its price.</span>
+<span class="sd">Both are computed in log space as ``log EI - log c_k``, LogEI being what the</span>
+<span class="sd">acquisition optimizer returns.</span>
+
+<span class="sd">The default cost vector is [1, 1, ..., 1]. Under equal costs there is nothing to</span>
+<span class="sd">trade off -- every task buys the same information per unit budget -- so the</span>
+<span class="sd">algorithm keeps the round-robin schedule of one evaluation per task per</span>
+<span class="sd">iteration, and the run is identical to the cost-unaware version, including the</span>
+<span class="sd">total number of evaluations. A non-uniform cost vector switches the loop to the</span>
+<span class="sd">paper&#39;s rule and lets the allocation across tasks be decided by the acquisition,</span>
+<span class="sd">which means per-task evaluation counts are then an outcome rather than an input.</span>
+
 <span class="sd">References</span>
 <span class="sd">----------</span>
 <span class="sd">    [1] Swersky, Kevin, Jasper Snoek, and Ryan P. Adams. &quot;Multi-task bayesian optimization.&quot; Advances in neural information processing systems 26 (2013).</span>
@@ -89,11 +105,12 @@
 <span class="sd">Author: Jiangtao Shen</span>
 <span class="sd">Email: j.shen5@exeter.ac.uk</span>
 <span class="sd">Date: 2025.11.12</span>
-<span class="sd">Version: 1.0</span>
+<span class="sd">Version: 2.0</span>
 <span class="sd">&quot;&quot;&quot;</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">tqdm</span><span class="w"> </span><span class="kn">import</span> <span class="n">tqdm</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">torch</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">time</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.bo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">mtgp_build</span><span class="p">,</span> <span class="n">mtbo_next_point</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">warnings</span>
@@ -132,8 +149,8 @@
 
 <div class="viewcode-block" id="MTBO.__init__">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MTBO.MTBO.__init__">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MTBO&#39;</span><span class="p">,</span>
-                 <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">task_cost</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;MTBO&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Initialize Multi-Task Bayesian Optimization algorithm.</span>
 
@@ -145,23 +162,77 @@
 <span class="sd">            Number of initial samples per task (default: 50)</span>
 <span class="sd">        max_nfes : int or List[int], optional</span>
 <span class="sd">            Maximum number of function evaluations per task (default: 100)</span>
+<span class="sd">        task_cost : List[float] or None, optional</span>
+<span class="sd">            Evaluation cost c_k of each task, e.g. the wall-clock duration of</span>
+<span class="sd">            one evaluation. Defaults to equal costs [1, 1, ..., 1].</span>
+
+<span class="sd">            The costs define a shared budget of ``sum(max_nfes_k * c_k)`` cost</span>
+<span class="sd">            units, of which the initial samples already consume</span>
+<span class="sd">            ``sum(n_initial_k * c_k)``. Every evaluation of task k spends c_k,</span>
+<span class="sd">            and the task to evaluate next is the one maximizing EI per unit</span>
+<span class="sd">            cost. Equal costs (of any magnitude) reproduce the cost-unaware</span>
+<span class="sd">            schedule exactly; unequal costs let the algorithm buy more</span>
+<span class="sd">            evaluations of the cheap tasks, so ``max_nfes`` then only sets the</span>
+<span class="sd">            size of the budget and no longer fixes each task&#39;s own count.</span>
+
+<span class="sd">            Note that ``max_nfes`` counts evaluations *at unit price*, so the</span>
+<span class="sd">            budget scales with the costs: raising one task&#39;s cost enlarges the</span>
+<span class="sd">            budget rather than shrinking the run. To hold the budget fixed while</span>
+<span class="sd">            making a task pricier, lower ``max_nfes`` to match. Note also that</span>
+<span class="sd">            the cost is one term of the trade-off and not an override -- a task</span>
+<span class="sd">            whose expected improvement is high enough is still worth entering at</span>
+<span class="sd">            several times the price.</span>
 <span class="sd">        save_data : bool, optional</span>
 <span class="sd">            Whether to save optimization data (default: True)</span>
 <span class="sd">        save_path : str, optional</span>
-<span class="sd">            Path to save results (default: &#39;./TestData&#39;)</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
 <span class="sd">        name : str, optional</span>
-<span class="sd">            Name for the experiment (default: &#39;MTBO_test&#39;)</span>
+<span class="sd">            Name for the experiment (default: &#39;MTBO&#39;)</span>
 <span class="sd">        disable_tqdm : bool, optional</span>
 <span class="sd">            Whether to disable progress bar (default: True)</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">problem</span> <span class="o">=</span> <span class="n">problem</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span> <span class="o">=</span> <span class="n">n_initial</span> <span class="k">if</span> <span class="n">n_initial</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">50</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span> <span class="o">=</span> <span class="n">max_nfes</span> <span class="k">if</span> <span class="n">max_nfes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">100</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span> <span class="o">=</span> <span class="n">task_cost</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_data</span> <span class="o">=</span> <span class="n">save_data</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">save_path</span> <span class="o">=</span> <span class="n">save_path</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">name</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span> <span class="o">=</span> <span class="n">disable_tqdm</span></div>
 
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_resolve_task_cost</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">nt</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Validate the cost vector and report whether the costs are uniform.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        nt : int</span>
+<span class="sd">            Number of tasks.</span>
+
+<span class="sd">        Returns</span>
+<span class="sd">        -------</span>
+<span class="sd">        task_cost : np.ndarray</span>
+<span class="sd">            Per-task evaluation costs, shape (nt,).</span>
+<span class="sd">        equal_costs : bool</span>
+<span class="sd">            True when every task costs the same, in which case the cost vector</span>
+<span class="sd">            carries no information to act on.</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If the vector has the wrong length or a non-positive entry.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">nt</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">),</span> <span class="kc">True</span>
+
+        <span class="n">task_cost</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">task_cost</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="k">if</span> <span class="n">task_cost</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">nt</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;task_cost must have length </span><span class="si">{</span><span class="n">nt</span><span class="si">}</span><span class="s2">, got </span><span class="si">{</span><span class="n">task_cost</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">task_cost</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;task_cost entries must be positive&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">task_cost</span><span class="p">,</span> <span class="nb">bool</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">allclose</span><span class="p">(</span><span class="n">task_cost</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">[</span><span class="mi">0</span><span class="p">]))</span>
 
 <div class="viewcode-block" id="MTBO.optimize">
 <a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.MTSO.MTBO.MTBO.optimize">[docs]</a>
@@ -182,35 +253,69 @@
         <span class="n">n_initial_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
         <span class="n">max_nfes_per_task</span> <span class="o">=</span> <span class="n">par_list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">nt</span><span class="p">)</span>
 
+        <span class="n">task_cost</span><span class="p">,</span> <span class="n">equal_costs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_task_cost</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+
+        <span class="c1"># Shared budget in cost units; the initial design already spends part of</span>
+        <span class="c1"># it. With unit costs both reduce to plain evaluation counts.</span>
+        <span class="n">cost_budget</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">))</span>
+        <span class="n">spent_cost</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">dot</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">))</span>
+
         <span class="c1"># Initialize samples using Latin Hypercube Sampling</span>
         <span class="n">decs</span> <span class="o">=</span> <span class="n">initialization</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;lhs&#39;</span><span class="p">)</span>
         <span class="n">objs</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">decs</span><span class="p">)</span>
         <span class="n">nfes_per_task</span> <span class="o">=</span> <span class="n">n_initial_per_task</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
 
-        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">),</span> <span class="n">initial</span><span class="o">=</span><span class="nb">sum</span><span class="p">(</span><span class="n">n_initial_per_task</span><span class="p">),</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
+        <span class="n">pbar</span> <span class="o">=</span> <span class="n">tqdm</span><span class="p">(</span><span class="n">total</span><span class="o">=</span><span class="n">cost_budget</span><span class="p">,</span> <span class="n">initial</span><span class="o">=</span><span class="n">spent_cost</span><span class="p">,</span> <span class="n">desc</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="bp">self</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">,</span>
                     <span class="n">disable</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">disable_tqdm</span><span class="p">)</span>
 
-        <span class="k">while</span> <span class="nb">sum</span><span class="p">(</span><span class="n">nfes_per_task</span><span class="p">)</span> <span class="o">&lt;</span> <span class="nb">sum</span><span class="p">(</span><span class="n">max_nfes_per_task</span><span class="p">):</span>
-            <span class="c1"># Skip tasks that have exhausted their evaluation budget</span>
-            <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span> <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
-            <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+        <span class="k">while</span> <span class="n">spent_cost</span> <span class="o">&lt;</span> <span class="n">cost_budget</span><span class="p">:</span>
+            <span class="c1"># Only tasks whose next evaluation still fits in the budget</span>
+            <span class="n">affordable_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">nt</span><span class="p">)</span>
+                                <span class="k">if</span> <span class="n">task_cost</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;=</span> <span class="n">cost_budget</span> <span class="o">-</span> <span class="n">spent_cost</span> <span class="o">+</span> <span class="mf">1e-9</span><span class="p">]</span>
+            <span class="k">if</span> <span class="ow">not</span> <span class="n">affordable_tasks</span><span class="p">:</span>
                 <span class="k">break</span>
+
+            <span class="k">if</span> <span class="n">equal_costs</span><span class="p">:</span>
+                <span class="c1"># No trade-off to make: keep the per-task budgets and the</span>
+                <span class="c1"># round-robin schedule of one evaluation per task per iteration</span>
+                <span class="n">active_tasks</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">affordable_tasks</span>
+                                <span class="k">if</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">&lt;</span> <span class="n">max_nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]]</span>
+                <span class="k">if</span> <span class="ow">not</span> <span class="n">active_tasks</span><span class="p">:</span>
+                    <span class="k">break</span>
 
             <span class="c1"># Build multi-task Gaussian process surrogate model with normalized objectives</span>
             <span class="n">objs_normalized</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">normalize</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">method</span><span class="o">=</span><span class="s1">&#39;minmax&#39;</span><span class="p">)</span>
             <span class="n">mtgp</span> <span class="o">=</span> <span class="n">mtgp_build</span><span class="p">(</span><span class="n">decs</span><span class="p">,</span> <span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
 
-            <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
-                <span class="c1"># Select next sample point via acquisition function optimization</span>
-                <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">mtbo_next_point</span><span class="p">(</span><span class="n">mtgp</span><span class="o">=</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">task_id</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">objs</span><span class="o">=</span><span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="o">=</span><span class="n">nt</span><span class="p">,</span>
-                                               <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">equal_costs</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">active_tasks</span><span class="p">:</span>
+                    <span class="c1"># Select next sample point via acquisition function optimization</span>
+                    <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">mtbo_next_point</span><span class="p">(</span><span class="n">mtgp</span><span class="o">=</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">task_id</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">objs</span><span class="o">=</span><span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="o">=</span><span class="n">nt</span><span class="p">,</span>
+                                                   <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
 
-                <span class="n">obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
+                    <span class="n">obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">i</span><span class="p">)</span>
 
-                <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">candidate_np</span><span class="p">),</span> <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">obj</span><span class="p">))</span>
+                    <span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">candidate_np</span><span class="p">),</span> <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">obj</span><span class="p">))</span>
 
-                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
-                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
+                    <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                    <span class="n">spent_cost</span> <span class="o">+=</span> <span class="n">task_cost</span><span class="p">[</span><span class="n">i</span><span class="p">]</span>
+                    <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">task_cost</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="c1"># Spend the budget where the expected improvement per unit cost</span>
+                <span class="c1"># is largest (paper Sec. 3.3), comparing log EI - log c_k</span>
+                <span class="n">task_id</span><span class="p">,</span> <span class="n">candidate_np</span> <span class="o">=</span> <span class="n">_select_cost_aware_point</span><span class="p">(</span>
+                    <span class="n">mtgp</span><span class="o">=</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">affordable_tasks</span><span class="o">=</span><span class="n">affordable_tasks</span><span class="p">,</span> <span class="n">objs_normalized</span><span class="o">=</span><span class="n">objs_normalized</span><span class="p">,</span>
+                    <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="o">=</span><span class="n">nt</span><span class="p">,</span> <span class="n">task_cost</span><span class="o">=</span><span class="n">task_cost</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="o">=</span><span class="n">nfes_per_task</span><span class="p">,</span>
+                    <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">)</span>
+
+                <span class="n">obj</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">evaluation_single</span><span class="p">(</span><span class="n">problem</span><span class="p">,</span> <span class="n">candidate_np</span><span class="p">,</span> <span class="n">task_id</span><span class="p">)</span>
+
+                <span class="n">decs</span><span class="p">[</span><span class="n">task_id</span><span class="p">],</span> <span class="n">objs</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span> <span class="o">=</span> <span class="n">vstack_groups</span><span class="p">((</span><span class="n">decs</span><span class="p">[</span><span class="n">task_id</span><span class="p">],</span> <span class="n">candidate_np</span><span class="p">),</span>
+                                                             <span class="p">(</span><span class="n">objs</span><span class="p">[</span><span class="n">task_id</span><span class="p">],</span> <span class="n">obj</span><span class="p">))</span>
+
+                <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="n">spent_cost</span> <span class="o">+=</span> <span class="n">task_cost</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
+                <span class="n">pbar</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">task_cost</span><span class="p">[</span><span class="n">task_id</span><span class="p">])</span>
 
         <span class="n">pbar</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
         <span class="n">runtime</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
@@ -224,6 +329,66 @@
         <span class="k">return</span> <span class="n">results</span></div>
 </div>
 
+
+
+<span class="c1"># ---------------------------------------------------------------------------</span>
+<span class="c1"># Helper functions</span>
+<span class="c1"># ---------------------------------------------------------------------------</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_select_cost_aware_point</span><span class="p">(</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">affordable_tasks</span><span class="p">,</span> <span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="p">,</span> <span class="n">task_cost</span><span class="p">,</span> <span class="n">nfes_per_task</span><span class="p">,</span>
+                             <span class="n">data_type</span><span class="o">=</span><span class="n">torch</span><span class="o">.</span><span class="n">double</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    Pick the (task, point) pair with the largest expected improvement per unit cost.</span>
+
+<span class="sd">    Every affordable task proposes its own best point, and the proposals are</span>
+<span class="sd">    ranked by ``log EI - log c_k``, which orders them exactly as EI / c_k would</span>
+<span class="sd">    while staying in the log space the acquisition optimizer works in.</span>
+
+<span class="sd">    Parameters</span>
+<span class="sd">    ----------</span>
+<span class="sd">    mtgp : MultiTaskGP</span>
+<span class="sd">        Multi-task surrogate shared by all tasks.</span>
+<span class="sd">    affordable_tasks : List[int]</span>
+<span class="sd">        Tasks whose next evaluation still fits in the remaining budget.</span>
+<span class="sd">    objs_normalized : List[np.ndarray]</span>
+<span class="sd">        Per-task normalized objectives the surrogate was fitted on.</span>
+<span class="sd">    dims : List[int]</span>
+<span class="sd">        Decision space dimensionality of each task.</span>
+<span class="sd">    nt : int</span>
+<span class="sd">        Number of tasks.</span>
+<span class="sd">    task_cost : np.ndarray</span>
+<span class="sd">        Per-task evaluation costs.</span>
+<span class="sd">    nfes_per_task : List[int]</span>
+<span class="sd">        Evaluations spent on each task so far, used only to break a tie when no</span>
+<span class="sd">        task reports a usable acquisition value.</span>
+<span class="sd">    data_type : torch.dtype, optional</span>
+<span class="sd">        Torch dtype for the acquisition optimization (default: torch.double).</span>
+
+<span class="sd">    Returns</span>
+<span class="sd">    -------</span>
+<span class="sd">    task_id : int</span>
+<span class="sd">        Task selected for the next evaluation.</span>
+<span class="sd">    candidate_np : np.ndarray</span>
+<span class="sd">        Point to evaluate on that task, shape (1, dims[task_id]).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">candidates</span> <span class="o">=</span> <span class="p">{}</span>
+    <span class="n">scores</span> <span class="o">=</span> <span class="p">{}</span>
+
+    <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">affordable_tasks</span><span class="p">:</span>
+        <span class="n">candidate_np</span><span class="p">,</span> <span class="n">log_ei</span> <span class="o">=</span> <span class="n">mtbo_next_point</span><span class="p">(</span><span class="n">mtgp</span><span class="o">=</span><span class="n">mtgp</span><span class="p">,</span> <span class="n">task_id</span><span class="o">=</span><span class="n">i</span><span class="p">,</span> <span class="n">objs</span><span class="o">=</span><span class="n">objs_normalized</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="n">dims</span><span class="p">,</span> <span class="n">nt</span><span class="o">=</span><span class="n">nt</span><span class="p">,</span>
+                                               <span class="n">data_type</span><span class="o">=</span><span class="n">data_type</span><span class="p">,</span> <span class="n">return_acq_value</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+        <span class="n">candidates</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">candidate_np</span>
+        <span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">]</span> <span class="o">=</span> <span class="n">log_ei</span> <span class="o">-</span> <span class="n">np</span><span class="o">.</span><span class="n">log</span><span class="p">(</span><span class="n">task_cost</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+    <span class="n">usable</span> <span class="o">=</span> <span class="p">[</span><span class="n">i</span> <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="n">affordable_tasks</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">isfinite</span><span class="p">(</span><span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">])]</span>
+    <span class="k">if</span> <span class="n">usable</span><span class="p">:</span>
+        <span class="n">task_id</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">usable</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">scores</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="c1"># Every acquisition underflowed to zero improvement; keep making</span>
+        <span class="c1"># progress on the task that has been sampled least so far</span>
+        <span class="n">task_id</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">affordable_tasks</span><span class="p">,</span> <span class="n">key</span><span class="o">=</span><span class="k">lambda</span> <span class="n">i</span><span class="p">:</span> <span class="n">nfes_per_task</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
+
+    <span class="k">return</span> <span class="n">task_id</span><span class="p">,</span> <span class="n">candidates</span><span class="p">[</span><span class="n">task_id</span><span class="p">]</span>
 </pre></div>
 
            </div>
