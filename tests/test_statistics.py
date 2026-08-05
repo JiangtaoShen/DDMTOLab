@@ -795,6 +795,41 @@ class TestTableIntegration:
         df = TableGenerator(config).generate(three_algorithm_values, ['A', 'B', 'C'])
         assert str(df.iloc[-1]['Problem']) == 'Average Rank'
 
+    def test_tied_instances_share_the_average_rank(self, tmp_path):
+        # Every algorithm solves P2 and P3 equally well, so no one may be handed
+        # a better rank there just for coming first in the column order
+        best_values = make_best_values({
+            'A': {'P1': [[1.0]] * 3, 'P2': [[5.0]] * 3, 'P3': [[5.0]] * 3},
+            'B': {'P1': [[2.0]] * 3, 'P2': [[5.0]] * 3, 'P3': [[5.0]] * 3},
+            'C': {'P1': [[3.0]] * 3, 'P2': [[5.0]] * 3, 'P3': [[5.0]] * 3},
+        })
+        config = TableConfig(table_format=TableFormat.EXCEL, save_path=tmp_path,
+                             rank_sum_test=False)
+        df = TableGenerator(config).generate(best_values, ['A', 'B', 'C'])
+
+        row = df[df['Problem'] == 'Average Rank'].iloc[0]
+        # P1 ranks 1/2/3, P2 and P3 are three-way ties worth 2 each; the row is
+        # rendered with two decimals
+        assert float(row['A']) == pytest.approx((1 + 2 + 2) / 3, abs=5e-3)
+        assert float(row['B']) == pytest.approx((2 + 2 + 2) / 3, abs=5e-3)
+        assert float(row['C']) == pytest.approx((3 + 2 + 2) / 3, abs=5e-3)
+
+    def test_average_rank_agrees_with_the_friedman_rank(self, tmp_path):
+        # The two footer rows rank the same numbers, so they must not disagree
+        best_values = make_best_values({
+            'A': {f'P{i}': [[1.0]] * 3 for i in range(1, 5)},
+            'B': {f'P{i}': [[1.0]] * 3 for i in range(1, 5)},
+            'C': {f'P{i}': [[2.0 + i]] * 3 for i in range(1, 5)},
+        })
+        config = TableConfig(table_format=TableFormat.EXCEL, save_path=tmp_path,
+                             friedman_test=True, rank_sum_test=False)
+        df = TableGenerator(config).generate(best_values, ['A', 'B', 'C'])
+
+        friedman = df[df['Problem'].astype(str).str.startswith('Friedman Rank')].iloc[0]
+        average = df[df['Problem'] == 'Average Rank'].iloc[0]
+        for algo in ('A', 'B', 'C'):
+            assert float(average[algo]) == pytest.approx(float(friedman[algo]))
+
     def test_friedman_rows_reach_the_latex_table(self, three_algorithm_values, tmp_path):
         config = TableConfig(table_format=TableFormat.LATEX, save_path=tmp_path,
                              friedman_test=True)

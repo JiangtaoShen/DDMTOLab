@@ -45,6 +45,8 @@ from tqdm import tqdm
 # Import from project modules
 from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spread, Spacing
 from ddmtolab.Methods.Algo_Methods.algo_utils import nd_sort
+from scipy import stats
+
 from ddmtolab.Methods import statistical_tests
 from ddmtolab.Methods.statistical_tests import (  # noqa: F401  (re-exported)
     ALL_PAIRS_PROCEDURES,
@@ -1550,9 +1552,15 @@ class TableGenerator:
             self,
             algo_values: Dict[str, float],
             direction: OptimizationDirection
-    ) -> Dict[str, int]:
+    ) -> Dict[str, float]:
         """
-        Calculate the rank of each algorithm in a single row.
+        Rank the algorithms within a single row, 1 being the best.
+
+        Algorithms that tie share the average of the ranks they span, the same
+        convention the Friedman test uses. Breaking ties by position instead
+        would hand one of them a better rank for no reason, and would make the
+        ``Average Rank`` footer disagree with the ``Friedman Rank`` row above it
+        whenever a problem is solved equally well by several algorithms.
 
         Parameters
         ----------
@@ -1563,30 +1571,24 @@ class TableGenerator:
 
         Returns
         -------
-        Dict[str, int]
-            Rank of each algorithm (1 is the best).
+        Dict[str, float]
+            Rank of each algorithm, np.nan where it had no value.
         """
-        # Filter out NaN values
-        valid_algos = {algo: val for algo, val in algo_values.items() if not np.isnan(val)}
+        valid_algos = {algo: value for algo, value in algo_values.items()
+                       if not np.isnan(value)}
 
         if not valid_algos:
-            return {algo: np.nan for algo in algo_values.keys()}
+            return {algo: np.nan for algo in algo_values}
 
-        # Sort based on optimization direction
-        if direction == OptimizationDirection.MINIMIZE:
-            sorted_algos = sorted(valid_algos.items(), key=lambda x: x[1])
-        else:
-            sorted_algos = sorted(valid_algos.items(), key=lambda x: x[1], reverse=True)
+        names = list(valid_algos)
+        values = np.array([valid_algos[name] for name in names], dtype=float)
+        if direction == OptimizationDirection.MAXIMIZE:
+            values = -values
 
-        # Assign ranks
-        ranks = {}
-        for rank, (algo, _) in enumerate(sorted_algos, start=1):
-            ranks[algo] = rank
+        ranks = {name: float(rank) for name, rank in zip(names, stats.rankdata(values))}
 
-        # Set NaN for algorithms with NaN values
-        for algo in algo_values.keys():
-            if algo not in ranks:
-                ranks[algo] = np.nan
+        for algo in algo_values:
+            ranks.setdefault(algo, np.nan)
 
         return ranks
 
