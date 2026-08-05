@@ -5,18 +5,24 @@ This module provides a comprehensive analysis and visualization pipeline for
 multi-task optimization experiments, including metric calculation, statistical
 comparison tables, convergence plots, runtime analysis, and Pareto front visualization.
 
+The statistical tests themselves are implemented in
+:mod:`ddmtolab.Methods.statistical_tests`; this module reads the experiment
+results, decides what to compare, and renders the outcome as tables and figures.
+
 Classes:
     MetricResults: Dataclass for storing metric calculation results
     TableConfig: Dataclass for table generation configuration
     PlotConfig: Dataclass for plot generation configuration
-    EffectSizeResult: Dataclass for a Cliff's delta effect size
     FriedmanResult: Dataclass for a Friedman test with post-hoc comparisons
+    StatisticsCalculator: Statistics behind the tables and plots
+    TableGenerator: Excel and LaTeX comparison tables
+    PlotGenerator: Convergence, runtime, Pareto front and CD diagram figures
     DataAnalyzer: Main class for data analysis pipeline
 
 Author: Jiangtao Shen
 Email: j.shen5@exeter.ac.uk
 Date: 2025.10.10
-Version: 2.1
+Version: 2.2
 """
 
 import os
@@ -24,9 +30,9 @@ import pickle
 import shutil
 import warnings
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple, Union, Callable
+from typing import Dict, List, Any, Optional, Tuple, Union
 from dataclasses import dataclass, field
-from matplotlib.ticker import FuncFormatter
+from itertools import combinations
 from enum import Enum
 
 import numpy as np
@@ -34,23 +40,27 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from openpyxl import load_workbook
 from openpyxl.styles import Border, Side, Alignment, Font
-from scipy import stats
 from tqdm import tqdm
 
 # Import from project modules
 from ddmtolab.Methods.metrics import IGD, HV, GD, IGDp, FR, CV, DeltaP, Spread, Spacing
 from ddmtolab.Methods.Algo_Methods.algo_utils import nd_sort
+from ddmtolab.Methods import statistical_tests
+from ddmtolab.Methods.statistical_tests import (  # noqa: F401  (re-exported)
+    ALL_PAIRS_PROCEDURES,
+    BERGMANN_MAX_ALGORITHMS,
+    CLIFFS_DELTA_THRESHOLDS,
+    EffectSizeResult,
+    NemenyiComparison,
+    NemenyiResult,
+    OptimizationDirection,
+    RankScheme,
+)
 
 
 # =============================================================================
 # Enums and Constants
 # =============================================================================
-
-class OptimizationDirection(Enum):
-    """Optimization direction enumeration."""
-    MINIMIZE = "minimize"
-    MAXIMIZE = "maximize"
-
 
 class TableFormat(Enum):
     """Output table format enumeration."""
@@ -77,15 +87,10 @@ DEFAULT_COLORS = [
 # Default markers for plots
 DEFAULT_MARKERS = ['o', 's', '^', 'v', 'D', 'p', '*', 'h', '<', '>', 'X', 'P', 'd', '8', 'H']
 
-# Magnitude thresholds for |Cliff's delta| (Romano et al., 2006). A delta whose
-# absolute value falls below the first threshold is negligible, below the second
-# small, below the third medium, and large otherwise.
-CLIFFS_DELTA_THRESHOLDS: Tuple[float, float, float] = (0.147, 0.33, 0.474)
-
-
 # =============================================================================
 # Data Classes
 # =============================================================================
+
 
 @dataclass
 class ScanResult:
@@ -285,30 +290,6 @@ class ComparisonResult:
 
 
 @dataclass
-class EffectSizeResult:
-    """
-    Effect size of a pairwise comparison, reported separately from significance.
-
-    :no-index:
-
-    Attributes
-    ----------
-    delta : float
-        Cliff's delta in [-1, 1], oriented so that a positive value means the
-        algorithm is better than the baseline under the given optimization
-        direction. np.nan when it cannot be computed.
-    magnitude : str
-        Qualitative magnitude derived from ``|delta|``: 'negligible', 'small',
-        'medium', 'large', or 'undefined' when delta is np.nan.
-    method : str
-        Name of the effect size measure, always 'cliffs_delta'.
-    """
-    delta: float
-    magnitude: str
-    method: str = 'cliffs_delta'
-
-
-@dataclass
 class FriedmanPostHocResult:
     """
     One post-hoc comparison of an algorithm against the control algorithm.
@@ -364,6 +345,11 @@ class FriedmanResult:
         Number of instances (blocks) retained after dropping incomplete ones.
     n_instances_dropped : int
         Number of instances dropped because at least one algorithm had no value.
+    iman_davenport_statistic : float
+        Iman-Davenport F_F statistic derived from chi^2_F, which corrects the
+        Friedman statistic for being undesirably conservative.
+    iman_davenport_p_value : float
+        P-value of F_F under F(k-1, (k-1)(N-1)).
     control : Optional[str]
         Control algorithm used for the post-hoc comparisons.
     significance_level : float
@@ -377,6 +363,8 @@ class FriedmanResult:
     n_algorithms: int
     n_instances: int
     n_instances_dropped: int = 0
+    iman_davenport_statistic: float = np.nan
+    iman_davenport_p_value: float = np.nan
     control: Optional[str] = None
     significance_level: float = 0.05
     post_hoc: List[FriedmanPostHocResult] = field(default_factory=list)
@@ -565,7 +553,8 @@ class DataUtils:
                     return ref_definition(N, M, D, C)
                 else:
                     warnings.warn(
-                        f"Unexpected number of parameters ({num_params}) for reference function {problem}_{task_name}")
+                        f"Unexpected number of parameters ({num_params}) for "
+                        f"reference function {problem}_{task_name}")
                     return None
 
             except Exception as e:
@@ -590,7 +579,8 @@ class DataUtils:
             return reference
 
         else:
-            warnings.warn(f"Unknown reference definition type for {problem}_{task_name}: {type(ref_definition)}")
+            warnings.warn(f"Unknown reference definition type for "
+                          f"{problem}_{task_name}: {type(ref_definition)}")
             return None
 
     @staticmethod
@@ -702,7 +692,26 @@ class DataUtils:
 
 class StatisticsCalculator:
     """
-    Class for statistical calculations and hypothesis testing.
+    Statistics the results table and the plots are built from.
+
+    The tests themselves live in :mod:`ddmtolab.Methods.statistical_tests`,
+    which is the canonical entry point and the only place they are implemented.
+    What remains here is what the reporting pipeline needs on top of them:
+
+    - turning per-run samples into the displayed statistic
+      (:meth:`calculate_statistic`) and into the ``+``/``-``/``=`` annotation
+      (:meth:`perform_rank_sum_test`),
+    - reshaping a test result into the dataclasses the table and the critical
+      difference diagram render (:meth:`perform_friedman_test`,
+      :meth:`perform_nemenyi_test`),
+    - navigating the nested per-run result structure
+      (:meth:`iterate_instances`, :meth:`build_instance_matrix`,
+      :meth:`collect_task_data`, :meth:`select_representative_run`).
+
+    The remaining ``perform_*`` and effect-size methods are thin wrappers kept
+    for backward compatibility; new code should call the module functions
+    directly, which follow the ``<name>_test`` naming and accept the same
+    arguments in the same order for every test.
     """
 
     @staticmethod
@@ -756,7 +765,12 @@ class StatisticsCalculator:
             compute_effect_size: bool = False
     ) -> ComparisonResult:
         """
-        Perform Wilcoxon rank-sum test to compare two algorithms.
+        Compare the runs of two algorithms on one instance and render the
+        verdict as a table symbol.
+
+        The test itself is
+        :func:`ddmtolab.Methods.statistical_tests.rank_sum_test`; this wrapper
+        adds the ``+``/``-``/``=`` presentation the results table needs.
 
         Parameters
         ----------
@@ -784,10 +798,10 @@ class StatisticsCalculator:
 
         effect = None
         if compute_effect_size:
-            effect = StatisticsCalculator.cliffs_delta(algo_data, base_data, direction)
+            effect = statistical_tests.cliffs_delta(algo_data, base_data, direction)
 
         try:
-            _, p_value = stats.ranksums(algo_data, base_data)
+            p_value = statistical_tests.rank_sum_test(algo_data, base_data, direction).p_value
 
             if p_value < significance_level:
                 algo_median = np.median(algo_data)
@@ -844,24 +858,15 @@ class StatisticsCalculator:
         >>> StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])
         [0.03, 0.04, 0.04]
         """
-        adjusted: List[Optional[float]] = [None] * len(p_values)
-        valid = [(i, float(p)) for i, p in enumerate(p_values)
-                 if p is not None and not np.isnan(p)]
-        if not valid:
-            return adjusted
-
-        m = len(valid)
-        running_max = 0.0
-        for rank, (index, p) in enumerate(sorted(valid, key=lambda item: item[1])):
-            running_max = max(running_max, (m - rank) * p)
-            adjusted[index] = min(1.0, running_max)
-
-        return adjusted
+        return statistical_tests.adjust_p_values(p_values, 'holm')
 
     @staticmethod
     def classify_cliffs_delta(delta: float) -> str:
         """
         Map a Cliff's delta to its qualitative magnitude.
+
+        Thin wrapper over
+        :func:`ddmtolab.Methods.statistical_tests.classify_cliffs_delta`.
 
         Parameters
         ----------
@@ -874,18 +879,7 @@ class StatisticsCalculator:
             'negligible' (``|delta| < 0.147``), 'small' (< 0.33), 'medium'
             (< 0.474), 'large' otherwise, or 'undefined' for NaN.
         """
-        if delta is None or np.isnan(delta):
-            return 'undefined'
-
-        magnitude = abs(delta)
-        negligible, small, medium = CLIFFS_DELTA_THRESHOLDS
-        if magnitude < negligible:
-            return 'negligible'
-        if magnitude < small:
-            return 'small'
-        if magnitude < medium:
-            return 'medium'
-        return 'large'
+        return statistical_tests.classify_cliffs_delta(delta)
 
     @staticmethod
     def cliffs_delta(
@@ -896,16 +890,9 @@ class StatisticsCalculator:
         """
         Compute Cliff's delta, a non-parametric effect size for two samples.
 
-        Cliff's delta is the difference between the probability that a value of
-        one sample exceeds a value of the other and the probability of the
-        reverse; for independent samples it is equivalent to the rank-biserial
-        correlation derived from the rank-sum statistic. It is reported
-        independently of the significance test: a large delta on few runs may
-        still be non-significant, and a significant difference may be negligible
-        in size.
-
-        The sign is oriented by ``direction`` so that a positive delta always
-        means the algorithm is better than the baseline.
+        Thin wrapper over
+        :func:`ddmtolab.Methods.statistical_tests.cliffs_delta`, kept for the
+        table pipeline and for backward compatibility.
 
         Parameters
         ----------
@@ -922,25 +909,63 @@ class StatisticsCalculator:
             Delta in [-1, 1] with its qualitative magnitude, or
             (np.nan, 'undefined') when either sample is empty.
         """
-        algo_array = np.asarray(algo_data, dtype=float).ravel()
-        base_array = np.asarray(base_data, dtype=float).ravel()
-        algo_array = algo_array[~np.isnan(algo_array)]
-        base_array = base_array[~np.isnan(base_array)]
+        return statistical_tests.cliffs_delta(algo_data, base_data, direction)
 
-        if algo_array.size == 0 or base_array.size == 0:
-            return EffectSizeResult(delta=np.nan, magnitude='undefined')
+    @staticmethod
+    def nemenyi_critical_value(n_algorithms: int, significance_level: float = 0.05) -> float:
+        """
+        Critical value q_alpha of the two-tailed Nemenyi test.
 
-        differences = algo_array[:, None] - base_array[None, :]
-        dominance = int(np.sum(differences > 0)) - int(np.sum(differences < 0))
-        delta = dominance / (algo_array.size * base_array.size)
+        Thin wrapper over
+        :func:`ddmtolab.Methods.statistical_tests.nemenyi_critical_value`.
 
-        # Positive must mean "algorithm is better", so flip when smaller is better
-        if direction == OptimizationDirection.MINIMIZE:
-            delta = -delta
+        Parameters
+        ----------
+        n_algorithms : int
+            Number of algorithms compared (k >= 2).
+        significance_level : float, optional
+            Significance level alpha (default: 0.05).
 
-        return EffectSizeResult(
-            delta=delta,
-            magnitude=StatisticsCalculator.classify_cliffs_delta(delta)
+        Returns
+        -------
+        float
+            Critical value q_alpha.
+        """
+        return statistical_tests.nemenyi_critical_value(n_algorithms, significance_level)
+
+    @staticmethod
+    def perform_nemenyi_test(
+            data_matrix: Union[np.ndarray, List[List[float]]],
+            algorithm_names: List[str],
+            direction: OptimizationDirection = OptimizationDirection.MINIMIZE,
+            significance_level: float = 0.05
+    ) -> NemenyiResult:
+        """
+        Run the Nemenyi all-pairs post-hoc test in critical-difference form.
+
+        Thin wrapper over
+        :func:`ddmtolab.Methods.statistical_tests.nemenyi_test`, kept because the
+        critical difference diagram consumes its result.
+
+        Parameters
+        ----------
+        data_matrix : Union[np.ndarray, List[List[float]]]
+            Results with shape (n_algorithms, n_instances).
+        algorithm_names : List[str]
+            Algorithm names, one per row of ``data_matrix``.
+        direction : OptimizationDirection, optional
+            Optimization direction (MINIMIZE or MAXIMIZE).
+        significance_level : float, optional
+            Significance level of the critical difference (default: 0.05).
+
+        Returns
+        -------
+        NemenyiResult
+            Critical difference, average ranks, pairwise comparisons and the
+            cliques the diagram connects.
+        """
+        return statistical_tests.nemenyi_test(
+            data_matrix, algorithm_names, direction, significance_level
         )
 
     @staticmethod
@@ -952,24 +977,16 @@ class StatisticsCalculator:
             significance_level: float = 0.05
     ) -> FriedmanResult:
         """
-        Run a Friedman test over an algorithm-by-instance matrix, with post-hoc
-        comparisons against a control algorithm.
+        Run a Friedman test with Holm-corrected post-hoc comparisons against a
+        control algorithm, in the shape the results table renders.
 
-        Each instance (column) is a block in which the algorithms are ranked,
-        rank 1 being the best under ``direction`` and ties receiving their
-        average rank. The omnibus statistic comes from
-        ``scipy.stats.friedmanchisquare``. The post-hoc step compares every other
-        algorithm against the control using the standardized rank difference
-
-        .. math:: z_i = (R_i - R_c) / \\sqrt{k(k+1) / (6N)}
-
-        with two-sided normal p-values corrected by Holm-Bonferroni over the
-        k-1 comparisons.
-
-        Instances where any algorithm has a NaN are dropped, since the test needs
-        complete blocks. When every block is fully tied there is no rank
-        variation to test and the statistic degenerates to 0/0, so it is reported
-        as chi^2_F = 0 with p = 1 rather than NaN.
+        The statistics come from
+        :func:`ddmtolab.Methods.statistical_tests.friedman_test` and the
+        comparisons from
+        :func:`ddmtolab.Methods.statistical_tests.control_post_hoc`; this wrapper
+        only rearranges them into :class:`FriedmanResult` and adds the
+        ``+``/``-``/``=`` symbols. For the aligned-ranks and Quade schemes, or
+        for post-hoc procedures other than Holm, call those functions directly.
 
         Parameters
         ----------
@@ -990,7 +1007,7 @@ class StatisticsCalculator:
         -------
         FriedmanResult
             Omnibus statistic and p-value, average ranks, and one post-hoc entry
-            per algorithm.
+            per algorithm, in the order the algorithms were supplied.
 
         Raises
         ------
@@ -1000,17 +1017,10 @@ class StatisticsCalculator:
             than 2 complete instances remain, or if ``control`` is not one of
             ``algorithm_names``.
         """
-        matrix = np.asarray(data_matrix, dtype=float)
-        if matrix.ndim != 2:
-            raise ValueError(
-                f"data_matrix must be 2-D with shape (n_algorithms, n_instances), "
-                f"got shape {matrix.shape}"
-            )
-        if matrix.shape[0] != len(algorithm_names):
-            raise ValueError(
-                f"algorithm_names has {len(algorithm_names)} entries but data_matrix "
-                f"has {matrix.shape[0]} rows; they must match"
-            )
+        # The shape of the input is validated first, so a malformed call is
+        # reported as such rather than as a too-small comparison
+        ranking = statistical_tests.friedman_test(data_matrix, algorithm_names, direction)
+
         if len(algorithm_names) < 3:
             raise ValueError(
                 f"The Friedman test needs at least 3 algorithms, got "
@@ -1018,57 +1028,23 @@ class StatisticsCalculator:
                 f"pairwise comparison instead."
             )
 
-        # Only complete blocks can be ranked, so drop instances with any NaN
-        complete = ~np.isnan(matrix).any(axis=0)
-        n_dropped = int(np.sum(~complete))
-        if n_dropped:
-            warnings.warn(
-                f"Dropped {n_dropped} instance(s) from the Friedman test because "
-                f"at least one algorithm had no value there."
-            )
-        matrix = matrix[:, complete]
-
-        n_algorithms, n_instances = matrix.shape
-        if n_instances < 2:
-            raise ValueError(
-                f"The Friedman test needs at least 2 complete instances, got "
-                f"{n_instances}."
-            )
-
-        # Rank within each instance; rank 1 is best, ties share the average rank
-        ranked = matrix if direction == OptimizationDirection.MINIMIZE else -matrix
-        ranks = np.apply_along_axis(stats.rankdata, 0, ranked)
-        mean_ranks = ranks.mean(axis=1)
-        average_ranks = {name: float(rank) for name, rank in zip(algorithm_names, mean_ranks)}
-
-        if np.all(np.ptp(ranks, axis=0) == 0):
-            # Every block is fully tied, which zeroes scipy's tie correction and
-            # makes the statistic 0/0. There is no rank variation to test, so
-            # report the degenerate-but-meaningful "no difference at all".
-            statistic, p_value = 0.0, 1.0
-        else:
-            statistic, p_value = stats.friedmanchisquare(*matrix)
-
         control_name = control if control is not None else algorithm_names[-1]
         if control_name not in algorithm_names:
             raise ValueError(
                 f"control '{control_name}' is not one of algorithm_names: {algorithm_names}"
             )
+
+        average_ranks = ranking.average_ranks
         control_rank = average_ranks[control_name]
 
-        # Standardized rank differences against the control, then Holm over k-1
-        standard_error = np.sqrt(n_algorithms * (n_algorithms + 1) / (6.0 * n_instances))
-        z_scores, raw_p = {}, {}
-        for name in algorithm_names:
-            if name == control_name:
-                continue
-            z = (average_ranks[name] - control_rank) / standard_error
-            z_scores[name] = float(z)
-            raw_p[name] = float(2.0 * stats.norm.sf(abs(z)))
-
-        compared = [name for name in algorithm_names if name != control_name]
-        adjusted = StatisticsCalculator.holm_bonferroni([raw_p[name] for name in compared])
-        adjusted_p = dict(zip(compared, adjusted))
+        family = statistical_tests.control_post_hoc(
+            ranking, control_name, procedures=('holm',)
+        )
+        by_algorithm = {
+            hypothesis.algorithms[0] if hypothesis.algorithms[1] == control_name
+            else hypothesis.algorithms[1]: hypothesis
+            for hypothesis in family.hypotheses
+        }
 
         post_hoc = []
         for name in algorithm_names:
@@ -1080,8 +1056,9 @@ class StatisticsCalculator:
                 ))
                 continue
 
-            p_adj = adjusted_p[name]
-            significant = p_adj is not None and p_adj < significance_level
+            hypothesis = by_algorithm[name]
+            p_adjusted = hypothesis.adjusted['holm']
+            significant = p_adjusted is not None and p_adjusted < significance_level
             if significant:
                 # A lower average rank is better, so it earns the '+'
                 symbol = '+' if average_ranks[name] < control_rank else '-'
@@ -1091,20 +1068,22 @@ class StatisticsCalculator:
             post_hoc.append(FriedmanPostHocResult(
                 algorithm=name,
                 average_rank=average_ranks[name],
-                z_statistic=z_scores[name],
-                p_value=raw_p[name],
-                p_adjusted=p_adj,
+                z_statistic=hypothesis.z_statistic,
+                p_value=hypothesis.p_value,
+                p_adjusted=p_adjusted,
                 significant=significant,
                 symbol=symbol
             ))
 
         return FriedmanResult(
-            statistic=float(statistic),
-            p_value=float(p_value),
+            statistic=ranking.statistic,
+            p_value=ranking.p_value,
             average_ranks=average_ranks,
-            n_algorithms=n_algorithms,
-            n_instances=n_instances,
-            n_instances_dropped=n_dropped,
+            n_algorithms=ranking.n_algorithms,
+            n_instances=ranking.n_instances,
+            n_instances_dropped=ranking.n_instances_dropped,
+            iman_davenport_statistic=ranking.iman_davenport_statistic,
+            iman_davenport_p_value=ranking.iman_davenport_p_value,
             control=control_name,
             significance_level=significance_level,
             post_hoc=post_hoc
@@ -1142,6 +1121,105 @@ class StatisticsCalculator:
             if not np.isnan(value):
                 data.append(value)
         return data
+
+    @staticmethod
+    def iterate_instances(
+            all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]],
+            algorithm_order: List[str]
+    ) -> List[Tuple[str, int]]:
+        """
+        List every problem-task instance the algorithms are compared over.
+
+        One instance is one row of the results table and one block of the
+        Friedman and Nemenyi tests, so both go through this function and always
+        see the same set. The task count of a problem comes from the first
+        algorithm that has any run on it, so an algorithm whose runs all failed
+        cannot make the problem disappear.
+
+        Parameters
+        ----------
+        all_best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Nested dictionary containing best metric values.
+        algorithm_order : List[str]
+            Algorithm names to consider.
+
+        Returns
+        -------
+        List[Tuple[str, int]]
+            Pairs of (problem name, 0-based task index), problems in natural
+            order. Problems on which no algorithm has a single run are skipped
+            with a warning.
+        """
+        problems = sorted(all_best_values[algorithm_order[0]].keys(),
+                          key=DataUtils.natural_sort_key)
+
+        instances = []
+        for prob in problems:
+            num_tasks = None
+            for algo in algorithm_order:
+                first_run = DataUtils.first_available_run(all_best_values[algo][prob])
+                if first_run is not None:
+                    num_tasks = len(all_best_values[algo][prob][first_run])
+                    break
+
+            if num_tasks is None:
+                warnings.warn(f"No runs available for any algorithm on '{prob}', "
+                              f"skipping it in the results table")
+                continue
+
+            instances.extend((prob, task_idx) for task_idx in range(num_tasks))
+
+        return instances
+
+    @staticmethod
+    def build_instance_matrix(
+            all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]],
+            algorithm_order: List[str],
+            statistic_type: StatisticType = StatisticType.MEAN
+    ) -> Tuple[np.ndarray, List[str]]:
+        """
+        Aggregate the runs of every algorithm into one value per instance.
+
+        This is the matrix the rank-based omnibus tests consume: the runs are
+        already collapsed into the same statistic the results table displays, so
+        ranks derived from it agree with the numbers in the table.
+
+        Parameters
+        ----------
+        all_best_values : Dict[str, Dict[str, Dict[int, List[float]]]]
+            Nested dictionary containing best metric values.
+        algorithm_order : List[str]
+            Algorithm names, in the order the matrix rows should follow.
+        statistic_type : StatisticType, optional
+            Statistic used to collapse the runs of one instance
+            (default: StatisticType.MEAN).
+
+        Returns
+        -------
+        Tuple[np.ndarray, List[str]]
+            Matrix of shape (n_algorithms, n_instances) and the instance labels,
+            'P1' for a single-task problem and 'P1-T2' otherwise.
+        """
+        instances = StatisticsCalculator.iterate_instances(all_best_values, algorithm_order)
+
+        multi_task = {prob for prob, task_idx in instances if task_idx > 0}
+        labels = [f'{prob}-T{task_idx + 1}' if prob in multi_task else prob
+                  for prob, task_idx in instances]
+
+        matrix = np.array([
+            [
+                StatisticsCalculator.calculate_statistic(
+                    StatisticsCalculator.collect_task_data(
+                        all_best_values, algo, prob, task_idx
+                    ),
+                    statistic_type
+                )[0]
+                for prob, task_idx in instances
+            ]
+            for algo in algorithm_order
+        ], dtype=float).reshape(len(algorithm_order), len(instances))
+
+        return matrix, labels
 
     @staticmethod
     def select_representative_run(
@@ -1258,16 +1336,12 @@ class TableGenerator:
             instances. The misconfiguration is surfaced rather than silently
             producing a table without the requested rows.
         """
-        # Extract problems and determine task count
-        problems = sorted(all_best_values[algorithm_order[0]].keys(),
-                          key=DataUtils.natural_sort_key)
-
         # Determine optimization direction
         direction = DataUtils.get_metric_direction(metric_name)
 
         # Generate data rows
         rows, comparison_counts, algorithm_ranks, instance_stats = self._generate_data_rows(
-            all_best_values, algorithm_order, problems, direction
+            all_best_values, algorithm_order, direction
         )
 
         friedman_result = None
@@ -1335,16 +1409,17 @@ class TableGenerator:
             self,
             all_best_values: Dict[str, Dict[str, Dict[int, List[float]]]],
             algorithm_order: List[str],
-            problems: List[str],
             direction: OptimizationDirection
     ) -> Tuple[List[Dict[str, Any]], Dict[str, ComparisonCounts], Dict[str, List[int]],
                List[Dict[str, float]]]:
         """
         Build one table row per problem-task instance.
 
-        Every instance is visited first and only formatted afterwards, because a
-        Holm correction spans the whole family of comparisons in the table and
-        can therefore not be resolved while the instances are still being read.
+        The instances come from ``StatisticsCalculator.iterate_instances`` so the
+        rows match the blocks of the omnibus tests exactly. Every instance is
+        visited first and only formatted afterwards, because a Holm correction
+        spans the whole family of comparisons in the table and can therefore not
+        be resolved while the instances are still being read.
 
         Returns
         -------
@@ -1358,55 +1433,42 @@ class TableGenerator:
         comparison_counts = {algo: ComparisonCounts() for algo in algorithm_order[:-1]}
         algorithm_ranks = {algo: [] for algo in algorithm_order}
 
-        for prob in problems:
-            # Task count comes from the first algorithm that has any run for
-            # this problem (a fully-failed algorithm must not sink the table)
-            num_tasks = None
+        for prob, task_idx in StatisticsCalculator.iterate_instances(
+                all_best_values, algorithm_order):
+            algo_stat_values = {}
+            cells = {}
+
+            base_data = StatisticsCalculator.collect_task_data(
+                all_best_values, base_algo, prob, task_idx
+            )
+
             for algo in algorithm_order:
-                first_run = DataUtils.first_available_run(all_best_values[algo][prob])
-                if first_run is not None:
-                    num_tasks = len(all_best_values[algo][prob][first_run])
-                    break
-            if num_tasks is None:
-                warnings.warn(f"No runs available for any algorithm on '{prob}', "
-                              f"skipping it in the results table")
-                continue
-
-            for task_idx in range(num_tasks):
-                algo_stat_values = {}
-                cells = {}
-
-                base_data = StatisticsCalculator.collect_task_data(
-                    all_best_values, base_algo, prob, task_idx
+                algo_data = StatisticsCalculator.collect_task_data(
+                    all_best_values, algo, prob, task_idx
                 )
 
-                for algo in algorithm_order:
-                    algo_data = StatisticsCalculator.collect_task_data(
-                        all_best_values, algo, prob, task_idx
+                stat_value, std_value = StatisticsCalculator.calculate_statistic(
+                    algo_data, self.config.statistic_type
+                )
+
+                algo_stat_values[algo] = stat_value
+
+                result = None
+                if self.config.rank_sum_test and algo != base_algo:
+                    result = StatisticsCalculator.perform_rank_sum_test(
+                        algo_data, base_data,
+                        self.config.significance_level, direction,
+                        compute_effect_size=self.config.effect_size
                     )
 
-                    stat_value, std_value = StatisticsCalculator.calculate_statistic(
-                        algo_data, self.config.statistic_type
-                    )
+                cells[algo] = (stat_value, std_value, result)
 
-                    algo_stat_values[algo] = stat_value
-
-                    result = None
-                    if self.config.rank_sum_test and algo != base_algo:
-                        result = StatisticsCalculator.perform_rank_sum_test(
-                            algo_data, base_data,
-                            self.config.significance_level, direction,
-                            compute_effect_size=self.config.effect_size
-                        )
-
-                    cells[algo] = (stat_value, std_value, result)
-
-                instances.append({
-                    'problem': prob,
-                    'task': task_idx + 1,
-                    'stats': algo_stat_values,
-                    'cells': cells
-                })
+            instances.append({
+                'problem': prob,
+                'task': task_idx + 1,
+                'stats': algo_stat_values,
+                'cells': cells
+            })
 
         if self.config.holm_correction:
             self._apply_holm_correction(instances, algorithm_order)
@@ -1676,8 +1738,9 @@ class TableGenerator:
         Render a Friedman result as table rows.
 
         Produces two rows: the average ranks, labelled with the omnibus
-        chi-squared statistic and its p-value, and the Holm-corrected post-hoc
-        p-values against the control algorithm.
+        chi-squared statistic, the Iman-Davenport correction of it and their
+        p-values, and the Holm-corrected post-hoc p-values against the control
+        algorithm.
 
         Parameters
         ----------
@@ -1695,10 +1758,14 @@ class TableGenerator:
 
         if is_latex:
             rank_label = (f"Friedman Rank ($\\chi^2_F={friedman_result.statistic:.4g}$, "
-                          f"$p={friedman_result.p_value:.2e}$)")
+                          f"$p={friedman_result.p_value:.2e}$; "
+                          f"$F_F={friedman_result.iman_davenport_statistic:.4g}$, "
+                          f"$p={friedman_result.iman_davenport_p_value:.2e}$)")
         else:
             rank_label = (f"Friedman Rank (chi2={friedman_result.statistic:.4g}, "
-                          f"p={friedman_result.p_value:.2e})")
+                          f"p={friedman_result.p_value:.2e}; "
+                          f"F_F={friedman_result.iman_davenport_statistic:.4g}, "
+                          f"p={friedman_result.iman_davenport_p_value:.2e})")
 
         rank_row = {'Problem': rank_label, 'Task': ''}
         for algo in algorithm_order:
@@ -2281,7 +2348,8 @@ class PlotGenerator:
                 # for less than one order of magnitude
                 if y_min <= 0 or y_max / y_min < 10:
                     print(
-                        f"Warning: Data range unsuitable for log scale ({y_min:.4f} to {y_max:.4f}), using linear scale")
+                        f"Warning: Data range unsuitable for log scale "
+                        f"({y_min:.4f} to {y_max:.4f}), using linear scale")
                     ax.set_yscale('linear')
                     self._apply_scientific_notation(ax, actual_xmax=actual_max_nfes)
                 else:
@@ -2621,6 +2689,130 @@ class PlotGenerator:
 
         print(f"Runtime plot saved to: {output_file}")
 
+    def plot_cd_diagram(
+            self,
+            nemenyi_result: NemenyiResult,
+            metric_name: Optional[str] = None,
+            filename: str = 'cd_diagram'
+    ) -> Path:
+        """
+        Draw the critical difference diagram of a Nemenyi test.
+
+        The layout follows Figure 1(a) of Demsar (2006): the average ranks are
+        plotted on a horizontal axis turned so that the best rank is on the
+        right, the critical difference is shown as a bar above the axis, and
+        groups of algorithms that are not significantly different are connected
+        by a thick bar below it.
+
+        Parameters
+        ----------
+        nemenyi_result : NemenyiResult
+            Result of ``StatisticsCalculator.perform_nemenyi_test``.
+        metric_name : Optional[str], optional
+            Metric the ranks were computed on, used in the figure title.
+            Default: None, which titles the figure without a metric.
+        filename : str, optional
+            Stem of the output file (default: 'cd_diagram').
+
+        Returns
+        -------
+        Path
+            Path of the saved figure.
+        """
+        average_ranks = nemenyi_result.average_ranks
+        critical_difference = nemenyi_result.critical_difference
+
+        # Display order of the columns decides the colours, rank order the layout
+        display_order = list(average_ranks.keys())
+        ordered = sorted(display_order, key=lambda name: average_ranks[name])
+
+        # The axis spans the ranks, but never less than the 1..k it could reach
+        low = min(1, int(np.floor(min(average_ranks.values()))))
+        high = max(len(ordered), int(np.ceil(max(average_ranks.values()))))
+        span = high - low
+
+        # The better-ranked half goes right, the rest left; within each half the
+        # outermost algorithm gets the shortest connector, so nothing crosses
+        n_right = (len(ordered) + 1) // 2
+        sides = [(ordered[:n_right], 'right'), (ordered[n_right:][::-1], 'left')]
+        n_rows = max(n_right, len(ordered) - n_right)
+
+        # The clique bars live between the axis and the first label row, so that
+        # row is pushed down whenever a tall stack of them needs the space
+        clique_spacing = 0.16
+        clique_depth = 0.18 + clique_spacing * max(0, len(nemenyi_result.cliques) - 1)
+        first_row = max(1.0, clique_depth + 0.35)
+
+        fig, ax = plt.subplots(figsize=(6.5, max(2.0, 0.5 * (first_row + n_rows + 2))))
+        ax.set_xlim(high + 0.02 * span, low - 0.02 * span)
+        ax.set_ylim(-(first_row + n_rows - 0.3), 2.0)
+        ax.set_axis_off()
+
+        # Rank axis with a tick per integer rank
+        ax.plot([low, high], [0, 0], color='black', linewidth=1.2)
+        for tick in range(low, high + 1):
+            ax.plot([tick, tick], [0, 0.12], color='black', linewidth=1.2)
+            ax.text(tick, 0.2, str(tick), ha='center', va='bottom', fontsize=10)
+
+        # Critical difference bar, anchored at the worst end of the axis. Very
+        # few instances can make CD exceed the axis; the bar then spans it whole
+        # and the label keeps carrying the true value
+        bar_y = 1.15
+        bar_end = max(low, high - critical_difference)
+        ax.plot([high, bar_end], [bar_y, bar_y], color='black', linewidth=1.4)
+        for end in (high, bar_end):
+            ax.plot([end, end], [bar_y - 0.08, bar_y + 0.08],
+                    color='black', linewidth=1.4)
+        ax.text((high + bar_end) / 2, bar_y + 0.14,
+                f'CD = {critical_difference:.3g}', ha='center', va='bottom', fontsize=10)
+
+        # One connector per algorithm: down from its rank, then out to the label
+        label_offset = 0.04 * span
+        for names, side in sides:
+            for row, name in enumerate(names):
+                rank = average_ranks[name]
+                depth = -(first_row + row)
+                edge = low - label_offset if side == 'right' else high + label_offset
+                color = self.config.colors[display_order.index(name) % len(self.config.colors)]
+
+                ax.plot([rank, rank], [0, depth], color=color, linewidth=1.4)
+                ax.plot([rank, edge], [depth, depth], color=color, linewidth=1.4)
+                ax.text(
+                    edge - 0.01 * span if side == 'right' else edge + 0.01 * span,
+                    depth, f'{name} ({rank:.2f})',
+                    ha='left' if side == 'right' else 'right',
+                    va='center', fontsize=10, clip_on=False
+                )
+
+        # Groups that the test cannot tell apart. The bar overhangs its members
+        # slightly so that a tight group stays visible as a bar
+        overhang = 0.015 * span
+        for index, clique in enumerate(nemenyi_result.cliques):
+            clique_y = -0.18 - clique_spacing * index
+            ax.plot(
+                [average_ranks[clique[0]] - overhang, average_ranks[clique[-1]] + overhang],
+                [clique_y, clique_y],
+                color='black', linewidth=3.5, solid_capstyle='round'
+            )
+
+        metric_label = f' on {metric_name}' if metric_name else ''
+        ax.set_title(
+            f'Nemenyi test{metric_label} '
+            f'($\\alpha$ = {nemenyi_result.significance_level:g}, '
+            f'k = {nemenyi_result.n_algorithms}, '
+            f'N = {nemenyi_result.n_instances})',
+            fontsize=11
+        )
+
+        save_dir = Path(self.config.save_path)
+        save_dir.mkdir(parents=True, exist_ok=True)
+        output_file = save_dir / f'{filename}.{self.config.figure_format}'
+        fig.savefig(output_file, dpi=300, bbox_inches='tight')
+        plt.close(fig)
+
+        print(f"Critical difference diagram saved to: {output_file}")
+        return output_file
+
     def plot_nd_solutions(
             self,
             best_values: Dict[str, Dict[str, Dict[int, List[float]]]],
@@ -2707,7 +2899,9 @@ class PlotGenerator:
                             true_pf = DataUtils.load_reference(settings, prob, task_idx, M=n_objectives)
 
                         # Create appropriate plot based on number of objectives
-                        fig = self._create_nd_plot(nd_solutions, true_pf, n_objectives, n_tasks, prob, task_idx, algo)
+                        fig = self._create_nd_plot(
+                            nd_solutions, true_pf, n_objectives, n_tasks,
+                            prob, task_idx, algo)
 
                         # Save figure
                         if n_tasks == 1:
@@ -3041,7 +3235,12 @@ class DataAnalyzer:
             show_std_band: bool = False,
             best_so_far: bool = True,
             clear_results: bool = True,
-            convergence_k: Optional[int] = None
+            convergence_k: Optional[int] = None,
+            cd_diagram: bool = False,
+            cd_alpha: Optional[float] = None,
+            multi_problem_report: bool = False,
+            report_scheme: str = 'friedman',
+            report_control: Optional[str] = None
     ):
         """
         Initialize DataAnalyzer with configuration parameters.
@@ -3131,6 +3330,29 @@ class DataAnalyzer:
             Number of data points to sample from convergence curves for export.
             If None, no convergence data is exported.
             Default: None
+        cd_diagram : bool, optional
+            Whether to draw the critical difference diagram of a Nemenyi
+            all-pairs post-hoc test, in the style of Demsar (2006, Figure 1a).
+            Requires at least 3 algorithms and 2 instances.
+            Default: False
+        cd_alpha : Optional[float], optional
+            Significance level of the critical difference. Demsar's own diagrams
+            use 0.10, since the all-pairs test is conservative.
+            Default: None, which reuses ``significance_level``.
+        multi_problem_report : bool, optional
+            Whether to run the full multi-problem analysis of Derrac et al.
+            (2011) and save it as ``statistical_report.xlsx`` or ``.tex``:
+            rankings under all three schemes, the omnibus tests, both post-hoc
+            families with their adjusted p-values, contrast estimation and the
+            plain pairwise tests.
+            Default: False
+        report_scheme : str, optional
+            Ranking scheme the post-hoc sections of that report are derived
+            from: 'friedman', 'aligned' or 'quade'.
+            Default: 'friedman'
+        report_control : Optional[str], optional
+            Control algorithm of the 1xN post-hoc family.
+            Default: None, which uses the best-ranked algorithm.
         """
         self.data_path = Path(data_path)
         self.settings = settings
@@ -3168,6 +3390,11 @@ class DataAnalyzer:
         )
 
         self.convergence_k = convergence_k
+        self.cd_diagram = cd_diagram
+        self.cd_alpha = cd_alpha if cd_alpha is not None else significance_level
+        self.multi_problem_report = multi_problem_report
+        self.report_scheme = RankScheme(report_scheme)
+        self.report_control = report_control
 
         # Internal state
         self._scan_result: Optional[ScanResult] = None
@@ -3450,13 +3677,15 @@ class DataAnalyzer:
                         sign = metric_instance.sign
                     elif metric_name == 'FR':
                         if cons_tgen is None:
-                            raise ValueError('FR metric requires constraint data, but all_cons is not available')
+                            raise ValueError('FR metric requires constraint data, '
+                                             'but all_cons is not available')
                         metric_instance = FR()
                         metric_value = metric_instance.calculate(cons_tgen)
                         sign = metric_instance.sign
                     elif metric_name == 'CV':
                         if cons_tgen is None:
-                            raise ValueError('CV metric requires constraint data, but all_cons is not available')
+                            raise ValueError('CV metric requires constraint data, '
+                                             'but all_cons is not available')
                         metric_instance = CV()
                         metric_value = metric_instance.calculate(cons_tgen)
                         sign = metric_instance.sign
@@ -3504,6 +3733,282 @@ class DataAnalyzer:
             algo_order,
             self._metric_results.metric_name
         )
+
+    def generate_cd_diagram(self) -> NemenyiResult:
+        """
+        Run a Nemenyi all-pairs post-hoc test and draw its critical difference
+        diagram, the visualization proposed by Demsar (2006, Figure 1a).
+
+        The test ranks the algorithms on the same per-instance statistic the
+        results table displays, so the diagram and the ``Average Rank`` row of
+        the table tell the same story.
+
+        Returns
+        -------
+        NemenyiResult
+            Critical difference, average ranks, pairwise comparisons and the
+            cliques the diagram connects.
+
+        Raises
+        ------
+        ValueError
+            If the test cannot be applied, for instance with fewer than 3
+            algorithms or fewer than 2 instances.
+        """
+        if self._metric_results is None:
+            self.calculate_metrics()
+
+        algo_order = self.algorithm_order if self.algorithm_order else self._scan_result.algorithms
+        metric_name = self._metric_results.metric_name
+
+        matrix, _ = StatisticsCalculator.build_instance_matrix(
+            self._metric_results.best_values,
+            algo_order,
+            self.table_config.statistic_type
+        )
+
+        result = StatisticsCalculator.perform_nemenyi_test(
+            matrix,
+            list(algo_order),
+            direction=DataUtils.get_metric_direction(metric_name),
+            significance_level=self.cd_alpha
+        )
+
+        PlotGenerator(self.plot_config).plot_cd_diagram(result, metric_name)
+        return result
+
+    def generate_statistical_report(self) -> Dict[str, Any]:
+        """
+        Run the full multi-problem analysis of Derrac et al. (2011) and save it.
+
+        The report answers, in order, the questions that tutorial poses: how the
+        algorithms rank overall, whether the ranking is significant at all,
+        which algorithms differ from the control, which differ from each other,
+        by how much they differ, and what a plain pairwise test says. It is
+        written as ``statistical_report.xlsx`` (one sheet per section) or
+        ``statistical_report.tex``, following ``table_format``.
+
+        Returns
+        -------
+        Dict[str, Any]
+            ``'rankings'`` maps each :class:`~ddmtolab.Methods.statistical_tests.RankScheme`
+            to its ranking result, ``'control'`` and ``'all_pairs'`` hold the two
+            post-hoc families, ``'contrast'`` the median-based estimators, and
+            ``'tables'`` the rendered DataFrames.
+
+        Raises
+        ------
+        ValueError
+            If fewer than 3 algorithms are available, in which case the omnibus
+            tests do not apply and the pairwise tests of
+            :mod:`ddmtolab.Methods.statistical_tests` should be used directly.
+        """
+        if self._metric_results is None:
+            self.calculate_metrics()
+
+        algo_order = list(self.algorithm_order if self.algorithm_order
+                          else self._scan_result.algorithms)
+        metric_name = self._metric_results.metric_name
+        direction = DataUtils.get_metric_direction(metric_name)
+
+        matrix, _ = StatisticsCalculator.build_instance_matrix(
+            self._metric_results.best_values, algo_order, self.table_config.statistic_type
+        )
+
+        rankings = {
+            scheme: statistical_tests.omnibus_test(matrix, algo_order, direction, scheme)
+            for scheme in RankScheme
+        }
+        ranking = rankings[self.report_scheme]
+
+        control = statistical_tests.control_post_hoc(ranking, self.report_control)
+
+        procedures = ALL_PAIRS_PROCEDURES
+        if len(algo_order) > BERGMANN_MAX_ALGORITHMS:
+            warnings.warn(
+                f"Skipping the Bergmann-Hommel procedure for "
+                f"{len(algo_order)} algorithms, which is beyond the "
+                f"{BERGMANN_MAX_ALGORITHMS} its enumeration can handle."
+            )
+            procedures = tuple(p for p in procedures if p != 'bergmann')
+        all_pairs = statistical_tests.all_pairs_post_hoc(ranking, procedures)
+
+        contrast = statistical_tests.contrast_estimation(matrix, algo_order)
+
+        tables = self._build_report_tables(matrix, algo_order, direction,
+                                           rankings, control, all_pairs, contrast)
+        self._write_statistical_report(tables)
+
+        return {'rankings': rankings, 'control': control, 'all_pairs': all_pairs,
+                'contrast': contrast, 'tables': tables}
+
+    def _build_report_tables(
+            self,
+            matrix: np.ndarray,
+            algorithm_order: List[str],
+            direction: OptimizationDirection,
+            rankings: Dict[RankScheme, Any],
+            control: Any,
+            all_pairs: Any,
+            contrast: Any
+    ) -> Dict[str, pd.DataFrame]:
+        """
+        Render every section of the statistical report as a DataFrame.
+
+        Parameters
+        ----------
+        matrix : np.ndarray
+            Algorithm-by-instance matrix the analysis ran on.
+        algorithm_order : List[str]
+            Algorithm display order.
+        direction : OptimizationDirection
+            Optimization direction, needed by the plain pairwise tests.
+        rankings : Dict[RankScheme, RankingResult]
+            Ranking result of each scheme.
+        control : PostHocResult
+            The 1xN family against the control algorithm.
+        all_pairs : PostHocResult
+            The NxN family.
+        contrast : ContrastResult
+            Median-based difference estimators.
+
+        Returns
+        -------
+        Dict[str, pd.DataFrame]
+            Section name to table, in the order they should be written.
+        """
+        rank_rows = []
+        for algo in algorithm_order:
+            rank_rows.append({
+                'Algorithm': algo,
+                **{scheme.value: rankings[scheme].average_ranks[algo] for scheme in RankScheme}
+            })
+        for label, attribute in (('Statistic', 'statistic'), ('p-value', 'p_value')):
+            rank_rows.append({
+                'Algorithm': label,
+                **{scheme.value: getattr(rankings[scheme], attribute) for scheme in RankScheme}
+            })
+        friedman = rankings[RankScheme.FRIEDMAN]
+        rank_rows.append({'Algorithm': 'Iman-Davenport F_F',
+                          RankScheme.FRIEDMAN.value: friedman.iman_davenport_statistic})
+        rank_rows.append({'Algorithm': 'Iman-Davenport p-value',
+                          RankScheme.FRIEDMAN.value: friedman.iman_davenport_p_value})
+
+        tables = {
+            'Rankings': pd.DataFrame(rank_rows),
+            f'Control ({control.control})': self._post_hoc_table(control),
+            'All pairs': self._post_hoc_table(all_pairs),
+            'Contrast estimation': pd.DataFrame(
+                contrast.estimators, index=contrast.algorithms, columns=contrast.algorithms
+            ).reset_index(names='Algorithm'),
+            'Pairwise tests': self._pairwise_table(matrix, algorithm_order, direction),
+        }
+        return tables
+
+    @staticmethod
+    def _post_hoc_table(result: Any) -> pd.DataFrame:
+        """
+        Render a post-hoc family as one row per hypothesis.
+
+        Parameters
+        ----------
+        result : PostHocResult
+            Family to render.
+
+        Returns
+        -------
+        pd.DataFrame
+            Hypothesis, z statistic, unadjusted p-value and one column of
+            adjusted p-values per procedure.
+        """
+        return pd.DataFrame([
+            {
+                'Hypothesis': hypothesis.label,
+                'z': hypothesis.z_statistic,
+                'Unadjusted p': hypothesis.p_value,
+                **{procedure: hypothesis.adjusted[procedure]
+                   for procedure in result.procedures}
+            }
+            for hypothesis in result.hypotheses
+        ])
+
+    @staticmethod
+    def _pairwise_table(
+            matrix: np.ndarray,
+            algorithm_order: List[str],
+            direction: OptimizationDirection
+    ) -> pd.DataFrame:
+        """
+        Run the two plain pairwise tests on every pair of algorithms.
+
+        These make no correction for multiplicity, so they answer "are these two
+        different" rather than "which of the k algorithms differ"; the post-hoc
+        sections above are what a multi-algorithm claim should rest on.
+
+        Parameters
+        ----------
+        matrix : np.ndarray
+            Algorithm-by-instance matrix.
+        algorithm_order : List[str]
+            Algorithm display order, matching the matrix rows.
+        direction : OptimizationDirection
+            Optimization direction.
+
+        Returns
+        -------
+        pd.DataFrame
+            One row per pair with the sign test and the Wilcoxon signed-rank
+            test.
+        """
+        rows = []
+        for first, second in combinations(range(len(algorithm_order)), 2):
+            signs = statistical_tests.sign_test(matrix[first], matrix[second], direction)
+            wilcoxon = statistical_tests.wilcoxon_signed_rank_test(
+                matrix[first], matrix[second], direction)
+            rows.append({
+                'Comparison': f'{algorithm_order[first]} vs {algorithm_order[second]}',
+                'Wins': signs.wins,
+                'Losses': signs.losses,
+                'Ties': signs.ties,
+                'Sign p': signs.p_value,
+                'R+': wilcoxon.r_plus,
+                'R-': wilcoxon.r_minus,
+                'Wilcoxon p': wilcoxon.p_value,
+            })
+        return pd.DataFrame(rows)
+
+    def _write_statistical_report(self, tables: Dict[str, pd.DataFrame]) -> Path:
+        """
+        Write the report sections to one workbook or one LaTeX file.
+
+        Parameters
+        ----------
+        tables : Dict[str, pd.DataFrame]
+            Section name to table.
+
+        Returns
+        -------
+        Path
+            Path of the written file.
+        """
+        save_dir = Path(self.table_config.save_path)
+        save_dir.mkdir(parents=True, exist_ok=True)
+
+        if self.table_config.table_format == TableFormat.EXCEL:
+            output_file = save_dir / 'statistical_report.xlsx'
+            with pd.ExcelWriter(output_file) as writer:
+                for name, table in tables.items():
+                    table.to_excel(writer, sheet_name=name[:31], index=False)
+        else:
+            output_file = save_dir / 'statistical_report.tex'
+            sections = []
+            for name, table in tables.items():
+                sections.append(f'% {name}')
+                sections.append(table.to_latex(index=False, float_format='%.4g'))
+            output_file.write_text('\n'.join(sections), encoding='utf-8')
+
+        print(f"Statistical report saved to: {output_file}")
+        return output_file
 
     def generate_convergence_plots(self) -> None:
         """
@@ -3641,7 +4146,7 @@ class DataAnalyzer:
                             curve = curve[indices]
 
                         f.write(f'# Algorithm: {algo}\n')
-                        f.write(f'# NFEs\tValue\n')
+                        f.write('# NFEs\tValue\n')
                         for xi, yi in zip(x, curve):
                             f.write(f'{float(xi):.6g}\t{float(yi):.6g}\n')
                         f.write('\n')
@@ -3658,9 +4163,11 @@ class DataAnalyzer:
         2. Scan data directory
         3. Calculate metrics
         4. Generate statistical tables
-        5. Generate convergence plots
-        6. Generate runtime plots
-        7. Generate non-dominated solution plots
+        5. Run the multi-problem statistical analysis (if configured)
+        6. Draw the critical difference diagram (if configured)
+        7. Generate convergence plots
+        8. Generate runtime plots
+        9. Generate non-dominated solution plots
 
         Returns
         -------
@@ -3690,6 +4197,15 @@ class DataAnalyzer:
         # Step 3: Generate tables
         print('\n📋 Generating statistical tables...')
         self.generate_tables()
+
+        # Step 3.5: Multi-problem statistical analysis
+        if self.multi_problem_report:
+            print('\n🔬 Running the multi-problem statistical analysis...')
+            self.generate_statistical_report()
+
+        if self.cd_diagram:
+            print('\n📐 Drawing critical difference diagram...')
+            self.generate_cd_diagram()
 
         # Step 4: Plot convergence curves
         print('\n📈 Plotting convergence curves...')
@@ -3724,7 +4240,7 @@ if __name__ == '__main__':
     Usage Examples for DataAnalyzer Module
     ======================================
 
-    This module provides a comprehensive analysis pipeline for multi-task 
+    This module provides a comprehensive analysis pipeline for multi-task
     optimization experiments. Below are various usage patterns.
 
 
@@ -3801,7 +4317,7 @@ if __name__ == '__main__':
     Generate tables with specific statistical settings::
 
         from data_analyzer import (
-            DataAnalyzer, TableGenerator, TableConfig, 
+            DataAnalyzer, TableGenerator, TableConfig,
             TableFormat, StatisticType
         )
 
@@ -3928,7 +4444,7 @@ if __name__ == '__main__':
     Use statistics and data utilities independently::
 
         from data_analyzer import (
-            StatisticsCalculator, DataUtils, 
+            StatisticsCalculator, DataUtils,
             StatisticType, OptimizationDirection
         )
         import numpy as np

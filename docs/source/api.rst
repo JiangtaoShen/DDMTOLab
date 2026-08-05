@@ -1315,24 +1315,62 @@ Data Analysis
 ~~~~~~~~~~~~~
 
 .. autoclass:: ddmtolab.Methods.data_analysis.DataAnalyzer
-   :members: run
+   :members: run, generate_cd_diagram
    :undoc-members:
 
 .. autoclass:: ddmtolab.Methods.test_data_analysis.TestDataAnalyzer
    :members: run
    :undoc-members:
 
-Statistical Methods
-~~~~~~~~~~~~~~~~~~~
+Statistical Tests
+~~~~~~~~~~~~~~~~~
+
+Every test is implemented once, in
+:mod:`ddmtolab.Methods.statistical_tests`. Each takes its data first, then the
+optimization direction, then its options, and returns a dataclass rather than a
+tuple.
+
+Two algorithms:
+
+.. automodule:: ddmtolab.Methods.statistical_tests
+   :members: rank_sum_test, sign_test, wilcoxon_signed_rank_test, cliffs_delta,
+             classify_cliffs_delta, PairwiseTestResult, EffectSizeResult
+   :undoc-members:
+
+Many algorithms, omnibus:
+
+.. automodule:: ddmtolab.Methods.statistical_tests
+   :members: friedman_test, friedman_aligned_test, quade_test, omnibus_test,
+             RankScheme, RankingResult
+   :noindex:
+   :undoc-members:
+
+Many algorithms, post-hoc:
+
+.. automodule:: ddmtolab.Methods.statistical_tests
+   :members: control_post_hoc, all_pairs_post_hoc, nemenyi_test,
+             nemenyi_critical_value, adjust_p_values, shaffer_t_values,
+             exhaustive_sets, Hypothesis, PostHocResult, NemenyiResult,
+             NemenyiComparison
+   :noindex:
+   :undoc-members:
+
+Magnitude of the differences:
+
+.. automodule:: ddmtolab.Methods.statistical_tests
+   :members: contrast_estimation, ContrastResult
+   :noindex:
+   :undoc-members:
+
+Reporting layer
+~~~~~~~~~~~~~~~
 
 .. autoclass:: ddmtolab.Methods.data_analysis.StatisticsCalculator
-   :members: calculate_statistic, perform_rank_sum_test, holm_bonferroni,
-             cliffs_delta, classify_cliffs_delta, perform_friedman_test
+   :members: calculate_statistic, perform_rank_sum_test, perform_friedman_test,
+             perform_nemenyi_test, iterate_instances, build_instance_matrix,
+             collect_task_data, select_representative_run
 
 .. autoclass:: ddmtolab.Methods.data_analysis.ComparisonResult
-   :members:
-
-.. autoclass:: ddmtolab.Methods.data_analysis.EffectSizeResult
    :members:
 
 .. autoclass:: ddmtolab.Methods.data_analysis.FriedmanResult
