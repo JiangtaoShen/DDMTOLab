@@ -76,7 +76,17 @@ def nbi_method(N: int, M: int) -> tuple[np.ndarray, int]:
         Weight vectors, shape (n_points, M)
     n_points : int
         Actual number of points generated
+
+    Notes
+    -----
+    For M = 1 the unit simplex degenerates to the single point [1.0], so one
+    weight vector is returned regardless of N. The layer search below cannot
+    reach that answer on its own: ``comb(H1 + 1, 0)`` is 1 for every H1, so its
+    loop condition never turns false.
     """
+    if M == 1:
+        return np.ones((1, 1)), 1
+
     # First layer
     H1 = 1
     while comb(H1 + M, M - 1, exact=True) <= N:
@@ -122,7 +132,18 @@ def ild_method(N: int, M: int) -> tuple[np.ndarray, int]:
         Weight vectors normalized to sum to 1, shape (n_points, M)
     n_points : int
         Actual number of points generated
+
+    Notes
+    -----
+    For M = 1 the unit simplex degenerates to the single point [1.0], so one
+    weight vector is returned regardless of N. The lattice loop below cannot
+    reach that answer on its own: with one dimension the edge filter
+    ``min(edge_W, axis=1) == 0`` always empties the frontier, so the point count
+    never grows past N.
     """
+    if M == 1:
+        return np.ones((1, 1)), 1
+
     I = M * np.eye(M)
     W = np.zeros((1, M))
     edge_W = W.copy()
