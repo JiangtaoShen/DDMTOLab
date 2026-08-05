@@ -137,7 +137,7 @@ Algorithms must return a result object conforming to the ``Results`` dataclass s
      - **Total runtime** (seconds). Records total time from start to end for performance evaluation
    * - ``max_nfes``
      - ``List[int]``
-     - **Maximum function evaluations**. List length is K. ``max_nfes[i]`` is the maximum number of function evaluations for task i
+     - **Function evaluations actually consumed**. List length is K. ``max_nfes[i]`` is the number of evaluations task i really spent, which the recorded history spans -- a measurement, not the requested budget. An algorithm may overshoot its budget on the last generation, and in multitask algorithms that share one population the split across tasks is decided at run time and is rarely even. The analysis tools scale the horizontal axis of convergence curves by this value, so algorithms must pass their own per-task counter to ``build_save_results``, never the ``max_nfes`` argument they were called with
    * - ``best_cons``
      - ``Optional[List[np.ndarray]]``
      - **Best constraint values** (optional). ``best_cons[i]`` is the constraint value corresponding to the best solution of task i, shape :math:`(n, C^i)`. It is ``None`` when the algorithm does not pass ``all_cons`` to ``build_save_results``; algorithms that declare ``n_cons: '[0, C]'`` must pass it
@@ -747,6 +747,34 @@ Multitask evolutionary algorithms with knowledge transfer for single-objective o
      - MFEA with Single-Step Generative Model
    * - ``SaEF_AKT``
      - Surrogate-Assisted Evolutionary Framework with Adaptive Knowledge Transfer
+
+.. note::
+
+   ``MTBO`` and ``MUMBO`` accept a ``task_cost`` vector, the cost of one
+   evaluation of each task (for instance its wall-clock duration). It defaults
+   to equal costs ``[1, 1, ..., 1]``.
+
+   In ``MTBO`` the costs define a shared budget of ``sum(max_nfes_k * c_k)``
+   cost units, of which the initial design already consumes
+   ``sum(n_initial_k * c_k)``. Every evaluation of task ``k`` spends ``c_k``,
+   and the next evaluation is the one maximizing expected improvement per unit
+   cost, so a cheap task can absorb many evaluations while an expensive one is
+   entered only when it is worth its price:
+
+   .. code-block:: python
+
+       # task 2 costs five times as much as task 1
+       MTBO(problem, n_initial=20, max_nfes=100, task_cost=[1.0, 5.0]).optimize()
+
+   Equal costs, of any magnitude, reproduce the cost-unaware schedule exactly,
+   including the total number of evaluations. Two consequences are worth
+   knowing: ``max_nfes`` counts evaluations *at unit price*, so making a task
+   pricier enlarges the budget rather than shortening the run -- lower
+   ``max_nfes`` to match if the budget should stay fixed; and cost is one term
+   of the trade-off rather than an override, so a task whose expected
+   improvement is high enough is still worth entering at several times the
+   price. Under unequal costs the per-task evaluation counts become an outcome
+   of the run rather than an input.
 
 MTMO (Multitask Multiobjective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

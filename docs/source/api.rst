@@ -1322,6 +1322,25 @@ Data Analysis
    :members: run
    :undoc-members:
 
+Statistical Methods
+~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ddmtolab.Methods.data_analysis.StatisticsCalculator
+   :members: calculate_statistic, perform_rank_sum_test, holm_bonferroni,
+             cliffs_delta, classify_cliffs_delta, perform_friedman_test
+
+.. autoclass:: ddmtolab.Methods.data_analysis.ComparisonResult
+   :members:
+
+.. autoclass:: ddmtolab.Methods.data_analysis.EffectSizeResult
+   :members:
+
+.. autoclass:: ddmtolab.Methods.data_analysis.FriedmanResult
+   :members:
+
+.. autoclass:: ddmtolab.Methods.data_analysis.FriedmanPostHocResult
+   :members:
+
 Performance Metrics
 ~~~~~~~~~~~~~~~~~~~
 

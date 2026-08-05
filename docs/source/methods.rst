@@ -96,13 +96,44 @@ Execute the batch experiment using the ``run`` method:
 
 .. code-block:: python
 
-    batch_exp.run(n_runs=30, verbose=True, max_workers=8)
+    batch_exp.run(n_runs=30, verbose=True, max_workers=8, base_seed=42)
 
 **Parameters:**
 
 - ``n_runs``: Number of independent runs for each algorithm on each problem
 - ``verbose``: Whether to print detailed progress information, default: ``True``
 - ``max_workers``: Maximum number of parallel worker processes, default: CPU core count
+- ``base_seed``: Base seed for system-level random-seed control, default: ``None`` (unseeded)
+
+Reproducible Runs
+~~~~~~~~~~~~~~~~~
+
+Passing ``base_seed`` executes run ``r`` (1-indexed) under seed
+``base_seed + r - 1``. The seed is applied to the global ``random``, NumPy and
+PyTorch (including CUDA) generators inside the worker process, *before* the
+problem and the algorithm are constructed, so every individual run is
+reproducible from its own seed:
+
+.. code-block:: python
+
+    batch_exp.run(n_runs=30, max_workers=8, base_seed=42)
+
+Because each run is seeded independently rather than the batch as a whole,
+changing ``max_workers`` does not change any result -- the degree of
+parallelism and reproducibility are decoupled. Re-running the same experiment
+with the same ``base_seed`` reproduces it run for run.
+
+The per-run seed is recorded in the ``Seed`` column of the timing summary CSV,
+and ``base_seed`` itself is written to ``experiment_config.yaml``, so a batch
+loaded with ``BatchExperiment.from_config`` repeats under the same seeds. With
+``base_seed=None`` no seeding is performed and the ``Seed`` column stays empty.
+
+.. note::
+
+   A fixed seed does not guarantee bit-identical results across different
+   machines or library versions, and a few algorithms that train neural
+   networks may still vary because of non-deterministic PyTorch kernels, which
+   seeding alone does not control.
 
 **Example Output:**
 
@@ -248,9 +279,13 @@ Initialize the ``DataAnalyzer`` with configuration options:
         save_path='./Results',           # Results save path
         table_format='excel',            # Table format: 'excel' or 'latex'
         figure_format='pdf',             # Figure format: 'pdf', 'png', 'svg'
-        statistic_type='mean',           # Statistic: 'mean', 'median', 'max', 'min'
+        statistic_type='mean',           # 'mean', 'median', 'max', 'min', 'median_iqr'
         significance_level=0.05,         # Significance level for tests
         rank_sum_test=True,              # Whether to perform rank-sum test
+        holm_correction=False,           # Holm-Bonferroni correct the p-values
+        effect_size=False,               # Report Cliff's delta per comparison
+        friedman_test=False,             # Append Friedman rows to the table
+        friedman_control=None,           # Control algorithm for the post-hoc
         log_scale=False,                 # Whether to use log scale
         show_pf=True,                    # Whether to show true Pareto front
         show_nd=True,                    # Whether to show only non-dominated
@@ -291,6 +326,80 @@ Reference definitions support three methods:
 1. **File Path**: String filename or full path, supports ``.npy`` and ``.csv``
 2. **Callable Function**: Accepts ``(n_points, n_objectives)`` parameters, returns reference array
 3. **Array Data**: Directly provide list, tuple, or NumPy array
+
+Statistical Comparison
+~~~~~~~~~~~~~~~~~~~~~~
+
+By default each problem-task instance is compared against the baseline (the
+last entry of ``algorithm_order``) with a Wilcoxon rank-sum test, annotating
+cells with ``+`` (better), ``-`` (worse) or ``=`` (no significant difference).
+Four further methods are available, all **disabled by default** so existing
+scripts keep producing identical output:
+
+.. code-block:: python
+
+    analyzer = DataAnalyzer(
+        data_path='./Data',
+        statistic_type='median_iqr',   # report median[IQR] instead of mean (std)
+        holm_correction=True,          # correct for testing many instances
+        effect_size=True,              # how large the difference is
+        friedman_test=True,            # rank all algorithms at once
+    )
+    analyzer.run()
+
+**Holm-Bonferroni correction** (``holm_correction``)
+    A table compares every algorithm against the baseline on every instance, so
+    a handful of "significant" results is expected by chance alone. The
+    correction treats all those comparisons as one family, sorts the p-values,
+    scales the i-th smallest of m by ``m - i`` and enforces monotonicity. The
+    ``+``/``-``/``=`` symbols then follow the corrected p-values, which is
+    stricter: a comparison can only lose significance this way, never gain it.
+    The raw p-value stays available in ``ComparisonResult.p_value`` and the
+    corrected one in ``p_adjusted``.
+
+**Cliff's delta** (``effect_size``)
+    Significance says a difference is unlikely to be noise; it says nothing
+    about how big it is. Cliff's delta measures exactly that, as the difference
+    between the probability that one algorithm beats the other and the reverse.
+    It is reported as a separate bracketed field in the cell, never folded into
+    the symbol, with the usual thresholds: ``negligible`` (``|delta| < 0.147``),
+    ``small`` (< 0.33), ``medium`` (< 0.474), ``large`` otherwise. The sign is
+    oriented so that a positive value always means the algorithm is better.
+
+**Friedman test** (``friedman_test``, ``friedman_control``)
+    A single omnibus test over all algorithms and instances at once, rather
+    than many pairwise ones. It appends two rows to the table: the average rank
+    of each algorithm, labelled with the chi-squared statistic and its p-value,
+    and Holm-corrected post-hoc comparisons against a control algorithm
+    (``friedman_control``, defaulting to the baseline). It needs at least three
+    algorithms and two instances, and raises a ``ValueError`` otherwise rather
+    than reporting a meaningless number.
+
+**median[IQR]** (``statistic_type='median_iqr'``)
+    Reports the median with its interquartile range, rendered as
+    ``median[IQR]``. Useful when the distribution over runs is skewed enough
+    that ``mean (std)`` misrepresents it. The existing ``'mean'`` and
+    ``'median'`` statistics are unchanged.
+
+The methods are also usable directly, independently of table generation:
+
+.. code-block:: python
+
+    from ddmtolab.Methods.data_analysis import StatisticsCalculator, OptimizationDirection
+
+    # Holm-Bonferroni over a family of p-values, order preserved
+    StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])
+    # -> [0.03, 0.04, 0.04]
+
+    # Effect size of one comparison
+    effect = StatisticsCalculator.cliffs_delta(algo_values, baseline_values,
+                                               direction=OptimizationDirection.MINIMIZE)
+    print(effect.delta, effect.magnitude)
+
+    # Friedman over an algorithms x instances matrix
+    result = StatisticsCalculator.perform_friedman_test(
+        data_matrix, ['A', 'B', 'C'], control='C')
+    print(result.statistic, result.p_value, result.average_ranks)
 
 Complete Analysis Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -298,7 +298,7 @@ class EffectSizeResult:
         algorithm is better than the baseline under the given optimization
         direction. np.nan when it cannot be computed.
     magnitude : str
-        Qualitative magnitude derived from |delta|: 'negligible', 'small',
+        Qualitative magnitude derived from ``|delta|``: 'negligible', 'small',
         'medium', 'large', or 'undefined' when delta is np.nan.
     method : str
         Name of the effect size measure, always 'cliffs_delta'.
@@ -871,7 +871,7 @@ class StatisticsCalculator:
         Returns
         -------
         str
-            'negligible' (|delta| < 0.147), 'small' (< 0.33), 'medium'
+            'negligible' (``|delta| < 0.147``), 'small' (< 0.33), 'medium'
             (< 0.474), 'large' otherwise, or 'undefined' for NaN.
         """
         if delta is None or np.isnan(delta):
