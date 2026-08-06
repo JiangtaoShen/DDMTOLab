@@ -28,6 +28,7 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
+- **2026-08-06** — Added nonparametric statistical tests for comparing algorithms over a benchmark suite (sign test, Wilcoxon signed-rank, Friedman / Friedman aligned ranks / Quade, adjusted p-values under seven control and four all-pairs post-hoc procedures, critical difference diagrams, contrast estimation).
 - **2026-08-03** — Verified and validated an LLM-assisted expensive single-task optimization algorithm (LAEA).
 - **2026-08-03** — Added an expensive multitask multiobjective optimization algorithm (SAEA-AKT).
 - **2026-07-23** — Verified and validated several surrogate-assisted single-task algorithms (TLRBF, GL-SADE, AutoSAEA, DDEA-MESS, LSADE, SHPSO, SA-COSO).
