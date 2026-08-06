@@ -56,6 +56,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#demo-8-expensive-stmo-single-run">Demo 8: Expensive STMO Single-Run</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#demo-9-expensive-stmo-batch-experiment">Demo 9: Expensive STMO Batch Experiment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#demo-10-using-hypervolume-metric">Demo 10: Using Hypervolume Metric</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#demo-11-statistical-comparison-of-algorithms">Demo 11: Statistical Comparison of Algorithms</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#summary">Summary</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#see-also">See Also</a></li>
 </ul>
@@ -135,6 +136,7 @@
 <li><p><strong>Demo 6-7</strong>: Multitask Multiobjective (MTMO) - with IGD metric calculation</p></li>
 <li><p><strong>Demo 8-9</strong>: Expensive Single-Task Multiobjective (STMO) - surrogate-assisted MOEAs</p></li>
 <li><p><strong>Demo 10</strong>: Using alternative metrics (Hypervolume)</p></li>
+<li><p><strong>Demo 11</strong>: Every statistical test, from the results table to the CD diagram</p></li>
 </ul>
 <p><strong>Output Directories:</strong></p>
 <ul class="simple">
@@ -798,6 +800,112 @@
 </div>
 </section>
 <hr class="docutils" />
+<section id="demo-11-statistical-comparison-of-algorithms">
+<h2>Demo 11: Statistical Comparison of Algorithms<a class="headerlink" href="#demo-11-statistical-comparison-of-algorithms" title="Link to this heading"></a></h2>
+<p>This demo walks through every statistical method the platform offers, on a real batch experiment, following Demsar (2006) and Derrac et al. (2011). See <a class="reference internal" href="methods.html#methods"><span class="std std-ref">Methods</span></a> for the reference documentation.</p>
+<p><strong>Key Concepts:</strong></p>
+<ul class="simple">
+<li><p>Keeping the two layers apart: per-instance versus across the whole suite</p></li>
+<li><p>Adjusted p-values, which can be compared directly against any significance level</p></li>
+<li><p>Choosing between a control comparison and an all-pairs comparison</p></li>
+</ul>
+<p><strong>The two questions, and the tests that answer them:</strong></p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 22.0%" />
+<col style="width: 38.0%" />
+<col style="width: 40.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Layer</p></th>
+<th class="head"><p>Question</p></th>
+<th class="head"><p>Method</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><strong>per-instance</strong></p></td>
+<td><p>On <em>this</em> problem, do the runs of A differ from the runs of B?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rank_sum_test</span></code>, Holm correction, Cliff’s delta; the <code class="docutils literal notranslate"><span class="pre">+/-/=</span></code> column</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>multi-problem</strong></p></td>
+<td><p>Across the <em>whole suite</em>, is A better than B?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sign_test</span></code>, <code class="docutils literal notranslate"><span class="pre">wilcoxon_signed_rank_test</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p><strong>multi-problem</strong></p></td>
+<td><p>Do the k algorithms differ at all?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">friedman_test</span></code> (+ Iman-Davenport), <code class="docutils literal notranslate"><span class="pre">friedman_aligned_test</span></code>, <code class="docutils literal notranslate"><span class="pre">quade_test</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>multi-problem</strong></p></td>
+<td><p>Which of them differ from <em>my</em> algorithm?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">control_post_hoc</span></code>, seven procedures</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>multi-problem</strong></p></td>
+<td><p>Which of them differ from each other?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">all_pairs_post_hoc</span></code>, four procedures; <code class="docutils literal notranslate"><span class="pre">nemenyi_test</span></code> for the diagram</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>multi-problem</strong></p></td>
+<td><p>By how much do they differ?</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">contrast_estimation</span></code></p></td>
+</tr>
+</tbody>
+</table>
+<p>Reporting a <code class="docutils literal notranslate"><span class="pre">+/-/=</span></code> tally as if it answered the second question is the most common mistake in the field; the demo keeps the layers separate throughout.</p>
+<p><strong>Everything at once, with two switches:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.data_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">DataAnalyzer</span>
+
+<span class="n">analyzer</span> <span class="o">=</span> <span class="n">DataAnalyzer</span><span class="p">(</span>
+    <span class="n">data_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+    <span class="n">algorithm_order</span><span class="o">=</span><span class="p">[</span><span class="s1">&#39;GA&#39;</span><span class="p">,</span> <span class="s1">&#39;DE&#39;</span><span class="p">,</span> <span class="s1">&#39;PSO&#39;</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">],</span>
+    <span class="n">statistic_type</span><span class="o">=</span><span class="s1">&#39;median_iqr&#39;</span><span class="p">,</span>   <span class="c1"># median[IQR] instead of mean (std)</span>
+
+    <span class="c1"># per-instance layer</span>
+    <span class="n">holm_correction</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>          <span class="c1"># correct over every comparison in the table</span>
+    <span class="n">effect_size</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>              <span class="c1"># Cliff&#39;s delta next to each symbol</span>
+
+    <span class="c1"># multi-problem layer</span>
+    <span class="n">friedman_test</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>            <span class="c1"># omnibus rows in the table footer</span>
+    <span class="n">cd_diagram</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>               <span class="c1"># critical difference diagram</span>
+    <span class="n">cd_alpha</span><span class="o">=</span><span class="mf">0.10</span><span class="p">,</span>
+    <span class="n">multi_problem_report</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>     <span class="c1"># the complete analysis as one workbook</span>
+    <span class="n">report_control</span><span class="o">=</span><span class="s1">&#39;CMA-ES&#39;</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">results</span> <span class="o">=</span> <span class="n">analyzer</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
+</pre></div>
+</div>
+<p><strong>Or one test at a time:</strong></p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.data_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">StatisticsCalculator</span><span class="p">,</span> <span class="n">StatisticType</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.statistical_tests</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">all_pairs_post_hoc</span><span class="p">,</span> <span class="n">contrast_estimation</span><span class="p">,</span> <span class="n">control_post_hoc</span><span class="p">,</span>
+    <span class="n">friedman_test</span><span class="p">,</span> <span class="n">nemenyi_test</span><span class="p">,</span> <span class="n">wilcoxon_signed_rank_test</span><span class="p">)</span>
+
+<span class="c1"># One value per algorithm-problem pair, the same statistic the table shows</span>
+<span class="n">matrix</span><span class="p">,</span> <span class="n">labels</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">build_instance_matrix</span><span class="p">(</span>
+    <span class="n">results</span><span class="o">.</span><span class="n">best_values</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;GA&#39;</span><span class="p">,</span> <span class="s1">&#39;DE&#39;</span><span class="p">,</span> <span class="s1">&#39;PSO&#39;</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">],</span> <span class="n">StatisticType</span><span class="o">.</span><span class="n">MEDIAN</span><span class="p">)</span>
+
+<span class="c1"># Two algorithms over the suite</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">wilcoxon_signed_rank_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">matrix</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span><span class="o">.</span><span class="n">p_value</span><span class="p">)</span>
+
+<span class="c1"># Do they differ at all? Check this before reading any post-hoc row</span>
+<span class="n">ranking</span> <span class="o">=</span> <span class="n">friedman_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;GA&#39;</span><span class="p">,</span> <span class="s1">&#39;DE&#39;</span><span class="p">,</span> <span class="s1">&#39;PSO&#39;</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">])</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ranking</span><span class="o">.</span><span class="n">average_ranks</span><span class="p">,</span> <span class="n">ranking</span><span class="o">.</span><span class="n">iman_davenport_p_value</span><span class="p">)</span>
+
+<span class="c1"># Everyone against the control, as adjusted p-values</span>
+<span class="n">family</span> <span class="o">=</span> <span class="n">control_post_hoc</span><span class="p">(</span><span class="n">ranking</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">family</span><span class="o">.</span><span class="n">rejected</span><span class="p">(</span><span class="s1">&#39;finner&#39;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+
+<span class="c1"># Everyone against everyone, and the diagram of the same question</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">all_pairs_post_hoc</span><span class="p">(</span><span class="n">ranking</span><span class="p">)</span><span class="o">.</span><span class="n">rejected</span><span class="p">(</span><span class="s1">&#39;bergmann&#39;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">nemenyi_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;GA&#39;</span><span class="p">,</span> <span class="s1">&#39;DE&#39;</span><span class="p">,</span> <span class="s1">&#39;PSO&#39;</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">],</span>
+                   <span class="n">significance_level</span><span class="o">=</span><span class="mf">0.10</span><span class="p">)</span><span class="o">.</span><span class="n">cliques</span><span class="p">)</span>
+
+<span class="c1"># How large are the differences, in the units of the measure itself</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">contrast_estimation</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;GA&#39;</span><span class="p">,</span> <span class="s1">&#39;DE&#39;</span><span class="p">,</span> <span class="s1">&#39;PSO&#39;</span><span class="p">,</span> <span class="s1">&#39;CMA-ES&#39;</span><span class="p">])</span><span class="o">.</span><span class="n">estimators</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>Sample size:</strong> use at least twice as many problems as algorithms (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&gt;=</span> <span class="pre">2k</span></code>). Below that the omnibus tests have almost no power; far above <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">8k</span></code> they start flagging differences too small to matter.</p>
+<p><strong>Outputs:</strong> <code class="docutils literal notranslate"><span class="pre">results_table_median_iqr.xlsx</span></code> (per-instance table), <code class="docutils literal notranslate"><span class="pre">statistical_report.xlsx</span></code> (five sheets: rankings, control post-hoc, all-pairs post-hoc, contrast estimation, pairwise tests) and <code class="docutils literal notranslate"><span class="pre">cd_diagram.png</span></code>.</p>
+</section>
+<hr class="docutils" />
 <section id="summary">
 <h2>Summary<a class="headerlink" href="#summary" title="Link to this heading"></a></h2>
 <table class="docutils align-default" id="id2">
@@ -865,6 +973,11 @@
 <td><p>MTMO</p></td>
 <td><p>Hypervolume metric</p></td>
 <td><p>NSGA-II, MTEA-D-DN</p></td>
+</tr>
+<tr class="row-even"><td><p>11</p></td>
+<td><p>STSO</p></td>
+<td><p>Every statistical test on a batch experiment</p></td>
+<td><p>GA, DE, PSO, CMA-ES</p></td>
 </tr>
 </tbody>
 </table>

@@ -16,6 +16,7 @@
       <script src="_static/documentation_options.js?v=377e76b0"></script>
       <script src="_static/doctools.js?v=fd6eb6e6"></script>
       <script src="_static/sphinx_highlight.js?v=6ffebe34"></script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@4/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -63,7 +64,13 @@
 <li class="toctree-l3"><a class="reference internal" href="#id2">Module Features</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id3">Class Initialization</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#metric-configuration">Metric Configuration</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#statistical-comparison">Statistical Comparison</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#statistical-comparison">Statistical Comparison</a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#two-questions-two-families-of-tests">Two questions, two families of tests</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#per-instance-options">Per-instance options</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#multi-problem-analysis">Multi-problem analysis</a></li>
+<li class="toctree-l4"><a class="reference internal" href="#where-each-piece-lives">Where each piece lives</a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#complete-analysis-pipeline">Complete Analysis Pipeline</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#accessing-raw-results">Accessing Raw Results</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#id4">Output Structure</a></li>
@@ -424,6 +431,8 @@ Timing summary saved to: ./Data/time_summary_20251203_143022.csv
     <span class="n">effect_size</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>               <span class="c1"># Report Cliff&#39;s delta per comparison</span>
     <span class="n">friedman_test</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>             <span class="c1"># Append Friedman rows to the table</span>
     <span class="n">friedman_control</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>           <span class="c1"># Control algorithm for the post-hoc</span>
+    <span class="n">cd_diagram</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                <span class="c1"># Draw the critical difference diagram</span>
+    <span class="n">cd_alpha</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>                   <span class="c1"># Its alpha (defaults to significance_level)</span>
     <span class="n">log_scale</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>                 <span class="c1"># Whether to use log scale</span>
     <span class="n">show_pf</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                    <span class="c1"># Whether to show true Pareto front</span>
     <span class="n">show_nd</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>                    <span class="c1"># Whether to show only non-dominated</span>
@@ -467,22 +476,87 @@ Timing summary saved to: ./Data/time_summary_20251203_143022.csv
 </section>
 <section id="statistical-comparison">
 <h3>Statistical Comparison<a class="headerlink" href="#statistical-comparison" title="Link to this heading"></a></h3>
-<p>By default each problem-task instance is compared against the baseline (the
-last entry of <code class="docutils literal notranslate"><span class="pre">algorithm_order</span></code>) with a Wilcoxon rank-sum test, annotating
-cells with <code class="docutils literal notranslate"><span class="pre">+</span></code> (better), <code class="docutils literal notranslate"><span class="pre">-</span></code> (worse) or <code class="docutils literal notranslate"><span class="pre">=</span></code> (no significant difference).
-Four further methods are available, all <strong>disabled by default</strong> so existing
-scripts keep producing identical output:</p>
+<p>The platform implements the two standard methodologies for comparing
+algorithms:</p>
+<ul class="simple">
+<li><p><strong>[D06]</strong> J. Demsar, <em>Statistical Comparisons of Classifiers over Multiple
+Data Sets</em>, JMLR 7 (2006) 1-30.</p></li>
+<li><p><strong>[D11]</strong> J. Derrac, S. Garcia, D. Molina, F. Herrera, <em>A practical tutorial
+on the use of nonparametric statistical tests as a methodology for comparing
+evolutionary and swarm intelligence algorithms</em>, Swarm and Evolutionary
+Computation 1 (2011) 3-18.</p></li>
+</ul>
+<p>Everything below is <strong>disabled by default</strong>, so existing scripts keep producing
+identical output.</p>
+<section id="two-questions-two-families-of-tests">
+<h4>Two questions, two families of tests<a class="headerlink" href="#two-questions-two-families-of-tests" title="Link to this heading"></a></h4>
+<p>The two families answer different questions and must not be confused:</p>
+<p><strong>Per-instance</strong> – “on <em>this</em> problem, do the runs of A differ from the runs of
+B?” One sample per run, and the answer is a cell annotation in the results
+table. This is the <code class="docutils literal notranslate"><span class="pre">+</span></code>/<code class="docutils literal notranslate"><span class="pre">-</span></code>/<code class="docutils literal notranslate"><span class="pre">=</span></code> column of <code class="docutils literal notranslate"><span class="pre">results_table_*.xlsx</span></code>,
+produced by a Wilcoxon <strong>rank-sum</strong> test against the baseline (the last entry of
+<code class="docutils literal notranslate"><span class="pre">algorithm_order</span></code>).</p>
+<p><strong>Multi-problem</strong> – “across the whole benchmark suite, is A better than B?”
+One value per algorithm-problem instance, obtained by collapsing that instance’s
+runs into the displayed statistic. This is what [D06] and [D11] are about, and
+what <a class="reference internal" href="api.html#module-ddmtolab.Methods.statistical_tests" title="ddmtolab.Methods.statistical_tests"><code class="xref py py-mod docutils literal notranslate"><span class="pre">ddmtolab.Methods.statistical_tests</span></code></a> implements.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Question</p></th>
+<th class="head"><p>Method</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Runs of two algorithms on one problem</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">rank_sum_test=True</span></code> (on by default)</p></td>
+</tr>
+<tr class="row-odd"><td><p>…corrected over many instances</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">holm_correction=True</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>…and how large is the difference</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">effect_size=True</span></code> (Cliff’s delta)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Two algorithms over the whole suite</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">sign_test</span></code>, <code class="docutils literal notranslate"><span class="pre">wilcoxon_signed_rank_test</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Do k algorithms differ at all</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">friedman_test</span></code> (+ Iman-Davenport),
+<code class="docutils literal notranslate"><span class="pre">friedman_aligned_test</span></code>, <code class="docutils literal notranslate"><span class="pre">quade_test</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>Which algorithms differ from <em>my</em> method</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">control_post_hoc</span></code> (7 procedures)</p></td>
+</tr>
+<tr class="row-even"><td><p>Which algorithms differ from each other</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">all_pairs_post_hoc</span></code> (4 procedures)</p></td>
+</tr>
+<tr class="row-odd"><td><p>…as a picture</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">cd_diagram=True</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>By how much do they differ</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">contrast_estimation</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>All of the above in one file</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">multi_problem_report=True</span></code></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="per-instance-options">
+<h4>Per-instance options<a class="headerlink" href="#per-instance-options" title="Link to this heading"></a></h4>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">analyzer</span> <span class="o">=</span> <span class="n">DataAnalyzer</span><span class="p">(</span>
     <span class="n">data_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
     <span class="n">statistic_type</span><span class="o">=</span><span class="s1">&#39;median_iqr&#39;</span><span class="p">,</span>   <span class="c1"># report median[IQR] instead of mean (std)</span>
     <span class="n">holm_correction</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>          <span class="c1"># correct for testing many instances</span>
     <span class="n">effect_size</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>              <span class="c1"># how large the difference is</span>
     <span class="n">friedman_test</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>            <span class="c1"># rank all algorithms at once</span>
+    <span class="n">cd_diagram</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>               <span class="c1"># draw the critical difference diagram</span>
+    <span class="n">cd_alpha</span><span class="o">=</span><span class="mf">0.10</span><span class="p">,</span>                 <span class="c1"># the alpha Demsar&#39;s own diagrams use</span>
+    <span class="n">multi_problem_report</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>     <span class="c1"># the full [D11] analysis in one workbook</span>
 <span class="p">)</span>
 <span class="n">analyzer</span><span class="o">.</span><span class="n">run</span><span class="p">()</span>
 </pre></div>
 </div>
-<dl class="simple">
+<dl>
 <dt><strong>Holm-Bonferroni correction</strong> (<code class="docutils literal notranslate"><span class="pre">holm_correction</span></code>)</dt><dd><p>A table compares every algorithm against the baseline on every instance, so
 a handful of “significant” results is expected by chance alone. The
 correction treats all those comparisons as one family, sorts the p-values,
@@ -502,11 +576,25 @@ oriented so that a positive value always means the algorithm is better.</p>
 </dd>
 <dt><strong>Friedman test</strong> (<code class="docutils literal notranslate"><span class="pre">friedman_test</span></code>, <code class="docutils literal notranslate"><span class="pre">friedman_control</span></code>)</dt><dd><p>A single omnibus test over all algorithms and instances at once, rather
 than many pairwise ones. It appends two rows to the table: the average rank
-of each algorithm, labelled with the chi-squared statistic and its p-value,
-and Holm-corrected post-hoc comparisons against a control algorithm
-(<code class="docutils literal notranslate"><span class="pre">friedman_control</span></code>, defaulting to the baseline). It needs at least three
-algorithms and two instances, and raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code> otherwise rather
-than reporting a meaningless number.</p>
+of each algorithm, labelled with the chi-squared statistic, the
+Iman-Davenport <code class="docutils literal notranslate"><span class="pre">F_F</span></code> correction of it (which is less conservative) and
+their p-values, and Holm-corrected post-hoc comparisons against a control
+algorithm (<code class="docutils literal notranslate"><span class="pre">friedman_control</span></code>, defaulting to the baseline). It needs at
+least three algorithms and two instances, and raises a <code class="docutils literal notranslate"><span class="pre">ValueError</span></code>
+otherwise rather than reporting a meaningless number.</p>
+</dd>
+<dt><strong>Critical difference diagram</strong> (<code class="docutils literal notranslate"><span class="pre">cd_diagram</span></code>, <code class="docutils literal notranslate"><span class="pre">cd_alpha</span></code>)</dt><dd><p>The all-pairs counterpart of the Friedman post-hoc rows, drawn as Figure
+1(a) of Demsar (2006) and saved as <code class="docutils literal notranslate"><span class="pre">cd_diagram.&lt;figure_format&gt;</span></code>. Average
+ranks are plotted on an axis turned so the best rank is on the right, and
+groups of algorithms that the Nemenyi test cannot tell apart are connected
+by a bar. Two algorithms differ significantly when their ranks differ by
+more than the critical difference shown above the axis,</p>
+<div class="math notranslate nohighlight">
+\[CD = q_\alpha \sqrt{k(k+1) / (6N)}\]</div>
+<p>for k algorithms over N instances. Use it when every algorithm is compared
+against every other one; when one algorithm is the control, the Friedman
+post-hoc rows make only k-1 comparisons and are more powerful. Because the
+all-pairs test is conservative, Demsar’s own diagrams use <code class="docutils literal notranslate"><span class="pre">cd_alpha=0.10</span></code>.</p>
 </dd>
 <dt><strong>median[IQR]</strong> (<code class="docutils literal notranslate"><span class="pre">statistic_type='median_iqr'</span></code>)</dt><dd><p>Reports the median with its interquartile range, rendered as
 <code class="docutils literal notranslate"><span class="pre">median[IQR]</span></code>. Useful when the distribution over runs is skewed enough
@@ -515,7 +603,8 @@ that <code class="docutils literal notranslate"><span class="pre">mean</span> <s
 </dd>
 </dl>
 <p>The methods are also usable directly, independently of table generation:</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.data_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="n">StatisticsCalculator</span><span class="p">,</span> <span class="n">OptimizationDirection</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.data_analysis</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">OptimizationDirection</span><span class="p">,</span> <span class="n">PlotConfig</span><span class="p">,</span> <span class="n">PlotGenerator</span><span class="p">,</span> <span class="n">StatisticsCalculator</span><span class="p">)</span>
 
 <span class="c1"># Holm-Bonferroni over a family of p-values, order preserved</span>
 <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">holm_bonferroni</span><span class="p">([</span><span class="mf">0.01</span><span class="p">,</span> <span class="mf">0.02</span><span class="p">,</span> <span class="mf">0.03</span><span class="p">])</span>
@@ -530,8 +619,136 @@ that <code class="docutils literal notranslate"><span class="pre">mean</span> <s
 <span class="n">result</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">perform_friedman_test</span><span class="p">(</span>
     <span class="n">data_matrix</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">],</span> <span class="n">control</span><span class="o">=</span><span class="s1">&#39;C&#39;</span><span class="p">)</span>
 <span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">statistic</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">average_ranks</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="o">.</span><span class="n">iman_davenport_statistic</span><span class="p">,</span> <span class="n">result</span><span class="o">.</span><span class="n">iman_davenport_p_value</span><span class="p">)</span>
+
+<span class="c1"># Nemenyi all-pairs post-hoc test and its diagram</span>
+<span class="n">nemenyi</span> <span class="o">=</span> <span class="n">StatisticsCalculator</span><span class="o">.</span><span class="n">perform_nemenyi_test</span><span class="p">(</span>
+    <span class="n">data_matrix</span><span class="p">,</span> <span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">],</span> <span class="n">significance_level</span><span class="o">=</span><span class="mf">0.10</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">nemenyi</span><span class="o">.</span><span class="n">critical_difference</span><span class="p">,</span> <span class="n">nemenyi</span><span class="o">.</span><span class="n">cliques</span><span class="p">)</span>
+<span class="n">PlotGenerator</span><span class="p">(</span><span class="n">PlotConfig</span><span class="p">(</span><span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Results&#39;</span><span class="p">))</span><span class="o">.</span><span class="n">plot_cd_diagram</span><span class="p">(</span><span class="n">nemenyi</span><span class="p">)</span>
 </pre></div>
 </div>
+<p>The matrix these tests consume can be built from the analyzer’s own results with
+<code class="docutils literal notranslate"><span class="pre">StatisticsCalculator.build_instance_matrix(best_values,</span> <span class="pre">algorithm_order,</span>
+<span class="pre">statistic_type)</span></code>, which collapses the runs of every problem-task instance into
+the same statistic the table displays.</p>
+</section>
+<section id="multi-problem-analysis">
+<h4>Multi-problem analysis<a class="headerlink" href="#multi-problem-analysis" title="Link to this heading"></a></h4>
+<p><code class="docutils literal notranslate"><span class="pre">multi_problem_report=True</span></code> runs the complete [D11] methodology on that same
+matrix and writes <code class="docutils literal notranslate"><span class="pre">statistical_report.xlsx</span></code> (or <code class="docutils literal notranslate"><span class="pre">.tex</span></code>), one section per
+step of the tutorial:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Sheet</p></th>
+<th class="head"><p>Contents</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Rankings</span></code></p></td>
+<td><p>Average ranks under all three schemes, each
+omnibus statistic and p-value, plus Iman-Davenport</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Control</span> <span class="pre">(&lt;name&gt;)</span></code></p></td>
+<td><p>The k-1 comparisons against the control, with the
+adjusted p-value of all seven procedures</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">All</span> <span class="pre">pairs</span></code></p></td>
+<td><p>The k(k-1)/2 comparisons, with Nemenyi, Holm,
+Shaffer and Bergmann-Hommel</p></td>
+</tr>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">Contrast</span> <span class="pre">estimation</span></code></p></td>
+<td><p>Median-based estimate of every pairwise difference</p></td>
+</tr>
+<tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">Pairwise</span> <span class="pre">tests</span></code></p></td>
+<td><p>Sign test and Wilcoxon signed-rank per pair</p></td>
+</tr>
+</tbody>
+</table>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">analyzer</span> <span class="o">=</span> <span class="n">DataAnalyzer</span><span class="p">(</span>
+    <span class="n">data_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+    <span class="n">multi_problem_report</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">report_scheme</span><span class="o">=</span><span class="s1">&#39;friedman&#39;</span><span class="p">,</span>   <span class="c1"># or &#39;aligned&#39; / &#39;quade&#39;</span>
+    <span class="n">report_control</span><span class="o">=</span><span class="s1">&#39;MyAlgo&#39;</span><span class="p">,</span>    <span class="c1"># default: the best-ranked algorithm</span>
+<span class="p">)</span>
+<span class="n">report</span> <span class="o">=</span> <span class="n">analyzer</span><span class="o">.</span><span class="n">generate_statistical_report</span><span class="p">()</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">report</span><span class="p">[</span><span class="s1">&#39;control&#39;</span><span class="p">]</span><span class="o">.</span><span class="n">rejected</span><span class="p">(</span><span class="s1">&#39;finner&#39;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+</pre></div>
+</div>
+</section>
+<section id="where-each-piece-lives">
+<h4>Where each piece lives<a class="headerlink" href="#where-each-piece-lives" title="Link to this heading"></a></h4>
+<p>Every test is implemented <strong>once</strong>, in
+<a class="reference internal" href="api.html#module-ddmtolab.Methods.statistical_tests" title="ddmtolab.Methods.statistical_tests"><code class="xref py py-mod docutils literal notranslate"><span class="pre">ddmtolab.Methods.statistical_tests</span></code></a>, and follows one convention: data
+first, then <code class="docutils literal notranslate"><span class="pre">direction</span></code>, then the options; a dataclass comes back, never a
+bare tuple; and the name is <code class="docutils literal notranslate"><span class="pre">&lt;name&gt;_test</span></code>.</p>
+<p><code class="docutils literal notranslate"><span class="pre">ddmtolab.Methods.data_analysis</span></code> is the reporting layer on top. Its
+<code class="docutils literal notranslate"><span class="pre">StatisticsCalculator</span></code> still exposes <code class="docutils literal notranslate"><span class="pre">perform_rank_sum_test</span></code>,
+<code class="docutils literal notranslate"><span class="pre">perform_friedman_test</span></code>, <code class="docutils literal notranslate"><span class="pre">perform_nemenyi_test</span></code>, <code class="docutils literal notranslate"><span class="pre">holm_bonferroni</span></code> and
+<code class="docutils literal notranslate"><span class="pre">cliffs_delta</span></code> for backward compatibility, but they are thin wrappers that
+delegate to the module above; new code should call the module functions.</p>
+<p>The same tests are importable on their own for any matrix of results:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.statistical_tests</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">adjust_p_values</span><span class="p">,</span> <span class="n">all_pairs_post_hoc</span><span class="p">,</span> <span class="n">contrast_estimation</span><span class="p">,</span> <span class="n">control_post_hoc</span><span class="p">,</span>
+    <span class="n">friedman_test</span><span class="p">,</span> <span class="n">quade_test</span><span class="p">,</span> <span class="n">sign_test</span><span class="p">,</span> <span class="n">wilcoxon_signed_rank_test</span><span class="p">)</span>
+
+<span class="n">matrix</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="o">...</span><span class="p">)</span>          <span class="c1"># (n_algorithms, n_problems)</span>
+<span class="n">names</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;A&#39;</span><span class="p">,</span> <span class="s1">&#39;B&#39;</span><span class="p">,</span> <span class="s1">&#39;C&#39;</span><span class="p">,</span> <span class="s1">&#39;MyAlgo&#39;</span><span class="p">]</span>
+
+<span class="c1"># 1x1: two algorithms over the suite</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">wilcoxon_signed_rank_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">p_value</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">sign_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">[</span><span class="mi">3</span><span class="p">],</span> <span class="n">matrix</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span><span class="o">.</span><span class="n">wins</span><span class="p">)</span>
+
+<span class="c1"># omnibus: do they differ at all?</span>
+<span class="n">ranking</span> <span class="o">=</span> <span class="n">friedman_test</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">ranking</span><span class="o">.</span><span class="n">average_ranks</span><span class="p">,</span> <span class="n">ranking</span><span class="o">.</span><span class="n">iman_davenport_p_value</span><span class="p">)</span>
+
+<span class="c1"># 1xN: everyone against the control</span>
+<span class="n">control</span> <span class="o">=</span> <span class="n">control_post_hoc</span><span class="p">(</span><span class="n">ranking</span><span class="p">,</span> <span class="n">control</span><span class="o">=</span><span class="s1">&#39;MyAlgo&#39;</span><span class="p">)</span>
+<span class="k">for</span> <span class="n">hypothesis</span> <span class="ow">in</span> <span class="n">control</span><span class="o">.</span><span class="n">hypotheses</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="n">hypothesis</span><span class="o">.</span><span class="n">label</span><span class="p">,</span> <span class="n">hypothesis</span><span class="o">.</span><span class="n">p_value</span><span class="p">,</span> <span class="n">hypothesis</span><span class="o">.</span><span class="n">adjusted</span><span class="p">[</span><span class="s1">&#39;finner&#39;</span><span class="p">])</span>
+
+<span class="c1"># NxN: everyone against everyone</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">all_pairs_post_hoc</span><span class="p">(</span><span class="n">ranking</span><span class="p">)</span><span class="o">.</span><span class="n">rejected</span><span class="p">(</span><span class="s1">&#39;bergmann&#39;</span><span class="p">,</span> <span class="mf">0.05</span><span class="p">))</span>
+
+<span class="c1"># how large are the differences?</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">contrast_estimation</span><span class="p">(</span><span class="n">matrix</span><span class="p">,</span> <span class="n">names</span><span class="p">)</span><span class="o">.</span><span class="n">estimators</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="simple">
+<dt><strong>Which ranking scheme</strong> (<code class="docutils literal notranslate"><span class="pre">report_scheme</span></code>)</dt><dd><p><code class="docutils literal notranslate"><span class="pre">'friedman'</span></code> ranks within each problem only; <code class="docutils literal notranslate"><span class="pre">'aligned'</span></code> first subtracts
+each problem’s average so that observations from different problems become
+comparable, which is more powerful when few algorithms are compared;
+<code class="docutils literal notranslate"><span class="pre">'quade'</span></code> weighs each problem by how widely the algorithms spread out on
+it, so easy problems count less. All three feed the same post-hoc machinery.</p>
+</dd>
+<dt><strong>Which post-hoc procedure</strong></dt><dd><p>The seven control procedures are, from least to most powerful,
+<code class="docutils literal notranslate"><span class="pre">bonferroni</span></code> &lt; <code class="docutils literal notranslate"><span class="pre">holm</span></code> &lt; <code class="docutils literal notranslate"><span class="pre">hochberg</span></code> &lt; <code class="docutils literal notranslate"><span class="pre">hommel</span></code>, with <code class="docutils literal notranslate"><span class="pre">holland</span></code> and
+<code class="docutils literal notranslate"><span class="pre">finner</span></code> as sharper step-down variants and <code class="docutils literal notranslate"><span class="pre">li</span></code> as a two-step
+alternative. For the all-pairs family, <code class="docutils literal notranslate"><span class="pre">shaffer</span></code> and <code class="docutils literal notranslate"><span class="pre">bergmann</span></code> exploit
+that the pairwise hypotheses are logically interrelated and therefore reject
+more than <code class="docutils literal notranslate"><span class="pre">holm</span></code>; Bergmann-Hommel is enumerated only up to 10 algorithms.
+All of them are reported as <em>adjusted p-values</em>, which can be compared
+directly against any significance level.</p>
+</dd>
+<dt><strong>Practical guidance from [D11]</strong></dt><dd><p>Use at least twice as many problems as algorithms (<code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">&gt;=</span> <span class="pre">2k</span></code>); beyond
+roughly <code class="docutils literal notranslate"><span class="pre">n</span> <span class="pre">=</span> <span class="pre">8k</span></code> the tests start flagging trivial differences. Wilcoxon’s
+test is the safe default for two algorithms, but never use a series of
+pairwise tests in place of a post-hoc family – that is exactly the
+family-wise error the adjusted p-values exist to control. Check the omnibus
+p-value before reading the post-hoc rows.</p>
+</dd>
+</dl>
+<p>Two documented deviations from the papers, both verified against their own
+tables: the Friedman Aligned omnibus statistic follows Eq. (4) of [D11] (its
+Table 11 value cannot be reproduced from that equation and the ranks printed
+next to it), and the sign test reports the exact binomial p-value, whose
+one-sided form is the one the critical-value tables of both papers tabulate.
+Rom’s procedure is deliberately absent: its constants in [D11] are specific to
+alpha = 0.05 and are not reproducible from the recursion given for them, and
+Hochberg and Hommel cover the same step-up family.</p>
+</section>
 </section>
 <section id="complete-analysis-pipeline">
 <h3>Complete Analysis Pipeline<a class="headerlink" href="#complete-analysis-pipeline" title="Link to this heading"></a></h3>
@@ -1575,7 +1792,7 @@ Animations saved to: ./Results
 </tr>
 <tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">HV</span></code></p></td>
 <td><p>+1</p></td>
-<td><p>Hypervolume. Measures the volume of objective space dominated by the obtained solutions. Supports 2D/3D exact calculation and Monte Carlo for higher dimensions.</p></td>
+<td><p>Hypervolume. Measures the volume of objective space dominated by the obtained solutions, normalized to [0, 1]. Supports 2D/3D exact calculation and Monte Carlo for higher dimensions.</p></td>
 </tr>
 <tr class="row-even"><td><p><code class="docutils literal notranslate"><span class="pre">DeltaP</span></code></p></td>
 <td><p>-1</p></td>
@@ -1646,22 +1863,27 @@ Animations saved to: ./Results
 
 <span class="c1"># HV (requires Pareto front or reference point)</span>
 <span class="n">hv</span> <span class="o">=</span> <span class="n">HV</span><span class="p">()</span>
-<span class="n">hv_value</span> <span class="o">=</span> <span class="n">hv</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pf</span><span class="o">=</span><span class="n">pf</span><span class="p">)</span>  <span class="c1"># With Pareto front for normalization</span>
-<span class="n">hv_value</span> <span class="o">=</span> <span class="n">hv</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">reference</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]))</span>  <span class="c1"># With reference point</span>
-
-<span class="c1"># Averaged Hausdorff Distance</span>
-<span class="n">deltap</span> <span class="o">=</span> <span class="n">DeltaP</span><span class="p">()</span>
-<span class="n">deltap_value</span> <span class="o">=</span> <span class="n">deltap</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pf</span><span class="p">)</span>
-
-<span class="c1"># Spacing (only requires obtained solutions)</span>
-<span class="n">spacing</span> <span class="o">=</span> <span class="n">Spacing</span><span class="p">()</span>
-<span class="n">spacing_value</span> <span class="o">=</span> <span class="n">spacing</span><span class="p">(</span><span class="n">objs</span><span class="p">)</span>
-
-<span class="c1"># Spread (requires Pareto front)</span>
-<span class="n">spread</span> <span class="o">=</span> <span class="n">Spread</span><span class="p">()</span>
-<span class="n">spread_value</span> <span class="o">=</span> <span class="n">spread</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pf</span><span class="p">)</span>
+<span class="n">hv_value</span> <span class="o">=</span> <span class="n">hv</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">pf</span><span class="o">=</span><span class="n">pf</span><span class="p">)</span>  <span class="c1"># Reference placed 10% beyond the front&#39;s nadir</span>
+<span class="n">hv_value</span> <span class="o">=</span> <span class="n">hv</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">reference</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">]))</span>  <span class="c1"># Reference given directly</span>
 </pre></div>
 </div>
+<p>The objectives are normalized so that the reference point maps to 1 in every
+dimension, which puts HV on the [0, 1] scale whichever way the reference is
+supplied. The two calls above therefore agree exactly when the reference point
+is the one the front implies:
+<code class="docutils literal notranslate"><span class="pre">hv(objs,</span> <span class="pre">pf=pf)</span> <span class="pre">==</span> <span class="pre">hv(objs,</span> <span class="pre">reference=fmin</span> <span class="pre">+</span> <span class="pre">1.1</span> <span class="pre">*</span> <span class="pre">(pf.max(0)</span> <span class="pre">-</span> <span class="pre">fmin))</span></code>,
+with <code class="docutils literal notranslate"><span class="pre">fmin</span> <span class="pre">=</span> <span class="pre">minimum(objs.min(0),</span> <span class="pre">0)</span></code>.</p>
+<blockquote>
+<div><p># Averaged Hausdorff Distance
+deltap = DeltaP()
+deltap_value = deltap(objs, pf)</p>
+<p># Spacing (only requires obtained solutions)
+spacing = Spacing()
+spacing_value = spacing(objs)</p>
+<p># Spread (requires Pareto front)
+spread = Spread()
+spread_value = spread(objs, pf)</p>
+</div></blockquote>
 <p><strong>Constrained Optimization Metrics (FR, CV):</strong></p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.metrics</span><span class="w"> </span><span class="kn">import</span> <span class="n">FR</span><span class="p">,</span> <span class="n">CV</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>

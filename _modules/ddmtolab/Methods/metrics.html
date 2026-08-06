@@ -260,19 +260,31 @@
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Compute HV for a set of objective vectors.</span>
 
+<span class="sd">        The objectives are normalized so that the reference point maps to 1 in</span>
+<span class="sd">        every dimension, which puts the result on the [0, 1] scale whichever way</span>
+<span class="sd">        the reference is supplied. Passing ``pf`` places the reference 10% beyond</span>
+<span class="sd">        the front, so ``calculate(objs, pf=front)`` equals</span>
+<span class="sd">        ``calculate(objs, reference=fmin + 1.1 * (front.max(0) - fmin))``.</span>
+
 <span class="sd">        Parameters</span>
 <span class="sd">        ----------</span>
 <span class="sd">        objs : np.ndarray</span>
 <span class="sd">            Objective matrix, shape (n, m)</span>
 <span class="sd">        pf : np.ndarray, optional</span>
-<span class="sd">            True Pareto front for normalization, shape (n_pf, m)</span>
+<span class="sd">            True Pareto front, whose nadir defines the reference point,</span>
+<span class="sd">            shape (n_pf, m)</span>
 <span class="sd">        reference : np.ndarray, optional</span>
 <span class="sd">            Reference point for HV calculation, shape (m,)</span>
 
 <span class="sd">        Returns</span>
 <span class="sd">        -------</span>
 <span class="sd">        float</span>
-<span class="sd">            HV value</span>
+<span class="sd">            HV value in [0, 1]</span>
+
+<span class="sd">        Raises</span>
+<span class="sd">        ------</span>
+<span class="sd">        ValueError</span>
+<span class="sd">            If neither ``pf`` nor ``reference`` is given.</span>
 <span class="sd">        &quot;&quot;&quot;</span>
         <span class="k">if</span> <span class="n">pf</span> <span class="ow">is</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">reference</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;Either pf or reference must be provided&quot;</span><span class="p">)</span>
@@ -283,27 +295,20 @@
 
         <span class="n">n</span><span class="p">,</span> <span class="n">m</span> <span class="o">=</span> <span class="n">objs</span><span class="o">.</span><span class="n">shape</span>
 
-        <span class="c1"># Normalization (guard against zero range in any objective)</span>
+        <span class="c1"># The origin anchors the box unless the front reaches below it</span>
+        <span class="n">fmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
         <span class="k">if</span> <span class="n">pf</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="n">fmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
-            <span class="n">fmax</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pf</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
-            <span class="n">denom</span> <span class="o">=</span> <span class="p">(</span><span class="n">fmax</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span>
-            <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">denom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">denom</span><span class="p">)</span>
-            <span class="n">objs_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">objs</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">/</span> <span class="n">denom</span>
-            <span class="n">ref_point_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
-            <span class="n">valid_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">objs_norm</span> <span class="o">&lt;=</span> <span class="n">ref_point_norm</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">objs_filtered</span> <span class="o">=</span> <span class="n">objs_norm</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">]</span>
+            <span class="c1"># 10% beyond the nadir of the front, the usual convention</span>
+            <span class="n">span</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">max</span><span class="p">(</span><span class="n">pf</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span>
         <span class="k">else</span><span class="p">:</span>
-            <span class="n">fmin</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">minimum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">objs</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">),</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">m</span><span class="p">))</span>
-            <span class="n">fmax</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
-            <span class="n">denom</span> <span class="o">=</span> <span class="p">(</span><span class="n">fmax</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">*</span> <span class="mf">1.1</span>
-            <span class="n">denom</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">denom</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">denom</span><span class="p">)</span>
-            <span class="n">objs_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">objs</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">/</span> <span class="n">denom</span>
-            <span class="c1"># A point equal to the reference maps to 1/1.1; keep the filter</span>
-            <span class="c1"># consistent with the reference box so no point lies outside it</span>
-            <span class="n">ref_point_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">m</span><span class="p">)</span> <span class="o">/</span> <span class="mf">1.1</span>
-            <span class="n">valid_mask</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">objs_norm</span> <span class="o">&lt;=</span> <span class="n">ref_point_norm</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
-            <span class="n">objs_filtered</span> <span class="o">=</span> <span class="n">objs_norm</span><span class="p">[</span><span class="n">valid_mask</span><span class="p">]</span>
+            <span class="n">span</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">reference</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span> <span class="o">-</span> <span class="n">fmin</span>
+
+        <span class="c1"># A zero range carries no volume; keep it finite rather than dividing by 0</span>
+        <span class="n">span</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">where</span><span class="p">(</span><span class="n">span</span> <span class="o">&lt;=</span> <span class="mi">0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">,</span> <span class="n">span</span><span class="p">)</span>
+
+        <span class="n">objs_norm</span> <span class="o">=</span> <span class="p">(</span><span class="n">objs</span> <span class="o">-</span> <span class="n">fmin</span><span class="p">)</span> <span class="o">/</span> <span class="n">span</span>
+        <span class="n">ref_point_norm</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">m</span><span class="p">)</span>
+        <span class="n">objs_filtered</span> <span class="o">=</span> <span class="n">objs_norm</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">all</span><span class="p">(</span><span class="n">objs_norm</span> <span class="o">&lt;=</span> <span class="n">ref_point_norm</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)]</span>
 
         <span class="k">if</span> <span class="n">objs_filtered</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
             <span class="k">return</span> <span class="mf">0.0</span>
@@ -577,13 +582,14 @@
         <span class="c1"># pairwise distances (n_pf x n)</span>
         <span class="n">distances</span> <span class="o">=</span> <span class="n">cdist</span><span class="p">(</span><span class="n">pf</span><span class="p">,</span> <span class="n">objs</span><span class="p">,</span> <span class="n">metric</span><span class="o">=</span><span class="s1">&#39;euclidean&#39;</span><span class="p">)</span>
 
-        <span class="c1"># GD component: mean of minimum distances from PF to objs</span>
-        <span class="n">gd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
+        <span class="c1"># IGD component: for every reference point, the nearest obtained one</span>
+        <span class="n">igd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))</span>
 
-        <span class="c1"># IGD component: mean of minimum distances from objs to PF</span>
-        <span class="n">igd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
+        <span class="c1"># GD component: for every obtained point, the nearest reference one</span>
+        <span class="n">gd</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">mean</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">distances</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">0</span><span class="p">))</span>
 
-        <span class="c1"># Δp = max(GD, IGD)</span>
+        <span class="c1"># Δp = max(GD_1, IGD_1); both components use p = 1, unlike the GD class,</span>
+        <span class="c1"># which follows Van Veldhuizen&#39;s ||d||_2 / n</span>
         <span class="k">return</span> <span class="nb">float</span><span class="p">(</span><span class="nb">max</span><span class="p">(</span><span class="n">gd</span><span class="p">,</span> <span class="n">igd</span><span class="p">))</span></div>
 
 
