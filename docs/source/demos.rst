@@ -37,6 +37,7 @@ D²MTOLab supports four categories of optimization problems:
 - **Demo 6-7**: Multitask Multiobjective (MTMO) - with IGD metric calculation
 - **Demo 8-9**: Expensive Single-Task Multiobjective (STMO) - surrogate-assisted MOEAs
 - **Demo 10**: Using alternative metrics (Hypervolume)
+- **Demo 11**: Every statistical test, from the results table to the CD diagram
 
 **Output Directories:**
 
@@ -727,6 +728,109 @@ This demo shows how to use Hypervolume (HV) instead of IGD as the performance me
 
 ----
 
+Demo 11: Statistical Comparison of Algorithms
+----------------------------------------------
+
+This demo walks through every statistical method the platform offers, on a real batch experiment, following Demsar (2006) and Derrac et al. (2011). See :ref:`methods` for the reference documentation.
+
+**Key Concepts:**
+
+- Keeping the two layers apart: per-instance versus across the whole suite
+- Adjusted p-values, which can be compared directly against any significance level
+- Choosing between a control comparison and an all-pairs comparison
+
+**The two questions, and the tests that answer them:**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 38 40
+
+   * - Layer
+     - Question
+     - Method
+   * - **per-instance**
+     - On *this* problem, do the runs of A differ from the runs of B?
+     - ``rank_sum_test``, Holm correction, Cliff's delta; the ``+/-/=`` column
+   * - **multi-problem**
+     - Across the *whole suite*, is A better than B?
+     - ``sign_test``, ``wilcoxon_signed_rank_test``
+   * - **multi-problem**
+     - Do the k algorithms differ at all?
+     - ``friedman_test`` (+ Iman-Davenport), ``friedman_aligned_test``, ``quade_test``
+   * - **multi-problem**
+     - Which of them differ from *my* algorithm?
+     - ``control_post_hoc``, seven procedures
+   * - **multi-problem**
+     - Which of them differ from each other?
+     - ``all_pairs_post_hoc``, four procedures; ``nemenyi_test`` for the diagram
+   * - **multi-problem**
+     - By how much do they differ?
+     - ``contrast_estimation``
+
+Reporting a ``+/-/=`` tally as if it answered the second question is the most common mistake in the field; the demo keeps the layers separate throughout.
+
+**Everything at once, with two switches:**
+
+.. code-block:: python
+
+   from ddmtolab.Methods.data_analysis import DataAnalyzer
+
+   analyzer = DataAnalyzer(
+       data_path='./Data',
+       algorithm_order=['GA', 'DE', 'PSO', 'CMA-ES'],
+       statistic_type='median_iqr',   # median[IQR] instead of mean (std)
+
+       # per-instance layer
+       holm_correction=True,          # correct over every comparison in the table
+       effect_size=True,              # Cliff's delta next to each symbol
+
+       # multi-problem layer
+       friedman_test=True,            # omnibus rows in the table footer
+       cd_diagram=True,               # critical difference diagram
+       cd_alpha=0.10,
+       multi_problem_report=True,     # the complete analysis as one workbook
+       report_control='CMA-ES',
+   )
+   results = analyzer.run()
+
+**Or one test at a time:**
+
+.. code-block:: python
+
+   from ddmtolab.Methods.data_analysis import StatisticsCalculator, StatisticType
+   from ddmtolab.Methods.statistical_tests import (
+       all_pairs_post_hoc, contrast_estimation, control_post_hoc,
+       friedman_test, nemenyi_test, wilcoxon_signed_rank_test)
+
+   # One value per algorithm-problem pair, the same statistic the table shows
+   matrix, labels = StatisticsCalculator.build_instance_matrix(
+       results.best_values, ['GA', 'DE', 'PSO', 'CMA-ES'], StatisticType.MEDIAN)
+
+   # Two algorithms over the suite
+   print(wilcoxon_signed_rank_test(matrix[3], matrix[2]).p_value)
+
+   # Do they differ at all? Check this before reading any post-hoc row
+   ranking = friedman_test(matrix, ['GA', 'DE', 'PSO', 'CMA-ES'])
+   print(ranking.average_ranks, ranking.iman_davenport_p_value)
+
+   # Everyone against the control, as adjusted p-values
+   family = control_post_hoc(ranking, 'CMA-ES')
+   print(family.rejected('finner', 0.05))
+
+   # Everyone against everyone, and the diagram of the same question
+   print(all_pairs_post_hoc(ranking).rejected('bergmann', 0.05))
+   print(nemenyi_test(matrix, ['GA', 'DE', 'PSO', 'CMA-ES'],
+                      significance_level=0.10).cliques)
+
+   # How large are the differences, in the units of the measure itself
+   print(contrast_estimation(matrix, ['GA', 'DE', 'PSO', 'CMA-ES']).estimators)
+
+**Sample size:** use at least twice as many problems as algorithms (``n >= 2k``). Below that the omnibus tests have almost no power; far above ``n = 8k`` they start flagging differences too small to matter.
+
+**Outputs:** ``results_table_median_iqr.xlsx`` (per-instance table), ``statistical_report.xlsx`` (five sheets: rankings, control post-hoc, all-pairs post-hoc, contrast estimation, pairwise tests) and ``cd_diagram.png``.
+
+----
+
 Summary
 -------
 
@@ -778,6 +882,10 @@ Summary
      - MTMO
      - Hypervolume metric
      - NSGA-II, MTEA-D-DN
+   * - 11
+     - STSO
+     - Every statistical test on a batch experiment
+     - GA, DE, PSO, CMA-ES
 
 See Also
 --------
