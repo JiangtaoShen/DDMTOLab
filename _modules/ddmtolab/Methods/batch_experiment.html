@@ -292,9 +292,50 @@
             <span class="n">dumped</span> <span class="o">=</span> <span class="n">dumped</span><span class="p">[:</span><span class="o">-</span><span class="mi">4</span><span class="p">]</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span>
         <span class="k">return</span> <span class="n">dumped</span>
 
+    <span class="k">def</span><span class="w"> </span><span class="nf">_previous_run_history</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">config_path</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Read the run history already recorded in a configuration file.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            config_path: Path to the configuration file, which need not exist</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            The recorded history, oldest call first, or an empty list when there</span>
+<span class="sd">            is nothing to carry forward. A file written before the history was</span>
+<span class="sd">            kept still records its last call, so that call is preserved rather</span>
+<span class="sd">            than dropped on the first re-run.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">config_path</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="k">try</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s1">&#39;r&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">existing</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">f</span><span class="p">)</span> <span class="ow">or</span> <span class="p">{}</span>
+        <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;⚠️ Warning: Could not read the previous configuration &quot;</span>
+                  <span class="sa">f</span><span class="s2">&quot;(</span><span class="si">{</span><span class="nb">str</span><span class="p">(</span><span class="n">e</span><span class="p">)</span><span class="si">}</span><span class="s2">); its run history is lost</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+            <span class="k">return</span> <span class="p">[]</span>
+
+        <span class="n">history</span> <span class="o">=</span> <span class="n">existing</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;run_history&#39;</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">history</span><span class="p">,</span> <span class="nb">list</span><span class="p">):</span>
+            <span class="k">return</span> <span class="p">[</span><span class="n">entry</span> <span class="k">for</span> <span class="n">entry</span> <span class="ow">in</span> <span class="n">history</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">entry</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)]</span>
+
+        <span class="n">previous</span> <span class="o">=</span> <span class="n">existing</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;run_settings&#39;</span><span class="p">)</span>
+        <span class="k">return</span> <span class="p">[</span><span class="n">previous</span><span class="p">]</span> <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">previous</span><span class="p">,</span> <span class="nb">dict</span><span class="p">)</span> <span class="ow">and</span> <span class="n">previous</span> <span class="k">else</span> <span class="p">[]</span>
+
     <span class="k">def</span><span class="w"> </span><span class="nf">save_config</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">n_runs</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">max_workers</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span> <span class="n">base_seed</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
 <span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
 <span class="sd">        Save experiment configuration to YAML file with custom formatting</span>
+
+<span class="sd">        Every call to :meth:`run` appends its settings to ``run_history`` instead</span>
+<span class="sd">        of discarding the ones before it. A folder is often filled by several</span>
+<span class="sd">        calls -- completed runs are skipped on a re-run, so a batch extended from</span>
+<span class="sd">        20 to 30 runs, or resumed under a different seed, mixes results produced</span>
+<span class="sd">        under different settings. Keeping only the latest would leave the file</span>
+<span class="sd">        describing settings that never produced most of the data next to it.</span>
+
+<span class="sd">        ``run_settings`` still holds the most recent call, so anything reading</span>
+<span class="sd">        it, :meth:`from_config` included, is unaffected.</span>
 
 <span class="sd">        Args:</span>
 <span class="sd">            n_runs: Number of independent runs</span>
@@ -302,15 +343,19 @@
 <span class="sd">            base_seed: Base seed used for system-level random-seed control, or None</span>
 <span class="sd">                      if the runs were not seeded</span>
 <span class="sd">        &quot;&quot;&quot;</span>
-        <span class="c1"># Add run settings</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;n_runs&#39;</span><span class="p">:</span> <span class="n">n_runs</span><span class="p">,</span> <span class="s1">&#39;max_workers&#39;</span><span class="p">:</span> <span class="n">max_workers</span><span class="p">,</span>
-                                                  <span class="s1">&#39;base_seed&#39;</span><span class="p">:</span> <span class="n">base_seed</span><span class="p">,</span>
-                                                  <span class="s1">&#39;start_time&#39;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()}</span>
-
         <span class="n">s</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_yaml_scalar</span>  <span class="c1"># YAML-safe scalar renderer</span>
 
         <span class="c1"># Save to YAML file</span>
         <span class="n">config_path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">base_path</span><span class="p">,</span> <span class="s1">&#39;experiment_config.yaml&#39;</span><span class="p">)</span>
+
+        <span class="c1"># Add run settings, keeping the calls that came before this one</span>
+        <span class="n">current_run</span> <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;n_runs&#39;</span><span class="p">:</span> <span class="n">n_runs</span><span class="p">,</span> <span class="s1">&#39;max_workers&#39;</span><span class="p">:</span> <span class="n">max_workers</span><span class="p">,</span>
+                       <span class="s1">&#39;base_seed&#39;</span><span class="p">:</span> <span class="n">base_seed</span><span class="p">,</span>
+                       <span class="s1">&#39;start_time&#39;</span><span class="p">:</span> <span class="n">datetime</span><span class="o">.</span><span class="n">now</span><span class="p">()</span><span class="o">.</span><span class="n">isoformat</span><span class="p">()}</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="n">current_run</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_history&#39;</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_previous_run_history</span><span class="p">(</span><span class="n">config_path</span><span class="p">)</span> <span class="o">+</span> <span class="p">[</span><span class="n">current_run</span><span class="p">]</span>
+        <span class="p">)</span>
         <span class="k">try</span><span class="p">:</span>
             <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">config_path</span><span class="p">,</span> <span class="s1">&#39;w&#39;</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s1">&#39;utf-8&#39;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
                 <span class="c1"># Write basic info</span>
@@ -347,6 +392,22 @@
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  max_workers: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;max_workers&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  base_seed: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;base_seed&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
                 <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  start_time: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_settings&#39;</span><span class="p">][</span><span class="s1">&#39;start_time&#39;</span><span class="p">])</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+
+                <span class="c1"># Write every call that has filled this folder, oldest first;</span>
+                <span class="c1"># the last entry is the run_settings above</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2"># Every run() call that has written into this folder,&quot;</span>
+                        <span class="s2">&quot; oldest first.</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;# The data on disk may come from several of them, since&quot;</span>
+                        <span class="s2">&quot; completed runs</span><span class="se">\n</span><span class="s2"># are skipped when a batch is resumed&quot;</span>
+                        <span class="s2">&quot; or extended.</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;run_history:</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">for</span> <span class="n">i</span><span class="p">,</span> <span class="n">entry</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">experiment_config</span><span class="p">[</span><span class="s1">&#39;run_history&#39;</span><span class="p">]):</span>
+                    <span class="k">if</span> <span class="n">i</span> <span class="o">&gt;</span> <span class="mi">0</span><span class="p">:</span>
+                        <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;  - n_runs: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;n_runs&#39;</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    max_workers: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;max_workers&#39;</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    base_seed: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;base_seed&#39;</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;    start_time: </span><span class="si">{</span><span class="n">s</span><span class="p">(</span><span class="n">entry</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s1">&#39;start_time&#39;</span><span class="p">))</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
 
             <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;💾 Configuration saved to: </span><span class="si">{</span><span class="n">config_path</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span>
         <span class="k">except</span> <span class="ne">Exception</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
