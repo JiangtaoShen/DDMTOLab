@@ -158,6 +158,105 @@ def test_batch_run_without_a_base_seed_stays_unseeded(tmp_path):
     assert all(r['Seed'] == '' for r in records)
 
 
+def read_config(data_path):
+    """Load the experiment configuration a batch wrote into its data folder."""
+    import yaml
+
+    with open(data_path / 'experiment_config.yaml', encoding='utf-8') as handle:
+        return yaml.safe_load(handle)
+
+
+def make_batch(data_path):
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Algorithms.STSO.GA import GA
+
+    exp = BatchExperiment(base_path=str(data_path), clear_folder=False)
+    exp.add_problem(make_sphere_problem, 'P1')
+    exp.add_algorithm(GA, 'GA', n=10, max_nfes=40)
+    return exp
+
+
+def test_the_configuration_records_the_settings_of_the_run(tmp_path):
+    data_path = tmp_path / 'Data'
+    make_batch(data_path).run(n_runs=2, verbose=False, max_workers=1, base_seed=100)
+
+    config = read_config(data_path)
+    assert config['run_settings']['base_seed'] == 100
+    assert config['run_settings']['n_runs'] == 2
+    assert len(config['run_history']) == 1
+
+
+def test_re_running_a_folder_keeps_the_settings_of_the_earlier_calls(tmp_path):
+    # Completed runs are skipped on a re-run, so the folder ends up holding
+    # results from both calls; a configuration describing only the second would
+    # not account for the seeds the first one used
+    data_path = tmp_path / 'Data'
+    make_batch(data_path).run(n_runs=2, verbose=False, max_workers=1, base_seed=100)
+    make_batch(data_path).run(n_runs=3, verbose=False, max_workers=1, base_seed=999)
+
+    config = read_config(data_path)
+    assert [(entry['base_seed'], entry['n_runs']) for entry in config['run_history']] == \
+           [(100, 2), (999, 3)]
+    # The latest call stays where anything reading the file expects it
+    assert config['run_settings'] == config['run_history'][-1]
+
+
+def test_clearing_the_folder_starts_a_fresh_history(tmp_path):
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
+    from ddmtolab.Algorithms.STSO.GA import GA
+
+    data_path = tmp_path / 'Data'
+    make_batch(data_path).run(n_runs=1, verbose=False, max_workers=1, base_seed=100)
+
+    exp = BatchExperiment(base_path=str(data_path), clear_folder=True)
+    exp.add_problem(make_sphere_problem, 'P1')
+    exp.add_algorithm(GA, 'GA', n=10, max_nfes=40)
+    exp.run(n_runs=1, verbose=False, max_workers=1, base_seed=200)
+
+    history = read_config(data_path)['run_history']
+    assert [entry['base_seed'] for entry in history] == [200]
+
+
+def test_a_configuration_written_before_the_history_existed_is_not_dropped(tmp_path):
+    data_path = tmp_path / 'Data'
+    data_path.mkdir(parents=True)
+    (data_path / 'experiment_config.yaml').write_text(
+        'created_at: x\nbase_path: y\nclear_folder: false\n'
+        'problems: []\nalgorithms: []\n'
+        'run_settings:\n  n_runs: 5\n  max_workers: 2\n  base_seed: 7\n'
+        '  start_time: x\n',
+        encoding='utf-8'
+    )
+    make_batch(data_path).run(n_runs=1, verbose=False, max_workers=1, base_seed=8)
+
+    history = read_config(data_path)['run_history']
+    assert [entry['base_seed'] for entry in history] == [7, 8]
+
+
+def test_an_unreadable_configuration_does_not_stop_the_batch(tmp_path):
+    data_path = tmp_path / 'Data'
+    data_path.mkdir(parents=True)
+    (data_path / 'experiment_config.yaml').write_text('{[ not yaml', encoding='utf-8')
+
+    records = make_batch(data_path).run(n_runs=1, verbose=False, max_workers=1,
+                                        base_seed=3)
+
+    assert all(r['Status'] == 'Success' for r in records)
+    assert [entry['base_seed'] for entry in read_config(data_path)['run_history']] == [3]
+
+
+def test_the_configuration_still_loads_with_from_config(tmp_path):
+    from ddmtolab.Methods.batch_experiment import BatchExperiment
+
+    data_path = tmp_path / 'Data'
+    make_batch(data_path).run(n_runs=1, verbose=False, max_workers=1, base_seed=100)
+    make_batch(data_path).run(n_runs=2, verbose=False, max_workers=1, base_seed=200)
+
+    loaded = BatchExperiment.from_config(str(data_path / 'experiment_config.yaml'))
+    assert loaded._loaded_run_settings['base_seed'] == 200
+    assert loaded._loaded_run_settings['n_runs'] == 2
+
+
 def test_a_failing_run_is_recorded_without_stopping_the_batch(tmp_path):
     from ddmtolab.Methods.batch_experiment import BatchExperiment
     from ddmtolab.Algorithms.STSO.GA import GA

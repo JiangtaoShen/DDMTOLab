@@ -208,9 +208,50 @@ class BatchExperiment:
             dumped = dumped[:-4].strip()
         return dumped
 
+    def _previous_run_history(self, config_path: str) -> List[Dict[str, Any]]:
+        """
+        Read the run history already recorded in a configuration file.
+
+        Args:
+            config_path: Path to the configuration file, which need not exist
+
+        Returns:
+            The recorded history, oldest call first, or an empty list when there
+            is nothing to carry forward. A file written before the history was
+            kept still records its last call, so that call is preserved rather
+            than dropped on the first re-run.
+        """
+        if not os.path.exists(config_path):
+            return []
+
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                existing = yaml.safe_load(f) or {}
+        except Exception as e:
+            print(f"⚠️ Warning: Could not read the previous configuration "
+                  f"({str(e)}); its run history is lost\n")
+            return []
+
+        history = existing.get('run_history')
+        if isinstance(history, list):
+            return [entry for entry in history if isinstance(entry, dict)]
+
+        previous = existing.get('run_settings')
+        return [previous] if isinstance(previous, dict) and previous else []
+
     def save_config(self, n_runs: int, max_workers: int, base_seed: int = None):
         """
         Save experiment configuration to YAML file with custom formatting
+
+        Every call to :meth:`run` appends its settings to ``run_history`` instead
+        of discarding the ones before it. A folder is often filled by several
+        calls -- completed runs are skipped on a re-run, so a batch extended from
+        20 to 30 runs, or resumed under a different seed, mixes results produced
+        under different settings. Keeping only the latest would leave the file
+        describing settings that never produced most of the data next to it.
+
+        ``run_settings`` still holds the most recent call, so anything reading
+        it, :meth:`from_config` included, is unaffected.
 
         Args:
             n_runs: Number of independent runs
@@ -218,15 +259,19 @@ class BatchExperiment:
             base_seed: Base seed used for system-level random-seed control, or None
                       if the runs were not seeded
         """
-        # Add run settings
-        self.experiment_config['run_settings'] = {'n_runs': n_runs, 'max_workers': max_workers,
-                                                  'base_seed': base_seed,
-                                                  'start_time': datetime.now().isoformat()}
-
         s = self._yaml_scalar  # YAML-safe scalar renderer
 
         # Save to YAML file
         config_path = os.path.join(self.base_path, 'experiment_config.yaml')
+
+        # Add run settings, keeping the calls that came before this one
+        current_run = {'n_runs': n_runs, 'max_workers': max_workers,
+                       'base_seed': base_seed,
+                       'start_time': datetime.now().isoformat()}
+        self.experiment_config['run_settings'] = current_run
+        self.experiment_config['run_history'] = (
+            self._previous_run_history(config_path) + [current_run]
+        )
         try:
             with open(config_path, 'w', encoding='utf-8') as f:
                 # Write basic info
@@ -263,6 +308,22 @@ class BatchExperiment:
                 f.write(f"  max_workers: {s(self.experiment_config['run_settings']['max_workers'])}\n")
                 f.write(f"  base_seed: {s(self.experiment_config['run_settings']['base_seed'])}\n")
                 f.write(f"  start_time: {s(self.experiment_config['run_settings']['start_time'])}\n")
+
+                # Write every call that has filled this folder, oldest first;
+                # the last entry is the run_settings above
+                f.write("\n# Every run() call that has written into this folder,"
+                        " oldest first.\n")
+                f.write("# The data on disk may come from several of them, since"
+                        " completed runs\n# are skipped when a batch is resumed"
+                        " or extended.\n")
+                f.write("run_history:\n")
+                for i, entry in enumerate(self.experiment_config['run_history']):
+                    if i > 0:
+                        f.write("\n")
+                    f.write(f"  - n_runs: {s(entry.get('n_runs'))}\n")
+                    f.write(f"    max_workers: {s(entry.get('max_workers'))}\n")
+                    f.write(f"    base_seed: {s(entry.get('base_seed'))}\n")
+                    f.write(f"    start_time: {s(entry.get('start_time'))}\n")
 
             print(f"💾 Configuration saved to: {config_path}\n")
         except Exception as e:

@@ -172,7 +172,39 @@ Experiment configurations are automatically saved as YAML files (``experiment_co
 1. Creation time and base path
 2. Detailed problem configurations
 3. Algorithm parameters
-4. Run settings (number of runs, workers, etc.)
+4. Run settings of the most recent call (number of runs, workers, base seed, start time)
+5. ``run_history``: the same settings for every call that has written into the folder, oldest first
+
+**Why the history matters:**
+
+Completed runs are skipped when a batch is re-run, so one data folder is often
+filled by several calls. Extending a batch from 20 to 30 runs, or resuming it
+under a different ``base_seed``, leaves results produced under different
+settings side by side:
+
+.. code-block:: yaml
+
+    run_settings:            # the most recent call
+      n_runs: 3
+      max_workers: 2
+      base_seed: 999
+      start_time: '2026-08-06T10:46:40'
+
+    run_history:
+      - n_runs: 2            # runs 1 and 2 were produced under seeds 100, 101
+        max_workers: 2
+        base_seed: 100
+        start_time: '2026-08-06T10:46:32'
+
+      - n_runs: 3            # only run 3 came from this call, under seed 1001
+        max_workers: 2
+        base_seed: 999
+        start_time: '2026-08-06T10:46:40'
+
+Reading ``run_settings`` alone would suggest all three runs used seeds 999 to
+1001, which the ``Seed`` column of the timing summaries contradicts. The history
+accounts for every result in the folder. Starting a batch with
+``clear_folder=True`` empties the folder and therefore begins a fresh history.
 
 **Loading from Configuration:**
 
