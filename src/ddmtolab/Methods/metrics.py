@@ -162,19 +162,31 @@ class HV:
         """
         Compute HV for a set of objective vectors.
 
+        The objectives are normalized so that the reference point maps to 1 in
+        every dimension, which puts the result on the [0, 1] scale whichever way
+        the reference is supplied. Passing ``pf`` places the reference 10% beyond
+        the front, so ``calculate(objs, pf=front)`` equals
+        ``calculate(objs, reference=fmin + 1.1 * (front.max(0) - fmin))``.
+
         Parameters
         ----------
         objs : np.ndarray
             Objective matrix, shape (n, m)
         pf : np.ndarray, optional
-            True Pareto front for normalization, shape (n_pf, m)
+            True Pareto front, whose nadir defines the reference point,
+            shape (n_pf, m)
         reference : np.ndarray, optional
             Reference point for HV calculation, shape (m,)
 
         Returns
         -------
         float
-            HV value
+            HV value in [0, 1]
+
+        Raises
+        ------
+        ValueError
+            If neither ``pf`` nor ``reference`` is given.
         """
         if pf is None and reference is None:
             raise ValueError("Either pf or reference must be provided")
@@ -185,27 +197,20 @@ class HV:
 
         n, m = objs.shape
 
-        # Normalization (guard against zero range in any objective)
+        # The origin anchors the box unless the front reaches below it
+        fmin = np.minimum(np.min(objs, axis=0), np.zeros(m))
         if pf is not None:
-            fmin = np.minimum(np.min(objs, axis=0), np.zeros(m))
-            fmax = np.max(pf, axis=0)
-            denom = (fmax - fmin) * 1.1
-            denom = np.where(denom <= 0, 1.0, denom)
-            objs_norm = (objs - fmin) / denom
-            ref_point_norm = np.ones(m)
-            valid_mask = np.all(objs_norm <= ref_point_norm, axis=1)
-            objs_filtered = objs_norm[valid_mask]
+            # 10% beyond the nadir of the front, the usual convention
+            span = (np.max(pf, axis=0) - fmin) * 1.1
         else:
-            fmin = np.minimum(np.min(objs, axis=0), np.zeros(m))
-            fmax = np.asarray(reference, dtype=float)
-            denom = (fmax - fmin) * 1.1
-            denom = np.where(denom <= 0, 1.0, denom)
-            objs_norm = (objs - fmin) / denom
-            # A point equal to the reference maps to 1/1.1; keep the filter
-            # consistent with the reference box so no point lies outside it
-            ref_point_norm = np.ones(m) / 1.1
-            valid_mask = np.all(objs_norm <= ref_point_norm, axis=1)
-            objs_filtered = objs_norm[valid_mask]
+            span = np.asarray(reference, dtype=float) - fmin
+
+        # A zero range carries no volume; keep it finite rather than dividing by 0
+        span = np.where(span <= 0, 1.0, span)
+
+        objs_norm = (objs - fmin) / span
+        ref_point_norm = np.ones(m)
+        objs_filtered = objs_norm[np.all(objs_norm <= ref_point_norm, axis=1)]
 
         if objs_filtered.shape[0] == 0:
             return 0.0
@@ -461,13 +466,14 @@ class DeltaP:
         # pairwise distances (n_pf x n)
         distances = cdist(pf, objs, metric='euclidean')
 
-        # GD component: mean of minimum distances from PF to objs
-        gd = np.mean(np.min(distances, axis=1))
+        # IGD component: for every reference point, the nearest obtained one
+        igd = np.mean(np.min(distances, axis=1))
 
-        # IGD component: mean of minimum distances from objs to PF
-        igd = np.mean(np.min(distances, axis=0))
+        # GD component: for every obtained point, the nearest reference one
+        gd = np.mean(np.min(distances, axis=0))
 
-        # Δp = max(GD, IGD)
+        # Δp = max(GD_1, IGD_1); both components use p = 1, unlike the GD class,
+        # which follows Van Veldhuizen's ||d||_2 / n
         return float(max(gd, igd))
 
     def __call__(self, objs: np.ndarray, pf: np.ndarray) -> float:

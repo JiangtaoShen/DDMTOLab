@@ -286,6 +286,8 @@ Initialize the ``DataAnalyzer`` with configuration options:
         effect_size=False,               # Report Cliff's delta per comparison
         friedman_test=False,             # Append Friedman rows to the table
         friedman_control=None,           # Control algorithm for the post-hoc
+        cd_diagram=False,                # Draw the critical difference diagram
+        cd_alpha=None,                   # Its alpha (defaults to significance_level)
         log_scale=False,                 # Whether to use log scale
         show_pf=True,                    # Whether to show true Pareto front
         show_nd=True,                    # Whether to show only non-dominated
@@ -330,11 +332,53 @@ Reference definitions support three methods:
 Statistical Comparison
 ~~~~~~~~~~~~~~~~~~~~~~
 
-By default each problem-task instance is compared against the baseline (the
-last entry of ``algorithm_order``) with a Wilcoxon rank-sum test, annotating
-cells with ``+`` (better), ``-`` (worse) or ``=`` (no significant difference).
-Four further methods are available, all **disabled by default** so existing
-scripts keep producing identical output:
+The platform implements the two standard methodologies for comparing
+algorithms:
+
+- **[D06]** J. Demsar, *Statistical Comparisons of Classifiers over Multiple
+  Data Sets*, JMLR 7 (2006) 1-30.
+- **[D11]** J. Derrac, S. Garcia, D. Molina, F. Herrera, *A practical tutorial
+  on the use of nonparametric statistical tests as a methodology for comparing
+  evolutionary and swarm intelligence algorithms*, Swarm and Evolutionary
+  Computation 1 (2011) 3-18.
+
+Everything below is **disabled by default**, so existing scripts keep producing
+identical output.
+
+Two questions, two families of tests
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The two families answer different questions and must not be confused:
+
+**Per-instance** -- "on *this* problem, do the runs of A differ from the runs of
+B?" One sample per run, and the answer is a cell annotation in the results
+table. This is the ``+``/``-``/``=`` column of ``results_table_*.xlsx``,
+produced by a Wilcoxon **rank-sum** test against the baseline (the last entry of
+``algorithm_order``).
+
+**Multi-problem** -- "across the whole benchmark suite, is A better than B?"
+One value per algorithm-problem instance, obtained by collapsing that instance's
+runs into the displayed statistic. This is what [D06] and [D11] are about, and
+what :mod:`ddmtolab.Methods.statistical_tests` implements.
+
+============================================  ==================================================
+Question                                      Method
+============================================  ==================================================
+Runs of two algorithms on one problem         ``rank_sum_test=True`` (on by default)
+...corrected over many instances              ``holm_correction=True``
+...and how large is the difference            ``effect_size=True`` (Cliff's delta)
+Two algorithms over the whole suite           ``sign_test``, ``wilcoxon_signed_rank_test``
+Do k algorithms differ at all                 ``friedman_test`` (+ Iman-Davenport),
+                                              ``friedman_aligned_test``, ``quade_test``
+Which algorithms differ from *my* method      ``control_post_hoc`` (7 procedures)
+Which algorithms differ from each other       ``all_pairs_post_hoc`` (4 procedures)
+...as a picture                               ``cd_diagram=True``
+By how much do they differ                    ``contrast_estimation``
+All of the above in one file                  ``multi_problem_report=True``
+============================================  ==================================================
+
+Per-instance options
+^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: python
 
@@ -344,6 +388,9 @@ scripts keep producing identical output:
         holm_correction=True,          # correct for testing many instances
         effect_size=True,              # how large the difference is
         friedman_test=True,            # rank all algorithms at once
+        cd_diagram=True,               # draw the critical difference diagram
+        cd_alpha=0.10,                 # the alpha Demsar's own diagrams use
+        multi_problem_report=True,     # the full [D11] analysis in one workbook
     )
     analyzer.run()
 
@@ -369,11 +416,27 @@ scripts keep producing identical output:
 **Friedman test** (``friedman_test``, ``friedman_control``)
     A single omnibus test over all algorithms and instances at once, rather
     than many pairwise ones. It appends two rows to the table: the average rank
-    of each algorithm, labelled with the chi-squared statistic and its p-value,
-    and Holm-corrected post-hoc comparisons against a control algorithm
-    (``friedman_control``, defaulting to the baseline). It needs at least three
-    algorithms and two instances, and raises a ``ValueError`` otherwise rather
-    than reporting a meaningless number.
+    of each algorithm, labelled with the chi-squared statistic, the
+    Iman-Davenport ``F_F`` correction of it (which is less conservative) and
+    their p-values, and Holm-corrected post-hoc comparisons against a control
+    algorithm (``friedman_control``, defaulting to the baseline). It needs at
+    least three algorithms and two instances, and raises a ``ValueError``
+    otherwise rather than reporting a meaningless number.
+
+**Critical difference diagram** (``cd_diagram``, ``cd_alpha``)
+    The all-pairs counterpart of the Friedman post-hoc rows, drawn as Figure
+    1(a) of Demsar (2006) and saved as ``cd_diagram.<figure_format>``. Average
+    ranks are plotted on an axis turned so the best rank is on the right, and
+    groups of algorithms that the Nemenyi test cannot tell apart are connected
+    by a bar. Two algorithms differ significantly when their ranks differ by
+    more than the critical difference shown above the axis,
+
+    .. math:: CD = q_\alpha \sqrt{k(k+1) / (6N)}
+
+    for k algorithms over N instances. Use it when every algorithm is compared
+    against every other one; when one algorithm is the control, the Friedman
+    post-hoc rows make only k-1 comparisons and are more powerful. Because the
+    all-pairs test is conservative, Demsar's own diagrams use ``cd_alpha=0.10``.
 
 **median[IQR]** (``statistic_type='median_iqr'``)
     Reports the median with its interquartile range, rendered as
@@ -385,7 +448,8 @@ The methods are also usable directly, independently of table generation:
 
 .. code-block:: python
 
-    from ddmtolab.Methods.data_analysis import StatisticsCalculator, OptimizationDirection
+    from ddmtolab.Methods.data_analysis import (
+        OptimizationDirection, PlotConfig, PlotGenerator, StatisticsCalculator)
 
     # Holm-Bonferroni over a family of p-values, order preserved
     StatisticsCalculator.holm_bonferroni([0.01, 0.02, 0.03])
@@ -400,6 +464,128 @@ The methods are also usable directly, independently of table generation:
     result = StatisticsCalculator.perform_friedman_test(
         data_matrix, ['A', 'B', 'C'], control='C')
     print(result.statistic, result.p_value, result.average_ranks)
+    print(result.iman_davenport_statistic, result.iman_davenport_p_value)
+
+    # Nemenyi all-pairs post-hoc test and its diagram
+    nemenyi = StatisticsCalculator.perform_nemenyi_test(
+        data_matrix, ['A', 'B', 'C'], significance_level=0.10)
+    print(nemenyi.critical_difference, nemenyi.cliques)
+    PlotGenerator(PlotConfig(save_path='./Results')).plot_cd_diagram(nemenyi)
+
+The matrix these tests consume can be built from the analyzer's own results with
+``StatisticsCalculator.build_instance_matrix(best_values, algorithm_order,
+statistic_type)``, which collapses the runs of every problem-task instance into
+the same statistic the table displays.
+
+Multi-problem analysis
+^^^^^^^^^^^^^^^^^^^^^^
+
+``multi_problem_report=True`` runs the complete [D11] methodology on that same
+matrix and writes ``statistical_report.xlsx`` (or ``.tex``), one section per
+step of the tutorial:
+
+============================  ====================================================
+Sheet                         Contents
+============================  ====================================================
+``Rankings``                  Average ranks under all three schemes, each
+                              omnibus statistic and p-value, plus Iman-Davenport
+``Control (<name>)``          The k-1 comparisons against the control, with the
+                              adjusted p-value of all seven procedures
+``All pairs``                 The k(k-1)/2 comparisons, with Nemenyi, Holm,
+                              Shaffer and Bergmann-Hommel
+``Contrast estimation``       Median-based estimate of every pairwise difference
+``Pairwise tests``            Sign test and Wilcoxon signed-rank per pair
+============================  ====================================================
+
+.. code-block:: python
+
+    analyzer = DataAnalyzer(
+        data_path='./Data',
+        multi_problem_report=True,
+        report_scheme='friedman',   # or 'aligned' / 'quade'
+        report_control='MyAlgo',    # default: the best-ranked algorithm
+    )
+    report = analyzer.generate_statistical_report()
+    print(report['control'].rejected('finner', 0.05))
+
+Where each piece lives
+^^^^^^^^^^^^^^^^^^^^^^
+
+Every test is implemented **once**, in
+:mod:`ddmtolab.Methods.statistical_tests`, and follows one convention: data
+first, then ``direction``, then the options; a dataclass comes back, never a
+bare tuple; and the name is ``<name>_test``.
+
+``ddmtolab.Methods.data_analysis`` is the reporting layer on top. Its
+``StatisticsCalculator`` still exposes ``perform_rank_sum_test``,
+``perform_friedman_test``, ``perform_nemenyi_test``, ``holm_bonferroni`` and
+``cliffs_delta`` for backward compatibility, but they are thin wrappers that
+delegate to the module above; new code should call the module functions.
+
+The same tests are importable on their own for any matrix of results:
+
+.. code-block:: python
+
+    import numpy as np
+    from ddmtolab.Methods.statistical_tests import (
+        adjust_p_values, all_pairs_post_hoc, contrast_estimation, control_post_hoc,
+        friedman_test, quade_test, sign_test, wilcoxon_signed_rank_test)
+
+    matrix = np.array(...)          # (n_algorithms, n_problems)
+    names = ['A', 'B', 'C', 'MyAlgo']
+
+    # 1x1: two algorithms over the suite
+    print(wilcoxon_signed_rank_test(matrix[3], matrix[0]).p_value)
+    print(sign_test(matrix[3], matrix[0]).wins)
+
+    # omnibus: do they differ at all?
+    ranking = friedman_test(matrix, names)
+    print(ranking.average_ranks, ranking.iman_davenport_p_value)
+
+    # 1xN: everyone against the control
+    control = control_post_hoc(ranking, control='MyAlgo')
+    for hypothesis in control.hypotheses:
+        print(hypothesis.label, hypothesis.p_value, hypothesis.adjusted['finner'])
+
+    # NxN: everyone against everyone
+    print(all_pairs_post_hoc(ranking).rejected('bergmann', 0.05))
+
+    # how large are the differences?
+    print(contrast_estimation(matrix, names).estimators)
+
+**Which ranking scheme** (``report_scheme``)
+    ``'friedman'`` ranks within each problem only; ``'aligned'`` first subtracts
+    each problem's average so that observations from different problems become
+    comparable, which is more powerful when few algorithms are compared;
+    ``'quade'`` weighs each problem by how widely the algorithms spread out on
+    it, so easy problems count less. All three feed the same post-hoc machinery.
+
+**Which post-hoc procedure**
+    The seven control procedures are, from least to most powerful,
+    ``bonferroni`` < ``holm`` < ``hochberg`` < ``hommel``, with ``holland`` and
+    ``finner`` as sharper step-down variants and ``li`` as a two-step
+    alternative. For the all-pairs family, ``shaffer`` and ``bergmann`` exploit
+    that the pairwise hypotheses are logically interrelated and therefore reject
+    more than ``holm``; Bergmann-Hommel is enumerated only up to 10 algorithms.
+    All of them are reported as *adjusted p-values*, which can be compared
+    directly against any significance level.
+
+**Practical guidance from [D11]**
+    Use at least twice as many problems as algorithms (``n >= 2k``); beyond
+    roughly ``n = 8k`` the tests start flagging trivial differences. Wilcoxon's
+    test is the safe default for two algorithms, but never use a series of
+    pairwise tests in place of a post-hoc family -- that is exactly the
+    family-wise error the adjusted p-values exist to control. Check the omnibus
+    p-value before reading the post-hoc rows.
+
+Two documented deviations from the papers, both verified against their own
+tables: the Friedman Aligned omnibus statistic follows Eq. (4) of [D11] (its
+Table 11 value cannot be reproduced from that equation and the ranks printed
+next to it), and the sign test reports the exact binomial p-value, whose
+one-sided form is the one the critical-value tables of both papers tabulate.
+Rom's procedure is deliberately absent: its constants in [D11] are specific to
+alpha = 0.05 and are not reproducible from the recursion given for them, and
+Hochberg and Hommel cover the same step-up family.
 
 Complete Analysis Pipeline
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1560,7 +1746,7 @@ Available Metrics
      - Inverted Generational Distance Plus. A modified IGD that only penalizes dominated portions, making it Pareto-compliant.
    * - ``HV``
      - +1
-     - Hypervolume. Measures the volume of objective space dominated by the obtained solutions. Supports 2D/3D exact calculation and Monte Carlo for higher dimensions.
+     - Hypervolume. Measures the volume of objective space dominated by the obtained solutions, normalized to [0, 1]. Supports 2D/3D exact calculation and Monte Carlo for higher dimensions.
    * - ``DeltaP``
      - -1
      - Averaged Hausdorff Distance. Maximum of GD and IGD, measuring both convergence and diversity.
@@ -1629,8 +1815,15 @@ Usage Examples
 
     # HV (requires Pareto front or reference point)
     hv = HV()
-    hv_value = hv(objs, pf=pf)  # With Pareto front for normalization
-    hv_value = hv(objs, reference=np.array([2.0, 2.0]))  # With reference point
+    hv_value = hv(objs, pf=pf)  # Reference placed 10% beyond the front's nadir
+    hv_value = hv(objs, reference=np.array([2.0, 2.0]))  # Reference given directly
+
+The objectives are normalized so that the reference point maps to 1 in every
+dimension, which puts HV on the [0, 1] scale whichever way the reference is
+supplied. The two calls above therefore agree exactly when the reference point
+is the one the front implies:
+``hv(objs, pf=pf) == hv(objs, reference=fmin + 1.1 * (pf.max(0) - fmin))``,
+with ``fmin = minimum(objs.min(0), 0)``.
 
     # Averaged Hausdorff Distance
     deltap = DeltaP()
