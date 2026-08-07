@@ -1,3 +1,5 @@
+"""Collocation-point generation and plotting helpers for the PINN-HPO suite."""
+
 import torch
 import matplotlib.pyplot as plt
 import numpy as np

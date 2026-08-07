@@ -1,3 +1,11 @@
+"""Multi-objective sensor coverage problem (MO-SCP).
+
+2 multi-task bi-objective versions of
+:mod:`~ddmtolab.Problems.RWO.scp`, trading coverage against deployment cost.
+Tasks differ in the number of sensors and therefore in dimension.
+``SETTINGS`` provides the hypervolume reference points.
+"""
+
 import numpy as np
 import scipy.io
 import pkgutil
@@ -35,7 +43,7 @@ class MO_SCP:
     problem_information = {
         'n_cases': 2,
         'n_tasks': '[4, 5]',
-        'n_dims': '[75, 105]',
+        'n_dims': '[75, 102]',
         'n_objs': '2',
         'n_cons': '0',
         'type': 'real_world',
@@ -52,7 +60,7 @@ class MO_SCP:
         data = scipy.io.loadmat(mat_file)
         self.A = data['A']  # Target points matrix
 
-    def P1(self, Nmin=28, task_num=5, gap=1) -> MTOP:
+    def P1(self, Nmin=28, K=5, gap=1) -> MTOP:
         """
         Generates MO_SCP Problem 1: Multi-Objective Sensor Coverage with uniform gap.
 
@@ -63,7 +71,7 @@ class MO_SCP:
         ----------
         Nmin : int, optional
             Minimum number of sensors (default: 28)
-        task_num : int, optional
+        K : int, optional
             Number of tasks to create (default: 5)
         gap : int, optional
             Gap between consecutive tasks' sensor numbers (default: 1)
@@ -89,7 +97,7 @@ class MO_SCP:
         # Calculate sample range for coverage tolerance
         rsample = 2.0 / (self.A.shape[0] - 1)
 
-        for t in range(task_num):
+        for t in range(K):
             num_sensors = Nmin + gap * t
             dim = num_sensors * 3
 
@@ -120,7 +128,7 @@ class MO_SCP:
 
         return problem
 
-    def P2(self, Nmin=25, task_num=4, gap=3) -> MTOP:
+    def P2(self, Nmin=25, K=4, gap=3) -> MTOP:
         """
         Generates MO_SCP Problem 2: Multi-Objective Sensor Coverage with larger gap.
 
@@ -132,7 +140,7 @@ class MO_SCP:
         ----------
         Nmin : int, optional
             Minimum number of sensors (default: 25)
-        task_num : int, optional
+        K : int, optional
             Number of tasks to create (default: 4)
         gap : int, optional
             Gap between consecutive tasks' sensor numbers (default: 3)
@@ -158,7 +166,7 @@ class MO_SCP:
         # Calculate sample range for coverage tolerance
         rsample = 2.0 / (self.A.shape[0] - 1)
 
-        for t in range(task_num):
+        for t in range(K):
             num_sensors = Nmin + gap * t
             dim = num_sensors * 3
 

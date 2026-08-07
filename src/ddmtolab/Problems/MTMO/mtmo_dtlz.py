@@ -1,3 +1,10 @@
+"""Multi-task DTLZ illustration problem.
+
+A single two-task problem pairing DTLZ2 (uni-modal g) with DTLZ3 (multi-modal
+g). Both tasks share the same Pareto-front geometry, so it is a convenient
+minimal example of positive transfer. Scalable in ``M`` and ``D``.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
@@ -113,6 +120,6 @@ P1_T2_PF = P1_T1_PF
 
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 1000,
+    'n_ref': 1000,
     'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF},
 }

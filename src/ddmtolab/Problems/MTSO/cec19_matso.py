@@ -1,3 +1,10 @@
+"""CEC 2019 many-task single-objective benchmark (MaTSO).
+
+6 problems, each generating ``K`` 50-dimensional tasks from the same base
+function with different rotations and shifts, to test knowledge transfer across
+many similar but distinct tasks.
+"""
+
 import scipy.io
 import pkgutil
 import io

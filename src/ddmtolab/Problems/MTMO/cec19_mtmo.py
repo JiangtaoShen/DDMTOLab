@@ -1,3 +1,10 @@
+"""CEC 2019 multi-task multi-objective benchmark (CPLX).
+
+10 two-task problems built on the LZ09 test suite, with complicated Pareto sets.
+Dimensions are 10 or 30 and objectives 2 or 3 depending on the problem.
+``SETTINGS`` provides the reference Pareto front of every task for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 
@@ -333,8 +340,8 @@ class CEC19MTMO:
     problem_information = {
         'n_cases': 10,
         'n_tasks': '2',
-        'n_dims': '50',
-        'n_objs': '2',
+        'n_dims': '[10, 30]',
+        'n_objs': '[2, 3]',
         'n_cons': '0',
         'type': 'synthetic',
     }
@@ -1002,8 +1009,7 @@ def P10_T2_PF(N, M=2) -> np.ndarray:
 
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 10000,
-    'pf_path': './MOReference',
+    'n_ref': 10000,
     'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF},
     'P2': {'T1': P2_T1_PF, 'T2': P2_T2_PF},
     'P3': {'T1': P3_T1_PF, 'T2': P3_T2_PF},

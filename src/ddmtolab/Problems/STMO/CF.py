@@ -1,3 +1,10 @@
+"""CEC 2009 constrained multi-objective benchmark suite (CF).
+
+10 constrained problems with complicated Pareto sets: CF1-CF7 are bi-objective
+and CF8-CF10 are three-objective. CF6 and CF7 carry two constraints, the rest
+one. ``SETTINGS`` provides the analytical Pareto front of every problem for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point
@@ -20,17 +27,14 @@ class CF:
         'n_tasks': '1',
         'n_dims': 'D',
         'n_objs': '[2, 3]',
-        'n_cons': '1',
+        'n_cons': '[1, 2]',
         'type': 'synthetic',
     }
 
-    def CF1(self, M=2, D=None) -> MTOP:
+    def CF1(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF1** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -62,13 +66,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF2(self, M=2, D=None) -> MTOP:
+    def CF2(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF2** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -98,13 +99,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF3(self, M=2, D=None) -> MTOP:
+    def CF3(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF3** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -139,13 +137,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF4(self, M=2, D=None) -> MTOP:
+    def CF4(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF4** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -179,13 +174,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF5(self, M=2, D=None) -> MTOP:
+    def CF5(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF5** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -221,13 +213,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF6(self, M=2, D=None) -> MTOP:
+    def CF6(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF6** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -244,7 +233,8 @@ class CF:
             return obj
 
         def C1(x):
-            D = x.shape[1]
+            x = np.atleast_2d(x)
+            n_vars = x.shape[1]
             term1 = 0.5 * (1 - x[:, 0]) - (1 - x[:, 0]) ** 2
             term2 = 0.25 * np.sqrt(1 - x[:, 0]) - 0.5 * (1 - x[:, 0])
 
@@ -265,13 +255,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF7(self, M=2, D=None) -> MTOP:
+    def CF7(self, M=2, D=10) -> MTOP:
         """
         Generates the **CF7** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -293,7 +280,8 @@ class CF:
             return obj
 
         def C1(x):
-            D = x.shape[1]
+            x = np.atleast_2d(x)
+            n_vars = x.shape[1]
             term1 = 0.5 * (1 - x[:, 0]) - (1 - x[:, 0]) ** 2
             term2 = 0.25 * np.sqrt(1 - x[:, 0]) - 0.5 * (1 - x[:, 0])
 
@@ -314,13 +302,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF8(self, M=3, D=None) -> MTOP:
+    def CF8(self, M=3, D=10) -> MTOP:
         """
         Generates the **CF8** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -361,13 +346,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF9(self, M=3, D=None) -> MTOP:
+    def CF9(self, M=3, D=10) -> MTOP:
         """
         Generates the **CF9** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape
@@ -405,13 +387,10 @@ class CF:
         problem.add_task(objective_func=T1, dim=D, constraint_func=C1, lower_bound=lb, upper_bound=ub)
         return problem
 
-    def CF10(self, M=3, D=None) -> MTOP:
+    def CF10(self, M=3, D=10) -> MTOP:
         """
         Generates the **CF10** problem.
         """
-        if D is None:
-            D = 10
-
         def T1(x):
             x = np.atleast_2d(x)
             N, n_vars = x.shape

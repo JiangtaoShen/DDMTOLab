@@ -1,9 +1,12 @@
-"""
-CMT Constrained Function Library
-==================================
+"""CMT constrained multi-task benchmark suite.
 
-This module contains all the constrained benchmark functions used in CMT problems.
-Each function has both objective and constraint components.
+9 two-task single-objective problems, each pairing two constrained landscapes.
+Every task carries one inequality constraint, except the second task of CMT6 and
+CMT8, which carries two. Tasks are ``D``-dimensional (50 by default).
+
+The module also hosts the constrained function library the suite is built from:
+each ``C_<Function><type>`` returns both the objective and the constraint
+violation of one landscape under one of the constraint types.
 """
 
 import numpy as np
@@ -858,7 +861,7 @@ class CMT:
         'n_tasks': '2',
         'n_dims': 'D',
         'n_objs': '1',
-        'n_cons': '1',
+        'n_cons': '[1, 2]',
         'type': 'synthetic',
     }
 

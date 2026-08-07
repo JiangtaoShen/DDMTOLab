@@ -1,3 +1,10 @@
+"""10-dimensional variant of the CEC 2017 multi-task benchmark.
+
+The same 9 two-task problems and optima relationships as
+:mod:`~ddmtolab.Problems.MTSO.cec17_mtso`, reduced to D=10 so they can be used
+as expensive / surrogate-assisted optimization test cases.
+"""
+
 import scipy.io
 import pkgutil
 import io

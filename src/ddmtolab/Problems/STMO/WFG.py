@@ -1,3 +1,11 @@
+"""WFG scalable multi-objective benchmark suite.
+
+9 problems (Walking Fish Group) built from composable shape and transformation
+functions, scalable in the number of objectives ``M``, decision variables ``D``
+and position parameters ``Kp``. ``SETTINGS`` provides the analytical Pareto
+front of every problem for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.algo_utils import nd_sort

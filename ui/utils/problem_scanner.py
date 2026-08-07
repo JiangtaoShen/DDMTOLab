@@ -19,7 +19,9 @@ STANDARD_PARAMS = {
     'Kp': {'type': 'int', 'default': 4},
 }
 
-# Parameter aliases (old name -> standard name)
+# Parameter aliases (legacy name -> standard name). Every suite shipped with
+# the platform uses the standard names; this map only keeps user-authored
+# problem classes working.
 PARAM_ALIASES = {
     'dim': 'D',
     'task_num': 'K',
@@ -41,8 +43,10 @@ SKIP_CLASSES = {'MTOP', 'LZ09', 'TemplateProblems'}
 # Modules to skip
 SKIP_MODULES = {'TEMPLATE_PROBLEM', 'template_problem'}
 
-# Methods to skip
-SKIP_METHODS = {'get', 'set', 'load', 'save', 'create', 'init', 'build', 'copy'}
+# Every benchmark problem is a public method annotated ``-> MTOP``. Helper
+# methods on a suite (plotting, data loading, ...) are recognised by the
+# absence of that annotation and are never offered as problems.
+PROBLEM_RETURN_ANNOTATION = 'MTOP'
 
 # Cache for scanned results
 _problem_cache: Dict[str, Dict] = {}
@@ -51,7 +55,7 @@ _scanned = False
 
 def scan_problem_method(method: Callable) -> Dict[str, Dict]:
     """
-    Extract D, M, K, L parameters from a problem method signature.
+    Extract D, M, K, Kp parameters from a problem method signature.
 
     Parameters
     ----------
@@ -62,6 +66,13 @@ def scan_problem_method(method: Callable) -> Dict[str, Dict]:
     -------
     Dict[str, Dict]
         Dictionary mapping parameter names to their metadata
+
+    Notes
+    -----
+    A ``None`` default means the suite derives that value from the other
+    parameters (DTLZ and WFG derive D from M). There is no number to show for
+    it, so the platform default from ``STANDARD_PARAMS`` is reported instead -
+    the value the caller will actually get if the control is left alone.
     """
     try:
         sig = inspect.signature(method)
@@ -77,7 +88,9 @@ def scan_problem_method(method: Callable) -> Dict[str, Dict]:
         std_name = PARAM_ALIASES.get(name, name)
 
         if std_name in STANDARD_PARAMS:
-            default = param.default if param.default != inspect.Parameter.empty else STANDARD_PARAMS[std_name]['default']
+            default = param.default
+            if default is inspect.Parameter.empty or default is None:
+                default = STANDARD_PARAMS[std_name]['default']
             params[std_name] = {
                 'type': STANDARD_PARAMS[std_name]['type'],
                 'default': default,
@@ -88,20 +101,31 @@ def scan_problem_method(method: Callable) -> Dict[str, Dict]:
 
 
 def _is_problem_method(method_name: str, method_obj: Any) -> bool:
-    """Check if a method is a problem creation method."""
+    """
+    Check if a method is a problem creation method.
+
+    A problem method is a public method whose return annotation is ``MTOP``.
+    The annotation is compared by name so that a string annotation (from
+    ``from __future__ import annotations``) is accepted too.
+    """
     # Skip private/magic methods
     if method_name.startswith('_'):
-        return False
-
-    # Skip common non-problem methods
-    if method_name.lower() in SKIP_METHODS:
         return False
 
     # Skip staticmethod
     if isinstance(method_obj, staticmethod):
         return False
 
-    return True
+    try:
+        annotation = inspect.signature(method_obj).return_annotation
+    except (ValueError, TypeError):
+        return False
+
+    if annotation is inspect.Signature.empty:
+        return False
+
+    name = getattr(annotation, '__name__', None) or str(annotation)
+    return name.rsplit('.', 1)[-1] == PROBLEM_RETURN_ANNOTATION
 
 
 def _scan_class(cls: type) -> Tuple[List[str], Dict[str, Dict]]:
@@ -313,6 +337,19 @@ def get_problem_module_path(category: str, suite: str) -> Optional[str]:
     if suite_info:
         return suite_info[0]
     return None
+
+
+def is_known_problem_suite(category: str, suite: str) -> bool:
+    """
+    Check whether the scanner found this suite.
+
+    A suite can be known and still report no parameters at all (CEC17MTSO and
+    friends are fixed by their benchmark definition), so callers must test this
+    rather than treating an empty parameter dict as "scan failed".
+    """
+    if not _scanned:
+        scan_all_problems()
+    return suite in _problem_cache.get(category, {})
 
 
 def is_fixed_dimension_problem(category: str, suite: str) -> bool:

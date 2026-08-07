@@ -1,3 +1,11 @@
+"""Synchronous optimal pulse-width modulation (SOPM).
+
+2 three-task constrained bi-objective problems that place the switching angles
+of a medium-voltage inverter, trading total harmonic distortion against
+switching loss. Angles must stay strictly increasing, which yields one
+constraint per angle. ``SETTINGS`` provides the hypervolume reference points.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 
@@ -460,8 +468,6 @@ class SOPM:
 # Settings for SOPM MTMO problems
 SETTINGS = {
     'metric': 'HV',
-    'n_pf': 1000,
-    'pf_path': './MOReference',
     'P1': {
         'T1': [2.854987e-01, 1.024000e-01],
         'T2': [7.342985e-01, 1.024000e-01],

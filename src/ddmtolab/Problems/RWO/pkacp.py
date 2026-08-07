@@ -1,3 +1,10 @@
+"""Planar kinematic arm control problem (PKACP).
+
+A single ``K``-task problem steering the end effector of a ``D``-joint planar
+arm to a target position. Tasks differ in maximum angular range and link
+length, which gives each task a different landscape.
+"""
+
 import numpy as np
 import os
 import scipy.io
@@ -47,7 +54,7 @@ class PKACP:
         if not os.path.exists(self.data_dir):
             os.makedirs(self.data_dir)
 
-    def P1(self, task_num=20, dim=20) -> MTOP:
+    def P1(self, K=20, D=20) -> MTOP:
         """
         Generates PKACP Problem 1: Planar Kinematic Arm Control.
 
@@ -57,13 +64,13 @@ class PKACP:
 
         Parameters
         ----------
-        task_num : int, optional
+        K : int, optional
             Number of tasks to create (default: 20)
-        dim : int, optional
+        D : int, optional
             Number of joints (dimensionality) for each task (default: 20)
 
         Task Structure:
-        - T_i: 1-objective, dim-dimensional
+        - T_i: 1-objective, D-dimensional
           * Decision variables: Joint angles in [0, 1]
           * These are scaled to actual angular ranges based on task parameters
           * Objective: Euclidean distance to target (0.5, 0.5)
@@ -80,21 +87,21 @@ class PKACP:
         Returns
         -------
         MTOP
-            A Multi-Task Optimization Problem instance with task_num tasks.
+            A Multi-Task Optimization Problem instance with K tasks.
         """
         # Generate or load task parameters
-        task_para = self._generate_task_parameters(task_num, dim)
+        task_para = self._generate_task_parameters(K, D)
 
         problem = MTOP()
 
-        for t in range(task_num):
+        for t in range(K):
             # Extract task-specific parameters
             Amax = task_para[t, 0]  # Maximum angular range
             Lmax = task_para[t, 1]  # Maximum link length
 
             # All joints have angles in [0, 1]
-            lb = np.zeros(dim)
-            ub = np.ones(dim)
+            lb = np.zeros(D)
+            ub = np.ones(D)
 
             # Create task function with closure
             def create_task_function(amax, lmax, d):
@@ -103,37 +110,37 @@ class PKACP:
 
                 return task_func
 
-            task_function = create_task_function(Amax, Lmax, dim)
+            task_function = create_task_function(Amax, Lmax, D)
 
             problem.add_task(
                 task_function,
-                dim=dim,
+                dim=D,
                 lower_bound=lb,
                 upper_bound=ub
             )
 
         return problem
 
-    def _generate_task_parameters(self, task_num, dim):
+    def _generate_task_parameters(self, K, D):
         """
         Generate or load task parameters using CVT.
 
         Parameters
         ----------
-        task_num : int
+        K : int
             Number of tasks
-        dim : int
+        D : int
             Dimensionality
 
         Returns
         -------
-        task_para : ndarray, shape (task_num, 2)
+        task_para : ndarray, shape (K, 2)
             Task parameters [Amax, Lmax] for each task
         """
         # Check if parameters already exist
         file_name = os.path.join(
             self.data_dir,
-            f'cvt_d{dim}_nt{task_num}.mat'
+            f'cvt_d{D}_nt{K}.mat'
         )
 
         if os.path.exists(file_name):
@@ -142,11 +149,11 @@ class PKACP:
             task_para = data['task_para']
         else:
             # Generate new parameters using CVT (k-means approximation)
-            samples = 50 * task_num
+            samples = 50 * K
             x = np.random.rand(samples, 2)
 
             # Use k-means to approximate CVT
-            task_para, _ = kmeans2(x, task_num, minit='points')
+            task_para, _ = kmeans2(x, K, minit='points')
 
             # Save parameters
             scipy.io.savemat(file_name, {'task_para': task_para})
@@ -159,7 +166,7 @@ class PKACP:
 
         Parameters
         ----------
-        angles_var : array-like, shape (n_samples, dim) or (dim,)
+        angles_var : array-like, shape (n_samples, D) or (D,)
             Joint angles in [0, 1]
         Amax : float
             Maximum angular range for this task

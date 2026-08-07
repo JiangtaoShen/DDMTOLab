@@ -1,3 +1,10 @@
+"""CEC 2019 many-task multi-objective benchmark (MaTMO).
+
+6 problems, each generating ``K`` bi-objective tasks with different shifts and
+rotations. P1, P4 and P6 use a DTLZ formulation, P2, P3 and P5 a ZDT one.
+``SETTINGS`` provides the reference Pareto front of every problem for IGD.
+"""
+
 import numpy as np
 import pkgutil
 import io
@@ -14,7 +21,7 @@ class CEC19_MaTMO:
     Notes
     -----
     Fixed parameters by benchmark definition:
-    - D=50 (decision variables)
+    - D=50 (decision variables), except P3 which is 10-dimensional
     - M=2 (number of objectives)
     - K is configurable (default is 10)
 
@@ -27,7 +34,7 @@ class CEC19_MaTMO:
     problem_information = {
         'n_cases': 6,
         'n_tasks': 'K',
-        'n_dims': '50',
+        'n_dims': '[10, 50]',
         'n_objs': '2',
         'n_cons': '0',
         'type': 'synthetic',
@@ -421,8 +428,7 @@ def P6_PF(N, M=2):
 
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 10000,
-    'pf_path': './MOReference',
+    'n_ref': 10000,
     'P1': {'all_tasks': P1_PF},
     'P2': {'all_tasks': P2_PF},
     'P3': {'all_tasks': P3_PF},

@@ -1,3 +1,11 @@
+"""CEC 2017 multi-task multi-objective benchmark (MTMO).
+
+9 problems, each pairing two multi-objective tasks with shared decision
+variables. Dimensions range from 10 to 50 and objectives from 2 to 3 depending
+on the problem. ``SETTINGS`` provides the reference Pareto front of every task
+for IGD.
+"""
+
 import scipy.io
 import pkgutil
 import io
@@ -939,8 +947,7 @@ def P9_T2_PF(N, M=2) -> np.ndarray:
 
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 1000,
-    'pf_path': './MOReference',
+    'n_ref': 1000,
     'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF},
     'P2': {'T1': P2_T1_PF, 'T2': P2_T2_PF},
     'P3': {'T1': P3_T1_PF, 'T2': P3_T2_PF},

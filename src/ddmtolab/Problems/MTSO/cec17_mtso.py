@@ -1,3 +1,10 @@
+"""CEC 2017 evolutionary multi-task optimization benchmark (MTSO).
+
+9 two-task single-objective problems covering complete, partial and no
+intersection of the global optima, each at high, medium and low inter-task
+similarity. Tasks are 50-dimensional, except the second task of P6 (25).
+"""
+
 import pkgutil
 import scipy.io
 import io
@@ -17,7 +24,7 @@ class CEC17MTSO:
     Notes
     -----
     Fixed parameters by benchmark definition:
-    - D=50 (decision variables)
+    - D=50 (decision variables), except P6 whose second task is 25-dimensional
     - K=2 (number of tasks)
 
     Attributes
@@ -29,7 +36,7 @@ class CEC17MTSO:
     problem_information = {
         'n_cases': 9,
         'n_tasks': '2',
-        'n_dims': '50',
+        'n_dims': '[25, 50]',
         'n_objs': '1',
         'n_cons': '0',
         'type': 'synthetic',

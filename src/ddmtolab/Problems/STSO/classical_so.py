@@ -1,3 +1,11 @@
+"""Classical single-objective benchmark landscapes.
+
+9 unconstrained textbook functions (Ackley, Rastrigin, Sphere, ...) exposed as
+single-task MTOPs with an identity rotation and a zero shift, so the global
+optimum sits at the origin. Use :mod:`~ddmtolab.Problems.STSO.stsotest` for the
+rotated and shifted variants.
+"""
+
 from ddmtolab.Problems.BasicFunctions.basic_functions import *
 from ddmtolab.Methods.mtop import MTOP
 import numpy as np

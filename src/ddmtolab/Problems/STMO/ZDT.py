@@ -1,3 +1,11 @@
+"""ZDT multi-objective benchmark suite.
+
+6 bi-objective problems (Zitzler, Deb and Thiele) with varying Pareto-front
+geometries: convex, concave, disconnected, multi-modal, binary-coded and
+non-uniformly distributed. ``SETTINGS`` provides the analytical Pareto front of
+every problem for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.algo_utils import nd_sort

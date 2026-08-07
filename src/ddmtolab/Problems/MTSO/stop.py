@@ -1,3 +1,10 @@
+"""STOP: scalable test problems for sequential transfer optimization.
+
+12 problems, each generating ``K`` source/target tasks from various benchmark
+landscapes with configurable transfer characteristics. Dimensions range from 25
+to 50 depending on the problem.
+"""
+
 import scipy.io
 from ddmtolab.Problems.BasicFunctions.basic_functions import *
 from ddmtolab.Methods.mtop import MTOP

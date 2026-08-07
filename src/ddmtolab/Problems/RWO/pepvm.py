@@ -1,3 +1,10 @@
+"""Parameter extraction of photovoltaic models (PEPVM).
+
+A single three-task problem fitting the single-diode (5 parameters),
+double-diode (7 parameters) and PV-module (5 parameters) models to measured
+current-voltage data by minimizing the root mean square error.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 

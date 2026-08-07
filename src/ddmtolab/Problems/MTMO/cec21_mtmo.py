@@ -1,3 +1,10 @@
+"""CEC 2021 multi-task multi-objective benchmark (MTMO).
+
+10 two-task problems, all 50-dimensional and bi-objective, combining different
+base landscapes with shifts and rotations. ``SETTINGS`` provides the reference
+Pareto front of every task for IGD.
+"""
+
 import numpy as np
 import pkgutil
 import io
@@ -1154,8 +1161,7 @@ P10_T2_PF = _concave_PF    # MMZDT, F17, concave
 
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 1000,
-    'pf_path': './MOReference',
+    'n_ref': 1000,
     'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF},
     'P2': {'T1': P2_T1_PF, 'T2': P2_T2_PF},
     'P3': {'T1': P3_T1_PF, 'T2': P3_T2_PF},

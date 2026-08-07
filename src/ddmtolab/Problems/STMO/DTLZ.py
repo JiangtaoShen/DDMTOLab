@@ -1,3 +1,11 @@
+"""DTLZ scalable multi-objective benchmark suite.
+
+9 problems (Deb, Thiele, Laumanns and Zitzler) scalable in both the number of
+objectives ``M`` and the number of decision variables ``D``. DTLZ8 and DTLZ9 are
+constrained. ``SETTINGS`` provides the analytical Pareto front of every problem
+for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point

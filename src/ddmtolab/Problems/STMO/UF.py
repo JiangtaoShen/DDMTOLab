@@ -1,3 +1,10 @@
+"""CEC 2009 unconstrained multi-objective benchmark suite (UF).
+
+10 unconstrained problems with complicated Pareto sets: UF1-UF7 are
+bi-objective and UF8-UF10 are three-objective. ``SETTINGS`` provides the
+analytical Pareto front of every problem for IGD.
+"""
+
 import numpy as np
 from ddmtolab.Methods.mtop import MTOP
 from ddmtolab.Methods.Algo_Methods.uniform_point import uniform_point

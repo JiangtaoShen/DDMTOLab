@@ -1,3 +1,10 @@
+"""Compact multi-task multi-objective instances.
+
+2 two-task, 10-dimensional bi-objective problems built on ZDT4 with different
+multi-modal g-functions; the second instance is constrained. ``SETTINGS``
+provides the reference Pareto front of every task for IGD.
+"""
+
 import pkgutil
 import io
 import scipy.io
@@ -219,8 +226,7 @@ P2_T2_PF = P1_T1_PF
 # Settings dictionary for the new instances
 SETTINGS = {
     'metric': 'IGD',
-    'n_pf': 1000,
-    'pf_path': './MOReference',
+    'n_ref': 1000,
     'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF},
     'P2': {'T1': P2_T1_PF, 'T2': P2_T2_PF},
 }

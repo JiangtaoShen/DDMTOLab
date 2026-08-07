@@ -23,7 +23,7 @@ from utils.algo_scanner import (
     get_discovered_algorithm_module_info,
 )
 from utils.problem_scanner import (
-    get_scanned_problem_params, is_fixed_dimension_problem,
+    get_scanned_problem_params, is_fixed_dimension_problem, is_known_problem_suite,
 )
 from utils.runner import count_pkl_files, BatchStatus, get_default_workers
 from utils.file_manager import FileManager
@@ -233,12 +233,14 @@ def _get_prob_params_for_suite(suite: str) -> dict:
     params = {}
     cat = _state["current_prob_category"]
 
-    # Try auto-scanned params first
-    scanned_params = get_scanned_problem_params(cat, suite)
-    suite_params = scanned_params if scanned_params else PROBLEM_PARAMS.get(suite, {})
+    # The scanner is authoritative for any suite it found - including suites
+    # that legitimately expose no parameters at all. Only fall back to the
+    # hardcoded tables when the scan did not find the suite.
+    known = is_known_problem_suite(cat, suite)
+    suite_params = get_scanned_problem_params(cat, suite) if known else PROBLEM_PARAMS.get(suite, {})
 
     # Use scanner to determine if fixed dimension
-    is_fixed_dim = is_fixed_dimension_problem(cat, suite) if scanned_params else (suite in FIXED_DIMENSION_SUITES)
+    is_fixed_dim = is_fixed_dimension_problem(cat, suite) if known else (suite in FIXED_DIMENSION_SUITES)
 
     # Check if objectives are fixed (e.g., ZDT, CF, UF have fixed M per problem)
     is_fixed_obj = suite in FIXED_OBJECTIVES_SUITES

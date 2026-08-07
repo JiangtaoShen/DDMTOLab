@@ -1,3 +1,10 @@
+"""CEC 2010 constrained real-parameter optimization (CSO) benchmark.
+
+18 constrained single-objective problems, exposed as single-task MTOPs.
+The dimension ``D`` is configurable up to 30 (the size of the shipped offset
+vectors); equality constraints are relaxed with a tolerance ``delta``.
+"""
+
 import numpy as np
 import scipy.io
 import pkgutil
@@ -31,7 +38,7 @@ class CEC10_CSO:
         'n_tasks': '1',
         'n_dims': '[10, 30]',
         'n_objs': '1',
-        'n_cons': '[1, 5]',
+        'n_cons': '[2, 5]',
         'type': 'synthetic',
     }
 
@@ -41,15 +48,15 @@ class CEC10_CSO:
         self.delta = 1e-4
         self.data_dir = 'data_cec10cso'
 
-    def _validate_dim(self, dim: int) -> int:
+    def _validate_dim(self, D: int) -> int:
         """Validate and cap dimension to max_dim."""
-        if dim > self.max_dim:
+        if D > self.max_dim:
             import warnings
-            warnings.warn(f"CEC10_CSO: dim={dim} exceeds max_dim={self.max_dim}, capping to {self.max_dim}")
+            warnings.warn(f"CEC10_CSO: D={D} exceeds max_dim={self.max_dim}, capping to {self.max_dim}")
             return self.max_dim
-        return dim
+        return D
 
-    def P1(self, dim=10) -> MTOP:
+    def P1(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 1.
 
@@ -60,7 +67,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -68,7 +75,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 1.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P1
@@ -84,7 +91,7 @@ class CEC10_CSO:
             0.093448598181657, -0.071208840780873, -0.036535677894572,
             -0.03126128526933, 0.099243805247963, 0.053872445945574
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 1"""
@@ -100,7 +107,7 @@ class CEC10_CSO:
                 2 * np.prod(np.cos(p) ** 2, axis=1)
             )
             denominator = np.sqrt(
-                np.sum(np.arange(1, dim + 1) * (p ** 2), axis=1)
+                np.sum(np.arange(1, D + 1) * (p ** 2), axis=1)
             )
 
             f = -numerator / denominator
@@ -117,7 +124,7 @@ class CEC10_CSO:
 
             # Inequality constraints (g <= 0)
             g1 = 0.75 - np.prod(p, axis=1)
-            g2 = np.sum(p, axis=1) - 7.5 * dim
+            g2 = np.sum(p, axis=1) - 7.5 * D
 
             # Set negative values to 0 (satisfied constraints)
             g1 = np.where(g1 < 0, 0, g1)
@@ -136,11 +143,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.zeros(dim)
-        ub = np.full(dim, 10.0)
+        lb = np.zeros(D)
+        ub = np.full(D, 10.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -148,7 +155,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P2(self, dim=10) -> MTOP:
+    def P2(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 2.
 
@@ -160,7 +167,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -168,7 +175,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 2.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P2
@@ -184,7 +191,7 @@ class CEC10_CSO:
             -0.038656025783381, 0.333291935226012, -0.293687524888766,
             -0.347859473554797, -0.089300971656411, 0.142027393193559
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 2"""
@@ -210,12 +217,12 @@ class CEC10_CSO:
 
             # Inequality constraints (g <= 0)
             rastrigin_z = z ** 2 - 10 * np.cos(2 * np.pi * z) + 10
-            g1 = 10 - (1 / dim) * np.sum(rastrigin_z, axis=1)
-            g2 = (1 / dim) * np.sum(rastrigin_z, axis=1) - 15
+            g1 = 10 - (1 / D) * np.sum(rastrigin_z, axis=1)
+            g2 = (1 / D) * np.sum(rastrigin_z, axis=1) - 15
 
             # Equality constraint (|h| <= delta)
             rastrigin_y = y ** 2 - 10 * np.cos(2 * np.pi * y) + 10
-            h1 = np.abs((1 / dim) * np.sum(rastrigin_y, axis=1) - 20) - delta
+            h1 = np.abs((1 / D) * np.sum(rastrigin_y, axis=1) - 20) - delta
 
             # Set negative values to 0 (satisfied constraints)
             g1 = np.where(g1 < 0, 0, g1)
@@ -232,11 +239,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -5.12)
-        ub = np.full(dim, 5.12)
+        lb = np.full(D, -5.12)
+        ub = np.full(D, 5.12)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -244,7 +251,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P3(self, dim=10) -> MTOP:
+    def P3(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 3.
 
@@ -255,7 +262,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -263,7 +270,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 3.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P3
@@ -279,7 +286,7 @@ class CEC10_CSO:
             357.51468895930395, 166.3771729386268, 47.59455935830133,
             188.20606700809785, 184.7964918401363, 267.9201349178807
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 3 (Rosenbrock)"""
@@ -326,11 +333,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -1000.0)
-        ub = np.full(dim, 1000.0)
+        lb = np.full(D, -1000.0)
+        ub = np.full(D, 1000.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -338,7 +345,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P4(self, dim=10) -> MTOP:
+    def P4(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 4.
 
@@ -349,7 +356,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -357,7 +364,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 4.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P4
@@ -373,7 +380,7 @@ class CEC10_CSO:
             9.446412007392851, -6.41068985463494, -9.135251626491991,
             2.07763837492787, 8.051026378030816, -1.002691032064544
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 4 (max function)"""
@@ -400,10 +407,10 @@ class CEC10_CSO:
             g = np.zeros(ps)
 
             # Equality constraints (|h| <= delta)
-            h1 = np.abs((1 / dim) * np.sum(z * np.cos(np.sqrt(np.abs(z))), axis=1)) - delta
+            h1 = np.abs((1 / D) * np.sum(z * np.cos(np.sqrt(np.abs(z))), axis=1)) - delta
 
             # Split z into two halves for h2 and h3
-            half = dim // 2
+            half = D // 2
             z_first_half = z[:, :half - 1]
             z_second_half = z[:, 1:half]
             h2 = np.abs(np.sum((z_first_half - z_second_half) ** 2, axis=1)) - delta
@@ -430,11 +437,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -50.0)
-        ub = np.full(dim, 50.0)
+        lb = np.full(D, -50.0)
+        ub = np.full(D, 50.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -442,7 +449,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P5(self, dim=10) -> MTOP:
+    def P5(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 5.
 
@@ -453,7 +460,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -461,7 +468,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 5.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P5
@@ -477,7 +484,7 @@ class CEC10_CSO:
             88.99628570349459, 58.74823912291344, 52.265369214509846,
             47.030120955005074, 53.23321779503931, 5.778976086909701
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 5 (max function)"""
@@ -504,8 +511,8 @@ class CEC10_CSO:
             g = np.zeros(ps)
 
             # Equality constraints (|h| <= delta)
-            h1 = np.abs((1 / dim) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)) - delta
-            h2 = np.abs((1 / dim) * np.sum(-z * np.cos(0.5 * np.sqrt(np.abs(z))), axis=1)) - delta
+            h1 = np.abs((1 / D) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)) - delta
+            h2 = np.abs((1 / D) * np.sum(-z * np.cos(0.5 * np.sqrt(np.abs(z))), axis=1)) - delta
 
             # Set negative values to 0 (satisfied constraints)
             h1 = np.where(h1 < 0, 0, h1)
@@ -521,11 +528,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -600.0)
-        ub = np.full(dim, 600.0)
+        lb = np.full(D, -600.0)
+        ub = np.full(D, 600.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -533,7 +540,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P6(self, dim=10) -> MTOP:
+    def P6(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 6.
 
@@ -545,7 +552,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -553,7 +560,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 6.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P6
@@ -569,7 +576,7 @@ class CEC10_CSO:
             -6.149894283287328, 1.049303005795593, -6.049093253116644,
             0.950328133373404, 1.443084229017085, -0.163829799788475
         ])
-        o = O[:dim]
+        o = O[:D]
 
         # Load rotation matrix from MAT file
         data_bytes = pkgutil.get_data('ddmtolab.Problems.STSO', f'{self.data_dir}/P6_M.mat')
@@ -579,10 +586,10 @@ class CEC10_CSO:
         M2 = mat_data['M2']
 
         # Select appropriate rotation matrix
-        if dim == 10:
+        if D == 10:
             M = M1
         else:
-            M = M2[:dim, :dim]
+            M = M2[:D, :D]
 
         def Task(x):
             """Objective function for Problem 6 (max function)"""
@@ -613,8 +620,8 @@ class CEC10_CSO:
             g = np.zeros(ps)
 
             # Equality constraints (|h| <= delta)
-            h1 = np.abs((1 / dim) * np.sum(-y * np.sin(np.sqrt(np.abs(y))), axis=1)) - delta
-            h2 = np.abs((1 / dim) * np.sum(-y * np.cos(0.5 * np.sqrt(np.abs(y))), axis=1)) - delta
+            h1 = np.abs((1 / D) * np.sum(-y * np.sin(np.sqrt(np.abs(y))), axis=1)) - delta
+            h2 = np.abs((1 / D) * np.sum(-y * np.cos(0.5 * np.sqrt(np.abs(y))), axis=1)) - delta
 
             # Set negative values to 0 (satisfied constraints)
             h1 = np.where(h1 < 0, 0, h1)
@@ -630,11 +637,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -600.0)
-        ub = np.full(dim, 600.0)
+        lb = np.full(D, -600.0)
+        ub = np.full(D, 600.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -642,7 +649,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P7(self, dim=10) -> MTOP:
+    def P7(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 7.
 
@@ -653,7 +660,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -661,7 +668,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 7.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P7
@@ -677,7 +684,7 @@ class CEC10_CSO:
             -37.530671214167334, 19.288852618585977, 0.684612418754519,
             -12.636795982748637, 15.005454148879409, -40.468678588994315
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 7 (Rosenbrock)"""
@@ -705,8 +712,8 @@ class CEC10_CSO:
             y = x - np.tile(o, (ps, 1))
 
             # Inequality constraint (g <= 0)
-            g1 = 0.5 - np.exp(-0.1 * np.sqrt((1 / dim) * np.sum(y ** 2, axis=1))) - \
-                 3 * np.exp((1 / dim) * np.sum(np.cos(0.1 * y), axis=1)) + np.exp(1)
+            g1 = 0.5 - np.exp(-0.1 * np.sqrt((1 / D) * np.sum(y ** 2, axis=1))) - \
+                 3 * np.exp((1 / D) * np.sum(np.cos(0.1 * y), axis=1)) + np.exp(1)
 
             # Equality constraint (initialized as zeros, matching MATLAB)
             h = np.zeros(ps)
@@ -724,11 +731,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -140.0)
-        ub = np.full(dim, 140.0)
+        lb = np.full(D, -140.0)
+        ub = np.full(D, 140.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -736,7 +743,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P8(self, dim=10) -> MTOP:
+    def P8(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 8.
 
@@ -748,7 +755,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -756,7 +763,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 8.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         import scipy.io
         import os
         delta = self.delta
@@ -774,7 +781,7 @@ class CEC10_CSO:
             -37.530671214167334, 19.288852618585977, 0.684612418754519,
             -12.636795982748637, 15.005454148879409, -40.468678588994315
         ])
-        o = O[:dim]
+        o = O[:D]
 
         # Load rotation matrix from MAT file
         data_bytes = pkgutil.get_data('ddmtolab.Problems.STSO', f'{self.data_dir}/P8_M.mat')
@@ -784,10 +791,10 @@ class CEC10_CSO:
         M2 = mat_data['M2']
 
         # Select appropriate rotation matrix
-        if dim == 10:
+        if D == 10:
             M = M1
         else:
-            M = M2[:dim, :dim]
+            M = M2[:D, :D]
 
         def Task(x):
             """Objective function for Problem 8 (Rosenbrock)"""
@@ -818,8 +825,8 @@ class CEC10_CSO:
             y = (z - 1) @ M
 
             # Inequality constraint (g <= 0)
-            g1 = 0.5 - np.exp(-0.1 * np.sqrt((1 / dim) * np.sum(y ** 2, axis=1))) - \
-                 3 * np.exp((1 / dim) * np.sum(np.cos(0.1 * y), axis=1)) + np.exp(1)
+            g1 = 0.5 - np.exp(-0.1 * np.sqrt((1 / D) * np.sum(y ** 2, axis=1))) - \
+                 3 * np.exp((1 / D) * np.sum(np.cos(0.1 * y), axis=1)) + np.exp(1)
 
             # Equality constraint (initialized as zeros, matching MATLAB)
             h = np.zeros(ps)
@@ -837,11 +844,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -140.0)
-        ub = np.full(dim, 140.0)
+        lb = np.full(D, -140.0)
+        ub = np.full(D, 140.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -849,7 +856,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P9(self, dim=10) -> MTOP:
+    def P9(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 9.
 
@@ -860,7 +867,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -868,7 +875,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 9.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P9
@@ -884,7 +891,7 @@ class CEC10_CSO:
             98.3715576810595, 0.127593155843627, 61.709914317965655,
             -84.0189999580673, -35.39565398431638, -5.143979333218638
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 9 (Rosenbrock)"""
@@ -930,11 +937,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -500.0)
-        ub = np.full(dim, 500.0)
+        lb = np.full(D, -500.0)
+        ub = np.full(D, 500.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -942,7 +949,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P10(self, dim=10) -> MTOP:
+    def P10(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 10.
 
@@ -954,7 +961,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -962,7 +969,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 10.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         import scipy.io
         import os
         delta = self.delta
@@ -980,7 +987,7 @@ class CEC10_CSO:
             98.3715576810595, 0.127593155843627, 61.709914317965655,
             -84.0189999580673, -35.39565398431638, -5.143979333218638
         ])
-        o = O[:dim]
+        o = O[:D]
 
         # Load rotation matrix from MAT file
         data_bytes = pkgutil.get_data('ddmtolab.Problems.STSO', f'{self.data_dir}/P10_M.mat')
@@ -990,10 +997,10 @@ class CEC10_CSO:
         M2 = mat_data['M2']
 
         # Select appropriate rotation matrix
-        if dim == 10:
+        if D == 10:
             M = M1
         else:
-            M = M2[:dim, :dim]
+            M = M2[:D, :D]
 
         def Task(x):
             """Objective function for Problem 10 (Rosenbrock)"""
@@ -1042,11 +1049,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -500.0)
-        ub = np.full(dim, 500.0)
+        lb = np.full(D, -500.0)
+        ub = np.full(D, 500.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1054,7 +1061,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P11(self, dim=10) -> MTOP:
+    def P11(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 11.
 
@@ -1066,7 +1073,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1074,7 +1081,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 11.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         import scipy.io
         import os
         delta = self.delta
@@ -1092,7 +1099,7 @@ class CEC10_CSO:
             0.809945865440195, 0.313724260202943, 0.241711589286433,
             0.546972335229794, 0.270900015013911, 0.389639306011642
         ])
-        o = O[:dim]
+        o = O[:D]
 
         # Load rotation matrix from MAT file
         data_bytes = pkgutil.get_data('ddmtolab.Problems.STSO', f'{self.data_dir}/P11_M.mat')
@@ -1102,10 +1109,10 @@ class CEC10_CSO:
         M2 = mat_data['M2']
 
         # Select appropriate rotation matrix
-        if dim == 10:
+        if D == 10:
             M = M1
         else:
-            M = M2[:dim, :dim]
+            M = M2[:D, :D]
 
         def Task(x):
             """Objective function for Problem 11 (modified cosine)"""
@@ -1119,7 +1126,7 @@ class CEC10_CSO:
             z = (y - 1) @ M
 
             # Objective function
-            f = (1 / dim) * np.sum(-z * np.cos(2 * np.sqrt(np.abs(z))), axis=1)
+            f = (1 / D) * np.sum(-z * np.cos(2 * np.sqrt(np.abs(z))), axis=1)
 
             return f.reshape(-1, 1)
 
@@ -1152,11 +1159,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -100.0)
-        ub = np.full(dim, 100.0)
+        lb = np.full(D, -100.0)
+        ub = np.full(D, 100.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1164,7 +1171,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P12(self, dim=10) -> MTOP:
+    def P12(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 12.
 
@@ -1176,7 +1183,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1184,7 +1191,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 12.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P12
@@ -1200,7 +1207,7 @@ class CEC10_CSO:
             -98.54273249151939, 19.55069746505636, 8.33657824668768,
             88.54888769408086, -79.08282398956031, 63.254014133387614
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 12 (Schwefel)"""
@@ -1245,11 +1252,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -1000.0)
-        ub = np.full(dim, 1000.0)
+        lb = np.full(D, -1000.0)
+        ub = np.full(D, 1000.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1257,7 +1264,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P13(self, dim=10) -> MTOP:
+    def P13(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 13.
 
@@ -1268,7 +1275,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1276,7 +1283,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 13.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P13
@@ -1292,7 +1299,7 @@ class CEC10_CSO:
             63.540231382573154, 74.78243308676124, 87.20817289266436,
             50.779655804893764, 43.05412185616204, 33.862234518700916
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 13 (modified Schwefel)"""
@@ -1303,7 +1310,7 @@ class CEC10_CSO:
             z = x - np.tile(o, (ps, 1))
 
             # Modified Schwefel function
-            f = (1 / dim) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)
+            f = (1 / D) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)
 
             return f.reshape(-1, 1)
 
@@ -1316,11 +1323,11 @@ class CEC10_CSO:
             z = x - np.tile(o, (ps, 1))
 
             # Inequality constraints (g <= 0)
-            g1 = -50 + (1 / (100 * dim)) * np.sum(z ** 2, axis=1)
-            g2 = (50 / dim) * np.sum(np.sin(0.02 * np.pi * z), axis=1)
+            g1 = -50 + (1 / (100 * D)) * np.sum(z ** 2, axis=1)
+            g2 = (50 / D) * np.sum(np.sin(0.02 * np.pi * z), axis=1)
 
             # Griewank-based constraint
-            indices = np.arange(1, dim + 1)
+            indices = np.arange(1, D + 1)
             g3 = 75 - 50 * (np.sum(z ** 2 / 4000, axis=1) -
                             np.prod(np.cos(z / np.sqrt(indices)), axis=1) + 1)
 
@@ -1342,11 +1349,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -500.0)
-        ub = np.full(dim, 500.0)
+        lb = np.full(D, -500.0)
+        ub = np.full(D, 500.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1354,7 +1361,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P14(self, dim=10) -> MTOP:
+    def P14(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 14.
 
@@ -1365,7 +1372,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1373,7 +1380,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 14.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P14
@@ -1389,7 +1396,7 @@ class CEC10_CSO:
             -9.859463575974534, -16.727846507426452, -44.35226340706524,
             -33.10843069426064, -7.175153678947718, -4.601421202670486
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 14 (Rosenbrock)"""
@@ -1417,9 +1424,9 @@ class CEC10_CSO:
             y = x - np.tile(o, (ps, 1))
 
             # Inequality constraints (g <= 0)
-            g1 = np.sum(-y * np.cos(np.sqrt(np.abs(y))), axis=1) - dim
-            g2 = np.sum(y * np.cos(np.sqrt(np.abs(y))), axis=1) - dim
-            g3 = np.sum(y * np.sin(np.sqrt(np.abs(y))), axis=1) - 10 * dim
+            g1 = np.sum(-y * np.cos(np.sqrt(np.abs(y))), axis=1) - D
+            g2 = np.sum(y * np.cos(np.sqrt(np.abs(y))), axis=1) - D
+            g3 = np.sum(y * np.sin(np.sqrt(np.abs(y))), axis=1) - 10 * D
 
             # Equality constraint (initialized as zeros, matching MATLAB)
             h = np.zeros(ps)
@@ -1439,11 +1446,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -1000.0)
-        ub = np.full(dim, 1000.0)
+        lb = np.full(D, -1000.0)
+        ub = np.full(D, 1000.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1451,7 +1458,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P15(self, dim=10) -> MTOP:
+    def P15(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 15.
 
@@ -1463,7 +1470,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1471,7 +1478,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 15.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         import scipy.io
         import os
         delta = self.delta
@@ -1489,7 +1496,7 @@ class CEC10_CSO:
             -9.859463575974534, -16.727846507426452, -44.35226340706524,
             -33.10843069426064, -7.175153678947718, -4.601421202670486
         ])
-        o = O[:dim]
+        o = O[:D]
 
         # Load rotation matrix from MAT file
         data_bytes = pkgutil.get_data('ddmtolab.Problems.STSO', f'{self.data_dir}/P15_M.mat')
@@ -1499,10 +1506,10 @@ class CEC10_CSO:
         M2 = mat_data['M2']
 
         # Select appropriate rotation matrix
-        if dim == 10:
+        if D == 10:
             M = M1
         else:
-            M = M2[:dim, :dim]
+            M = M2[:D, :D]
 
         def Task(x):
             """Objective function for Problem 15 (Rosenbrock)"""
@@ -1533,9 +1540,9 @@ class CEC10_CSO:
             y = (z - 1) @ M
 
             # Inequality constraints (g <= 0)
-            g1 = np.sum(-y * np.cos(np.sqrt(np.abs(y))), axis=1) - dim
-            g2 = np.sum(y * np.cos(np.sqrt(np.abs(y))), axis=1) - dim
-            g3 = np.sum(y * np.sin(np.sqrt(np.abs(y))), axis=1) - 10 * dim
+            g1 = np.sum(-y * np.cos(np.sqrt(np.abs(y))), axis=1) - D
+            g2 = np.sum(y * np.cos(np.sqrt(np.abs(y))), axis=1) - D
+            g3 = np.sum(y * np.sin(np.sqrt(np.abs(y))), axis=1) - 10 * D
 
             # Equality constraint (initialized as zeros, matching MATLAB)
             h = np.zeros(ps)
@@ -1555,11 +1562,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -1000.0)
-        ub = np.full(dim, 1000.0)
+        lb = np.full(D, -1000.0)
+        ub = np.full(D, 1000.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1567,7 +1574,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P16(self, dim=10) -> MTOP:
+    def P16(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 16.
 
@@ -1579,7 +1586,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1587,7 +1594,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 16.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P16
@@ -1603,7 +1610,7 @@ class CEC10_CSO:
             -0.534907819936839, -0.003991036739113, 0.486452090756303,
             -0.689962754053575, -0.138437260109118, -0.626943354458217
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 16 (Griewank)"""
@@ -1614,7 +1621,7 @@ class CEC10_CSO:
             z = x - np.tile(o, (ps, 1))
 
             # Griewank function
-            indices = np.arange(1, dim + 1)
+            indices = np.arange(1, D + 1)
             f = np.sum(z ** 2 / 4000, axis=1) - np.prod(np.cos(z / np.sqrt(indices)), axis=1) + 1
 
             return f.reshape(-1, 1)
@@ -1653,11 +1660,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -10.0)
-        ub = np.full(dim, 10.0)
+        lb = np.full(D, -10.0)
+        ub = np.full(D, 10.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1665,7 +1672,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P17(self, dim=10) -> MTOP:
+    def P17(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 17.
 
@@ -1677,7 +1684,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1685,7 +1692,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 17.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P17
@@ -1701,7 +1708,7 @@ class CEC10_CSO:
             0.434240825173134, 0.946552963504364, -0.32578927683003,
             -0.154255792477949, 0.577967633549953, -0.573697797217518
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 17"""
@@ -1748,11 +1755,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -10.0)
-        ub = np.full(dim, 10.0)
+        lb = np.full(D, -10.0)
+        ub = np.full(D, 10.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub
@@ -1760,7 +1767,7 @@ class CEC10_CSO:
 
         return problem
 
-    def P18(self, dim=10) -> MTOP:
+    def P18(self, D=10) -> MTOP:
         """
         Generates CEC10_CSO Problem 18.
 
@@ -1772,7 +1779,7 @@ class CEC10_CSO:
 
         Parameters
         ----------
-        dim : int, optional
+        D : int, optional
             The dimensionality of the search space (default is 10, max is 30).
 
         Returns
@@ -1780,7 +1787,7 @@ class CEC10_CSO:
         MTOP
             A Multi-Task Optimization Problem instance containing Problem 18.
         """
-        dim = self._validate_dim(dim)
+        D = self._validate_dim(D)
         delta = self.delta
 
         # Offset vector for P18
@@ -1796,7 +1803,7 @@ class CEC10_CSO:
             0.050346805172393, 1.050203106200361, -0.05420584346617,
             -0.081533357726523, -0.968176219532845, 1.682281307624435
         ])
-        o = O[:dim]
+        o = O[:D]
 
         def Task(x):
             """Objective function for Problem 18"""
@@ -1822,10 +1829,10 @@ class CEC10_CSO:
             z = x - np.tile(o, (ps, 1))
 
             # Inequality constraint (g <= 0)
-            g1 = (1 / dim) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)
+            g1 = (1 / D) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)
 
             # Equality constraint (|h| <= delta)
-            h1 = np.abs((1 / dim) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)) - delta
+            h1 = np.abs((1 / D) * np.sum(-z * np.sin(np.sqrt(np.abs(z))), axis=1)) - delta
 
             # Set negative values to 0 (satisfied constraints)
             g1 = np.where(g1 < 0, 0, g1)
@@ -1841,11 +1848,11 @@ class CEC10_CSO:
 
         # Create MTOP instance
         problem = MTOP()
-        lb = np.full(dim, -50.0)
-        ub = np.full(dim, 50.0)
+        lb = np.full(D, -50.0)
+        ub = np.full(D, 50.0)
         problem.add_task(
             Task,
-            dim=dim,
+            dim=D,
             constraint_func=Constraint,
             lower_bound=lb,
             upper_bound=ub

@@ -463,7 +463,7 @@ You can easily implement custom algorithms by following the three construction r
 Available Algorithms
 --------------------
 
-D²MTOLab provides 110+ optimization algorithms organized into four categories:
+D²MTOLab provides 112 optimization algorithms organized into four categories:
 
 STSO (Single-Task Single-Objective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

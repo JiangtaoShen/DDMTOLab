@@ -1,3 +1,10 @@
+"""Sensor coverage problem (SCP).
+
+A single 11-task problem placing sensors (position and sensing radius) to cover
+a target area. Each task uses a different number of sensors, so the tasks differ
+in dimension - a natural variable-length multi-task setting.
+"""
+
 import numpy as np
 import scipy.io
 import pkgutil

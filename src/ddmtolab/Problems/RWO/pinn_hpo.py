@@ -1,3 +1,12 @@
+"""Hyperparameter optimization of physics-informed neural networks.
+
+12 multi-task problems tuning 6 PINN hyperparameters (depth, width, activation,
+epochs, grid size, learning rate) across the convection, reaction, wave and
+Helmholtz equations. Each objective evaluation trains a network, so these
+problems are expensive: building one already costs a training run, because MTOP
+probes the objective once while the problem is being constructed.
+"""
+
 import torch
 import torch.nn as nn
 from tqdm import tqdm
@@ -10,7 +19,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 
 class Sin(nn.Module):
-    """
+    r"""
     Custom Sin activation function.
 
     Implements $f(x) = \sin(x)$ as a PyTorch module.
@@ -21,7 +30,7 @@ class Sin(nn.Module):
 
 
 class Swish(nn.Module):
-    """
+    r"""
     Custom Swish activation function.
 
     Implements $f(x) = x \cdot \sigma(x)$ where $\sigma$ is the sigmoid function.
@@ -120,7 +129,7 @@ class PINNs(nn.Module):
 
 def convection_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learning_rate, test_name, beta=30,
                   plotshow=False, show_information=True, device='cuda:0'):
-    """
+    r"""
     Solves the 2D **Convection equation** using PINN.
 
     The PDE is: $\frac{\partial u}{\partial t} + \beta \frac{\partial u}{\partial x} = 0$.
@@ -310,7 +319,7 @@ def convection_2d(num_layers, num_nodes, activation_func, epochs, grid_size, lea
 
 def reaction_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learning_rate, test_name, rho=4,
                 plotshow=False, show_information=True, device='cuda:0'):
-    """
+    r"""
     Solves the 2D **Reaction equation** using PINN.
 
     The PDE is: $\frac{\partial u}{\partial t} = \rho u (1 - u)$.
@@ -500,7 +509,7 @@ def reaction_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learn
 
 def wave_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learning_rate, test_name, alpha=4, beta=3,
             plotshow=False, show_information=True, device='cuda:0'):
-    """
+    r"""
     Solves the 2D **Wave equation** using PINN.
 
     The PDE is: $\frac{\partial^2 u}{\partial t^2} = \alpha \frac{\partial^2 u}{\partial x^2}$.
@@ -708,7 +717,7 @@ def wave_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learning_
 
 def helmholtz_2d(num_layers, num_nodes, activation_func, epochs, grid_size, learning_rate, test_name, n=2,
                  plotshow=False, show_information=True, device='cuda:0'):
-    """
+    r"""
     Solves the 2D **Helmholtz equation** using PINN.
 
     The PDE is: $-\nabla^2 u - k^2 u = f(x, y)$ where $k = n\pi$ and $f(x, y) = k^2 \sin(kx) \sin(ky)$.
@@ -1289,7 +1298,7 @@ class PINN_HPO:
     def T12_helmholtz_n4(x):
         return PINN_HPO._evaluate_helmholtz(x, n=4, test_name='T12_helmholtz_n4', device='cuda:3')
 
-    def P1(self):
+    def P1(self) -> MTOP:
         """
         Generates Problem 1: **Convection** (:math:`\\beta=20`, :math:`\\beta=30`).
 
@@ -1310,7 +1319,7 @@ class PINN_HPO:
 
         return problem
 
-    def P2(self):
+    def P2(self) -> MTOP:
         """
         Generates Problem 2: **Reaction** (:math:`\\rho=4`, :math:`\\rho=5`).
 
@@ -1331,7 +1340,7 @@ class PINN_HPO:
 
         return problem
 
-    def P3(self):
+    def P3(self) -> MTOP:
         """
         Generates Problem 3: **Wave** (:math:`\\alpha=3, \\beta=3`; :math:`\\alpha=4, \\beta=3`).
 
@@ -1352,7 +1361,7 @@ class PINN_HPO:
 
         return problem
 
-    def P4(self):
+    def P4(self) -> MTOP:
         """
         Generates Problem 4: **Helmholtz** (:math:`n=3`, :math:`n=4`).
 
@@ -1373,7 +1382,7 @@ class PINN_HPO:
 
         return problem
 
-    def P5(self):
+    def P5(self) -> MTOP:
         """
         Generates Problem 5: **Convection** (:math:`\\beta=20`, :math:`\\beta=30`, :math:`\\beta=40`).
 
@@ -1395,7 +1404,7 @@ class PINN_HPO:
 
         return problem
 
-    def P6(self):
+    def P6(self) -> MTOP:
         """
         Generates Problem 6: **Reaction** (:math:`\\rho=4`, :math:`\\rho=5`, :math:`\\rho=6`).
 
@@ -1417,7 +1426,7 @@ class PINN_HPO:
 
         return problem
 
-    def P7(self):
+    def P7(self) -> MTOP:
         """
         Generates Problem 7: **Wave** (:math:`\\alpha=3, \\beta=3`; :math:`\\alpha=4, \\beta=3`; :math:`\\alpha=4, \\beta=4`).
 
@@ -1439,7 +1448,7 @@ class PINN_HPO:
 
         return problem
 
-    def P8(self):
+    def P8(self) -> MTOP:
         """
         Generates Problem 8: **Helmholtz** (:math:`n=3`, :math:`n=4`, :math:`n=5`).
 
@@ -1461,7 +1470,7 @@ class PINN_HPO:
 
         return problem
 
-    def P9(self):
+    def P9(self) -> MTOP:
         """
         Generates Problem 9: **Mixed** (Convection :math:`\\beta=30`, Reaction :math:`\\rho=5`).
 
@@ -1482,7 +1491,7 @@ class PINN_HPO:
 
         return problem
 
-    def P10(self):
+    def P10(self) -> MTOP:
         """
         Generates Problem 10: **Mixed** (Wave :math:`\\alpha=4, \\beta=3`; Helmholtz :math:`n=4`).
 
@@ -1503,7 +1512,7 @@ class PINN_HPO:
 
         return problem
 
-    def P11(self):
+    def P11(self) -> MTOP:
         """
         Generates Problem 11: **Mixed** (Convection :math:`\\beta=30`, Reaction :math:`\\rho=5`, Wave :math:`\\alpha=4, \\beta=3`).
 
@@ -1525,7 +1534,7 @@ class PINN_HPO:
 
         return problem
 
-    def P12(self):
+    def P12(self) -> MTOP:
         """
         Generates Problem 12: **Mixed** (Convection :math:`\\beta=30`, Reaction :math:`\\rho=5`, Wave :math:`\\alpha=4, \\beta=3`, Helmholtz :math:`n=4`).
 

@@ -1,3 +1,11 @@
+"""Rotated and shifted single-objective benchmark landscapes.
+
+The same 9 textbook functions as
+:mod:`~ddmtolab.Problems.STSO.classical_so`, but with a non-identity rotation
+matrix and a non-zero offset drawn from a fixed seed, so the global optimum is
+no longer at the origin.
+"""
+
 from ddmtolab.Problems.BasicFunctions.basic_functions import *
 from ddmtolab.Methods.mtop import MTOP
 import numpy as np

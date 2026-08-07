@@ -158,9 +158,13 @@ class TSP:
         return problem
 
     def plot_tour(self, problem_id, decision_vars, title=None,
-                  save_path=None, figsize=(8, 4), show=True):
+                  save_path=None, figsize=(8, 4), show=True) -> float:
         """
         Plot the TSP tour defined by decision variables (random keys).
+
+        This is a visualisation helper, not a benchmark problem: unlike the
+        ``P1``-``P6`` methods it does not return an :class:`MTOP`, so problem
+        discovery skips it.
 
         Parameters
         ----------
