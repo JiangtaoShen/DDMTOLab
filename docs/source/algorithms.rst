@@ -463,7 +463,7 @@ You can easily implement custom algorithms by following the three construction r
 Available Algorithms
 --------------------
 
-D²MTOLab provides 112 optimization algorithms organized into four categories:
+D²MTOLab provides 114 optimization algorithms organized into four categories:
 
 STSO (Single-Task Single-Objective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -662,6 +662,10 @@ Multiobjective evolutionary algorithms and surrogate-assisted methods.
      - Classification and Pareto Domination Based MOEA
    * - ``MCEA_D``
      - Multiple Classifiers-assisted EA based on Decomposition
+   * - ``GSAEA``
+     - Grouping via Sensitivity Analysis EA
+   * - ``AS_SMEA``
+     - Surrogate-assisted MOEA with Adaptive Local Region Search
 
 MTSO (Multitask Single-Objective)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
