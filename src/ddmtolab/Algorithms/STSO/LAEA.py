@@ -227,6 +227,13 @@ class LAEA:
         Dictionary describing how the algorithm uses a language model
     """
 
+    #: Surrogate classes used for the two prompts, and how many query points
+    #: each request covers. LAEA_light overrides them to batch; changing them
+    #: here would change LAEA itself.
+    regression_cls = LLM_Regression
+    classification_cls = LLM_Classification
+    llm_batch_size = 1
+
     algorithm_information = {
         'n_tasks': '[1, K]',
         'dims': 'unequal',
@@ -401,7 +408,8 @@ class LAEA:
         )
         surrogate_kwargs = dict(
             client=client, max_retries=self.llm_max_retries, beta=self.llm_beta,
-            parallel=self.llm_parallel, show_progress=not self.disable_tqdm, seed=self.llm_seed
+            parallel=self.llm_parallel, show_progress=not self.disable_tqdm, seed=self.llm_seed,
+            batch_size=self.llm_batch_size
         )
 
         # Fail before the initial design is evaluated rather than after it
@@ -426,10 +434,10 @@ class LAEA:
             model.init(D=dims[i], LB=np.zeros(dims[i]), UB=np.ones(dims[i]))
             eda.append(model)
 
-        m1 = [LLM_Regression(introduction=load_prompt('laea_reg_v1.txt'),
-                             strict_source=self.strict_source, **surrogate_kwargs) for _ in range(nt)]
-        m2 = [LLM_Classification(introduction=load_prompt('laea_cla_v1.txt'),
-                                 **surrogate_kwargs) for _ in range(nt)]
+        m1 = [self.regression_cls(introduction=load_prompt('laea_reg_v1.txt'),
+                                  strict_source=self.strict_source, **surrogate_kwargs) for _ in range(nt)]
+        m2 = [self.classification_cls(introduction=load_prompt('laea_cla_v1.txt'),
+                                      **surrogate_kwargs) for _ in range(nt)]
 
         pbar = tqdm(total=sum(max_nfes_per_task), initial=sum(n_initial_per_task),
                     desc=f"{self.name}", disable=self.disable_tqdm)

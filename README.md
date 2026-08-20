@@ -28,21 +28,21 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
+- **2026-08-15** — Added LAEA-light, a batched variant of LAEA that asks the language model about a whole generation in one request: 2 LLM calls per infill instead of 2N.
 - **2026-08-14** — Added two surrogate-assisted algorithms for high-dimensional expensive multiobjective optimization (GSAEA, AS-SMEA).
 - **2026-08-06** — Added nonparametric statistical tests for comparing algorithms over a benchmark suite (sign test, Wilcoxon signed-rank, Friedman / Friedman aligned ranks / Quade, adjusted p-values under seven control and four all-pairs post-hoc procedures, critical difference diagrams, contrast estimation).
 - **2026-08-03** — Verified and validated an LLM-assisted expensive single-task optimization algorithm (LAEA).
 - **2026-08-03** — Added an expensive multitask multiobjective optimization algorithm (SAEA-AKT).
-- **2026-07-23** — Verified and validated several surrogate-assisted single-task algorithms (TLRBF, GL-SADE, AutoSAEA, DDEA-MESS, LSADE, SHPSO, SA-COSO).
 
 ## 📖 Overview
 
-**D<sup>2</sup>MTOLab (Data-Driven Multitask Optimization Laboratory)** is a comprehensive Python platform for optimization research, featuring **114 algorithms**, **212 benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
+**D<sup>2</sup>MTOLab (Data-Driven Multitask Optimization Laboratory)** is a comprehensive Python platform for optimization research, featuring **115 algorithms**, **212 benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
 
 Whether you're working on expensive black-box optimization, multiobjective optimization, or complex multitask scenarios, D<sup>2</sup>MTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
 
 ## ✨ Features
 
-- 🚀 **Comprehensive Algorithms** - 114 algorithms for expensive/inexpensive, single/multitask, single/multiobjective, unconstrained/constrained optimization
+- 🚀 **Comprehensive Algorithms** - 115 algorithms for expensive/inexpensive, single/multitask, single/multiobjective, unconstrained/constrained optimization
 - 📊 **Rich Problem Suite** - 212 benchmark problems in 29 suites, synthetic and real-world
 - 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
 - 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
@@ -157,12 +157,12 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 
 ## 🎯 Key Components
 
-### Algorithms (114)
+### Algorithms (115)
 
 | Category | Type | Algorithms |
 |----------|------|------------|
 | **STSO** | Inexpensive | GA, DE, PSO, SL_PSO, KLPSO, CSO, CMA_ES, IPOP_CMA_ES, sep_CMA_ES, MA_ES, xNES, OpenAI_ES, AO, GWO, EO |
-| **STSO** | Expensive | BO, EEI_BO, ESAO, SHPSO, SA_COSO, TLRBF, GL_SADE, AutoSAEA, DDEA_MESS, LSADE, LAEA |
+| **STSO** | Expensive | BO, EEI_BO, ESAO, SHPSO, SA_COSO, TLRBF, GL_SADE, AutoSAEA, DDEA_MESS, LSADE, LAEA, LAEA_light |
 | **STMO** | Inexpensive | NSGA_II, NSGA_III, NSGA_II_SDR, SPEA2, MOEA_D, MOEA_DD, MOEA_D_FRRMAB, MOEA_D_STM, RVEA, IBEA, TwoArch2, MSEA, C_TAEA, CCMO |
 | **STMO** | Expensive | ParEGO, K_RVEA, DSAEA_PS, KTA2, REMO, ADSAPSO, CSEA, DISK, DRLSAEA, DirHV_EI, EDN_ARMOEA, EIM_EGO, EM_SAEA, KTS, MGSAEA, MMRAEA, MOEA_D_EGO, MultiObjectiveEGO, PCSAEA, PEA, PIEA, SAEA_DBLL, SSDE, TEA, CPS_MOEA, MCEA_D, GSAEA, AS_SMEA |
 | **MTSO** | Inexpensive | MFEA, MFEA_II, EMEA, EBS, G_MFEA, MTEA_AD, MKTDE, MTEA_SaO, SREMTO, LCB_EMT, BLKT_DE, DTSKT, EMTO_AI, MFEA_AKT, MFEA_DGD, MFEA_VC, MTDE_ADKT, MTEA_HKTS, MTEA_PAE, MTES_KG, SSLT_DE, TNG_SNES |

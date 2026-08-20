@@ -23,6 +23,7 @@ Date: 2026.08.03
 Version: 1.0
 """
 import hashlib
+import re
 import os
 import time
 from dataclasses import dataclass
@@ -282,7 +283,21 @@ class LLMClient:
         digest = hashlib.sha256(prompt.encode('utf-8')).hexdigest()
         bucket = int(digest[:8], 16)
 
-        if 'better or worse?' in prompt:
+        # The batched prompts state how many entries they expect; answer in the
+        # shape they ask for, otherwise every batched query would parse-fail and
+        # an offline run would measure nothing but the fallback path.
+        batch = re.search(r'containing exactly (\d+) (?:numeric )?entries', prompt)
+        if batch:
+            n = int(batch.group(1))
+            seeds = [int(hashlib.sha256(f'{digest}|{i}'.encode('utf-8')).hexdigest()[:8], 16)
+                     for i in range(n)]
+            if "'Classes'" in prompt:
+                items = ', '.join('"better"' if seed % 2 == 0 else '"worse"' for seed in seeds)
+                text = '{"Classes": [%s]}' % items
+            else:
+                items = ', '.join('%.5f' % ((seed % 100000) / 100000.0) for seed in seeds)
+                text = '{"Targets": [%s]}' % items
+        elif 'better or worse?' in prompt:
             text = '{"Class": "better"}' if bucket % 2 == 0 else '{"Class": "worse"}'
         else:
             text = '{"Value": "%.5f"}' % ((bucket % 100000) / 100000.0)

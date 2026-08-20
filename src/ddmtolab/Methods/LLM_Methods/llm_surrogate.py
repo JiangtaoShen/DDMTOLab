@@ -22,6 +22,9 @@ Deviations from the reference, all deliberate
    but its parser reads ``Value`` only, so every response that follows the
    trailing note is discarded and silently replaced by ``random.random()``.
    Pass ``strict_source=True`` to reproduce that behaviour exactly.
+4. :class:`LLM_RegressionBatch` and :class:`LLM_ClassificationBatch` ask about
+   several query points per request. They are additions, not replacements: the
+   serial classes are untouched and remain the default everywhere.
 
 Notes
 -----
@@ -93,6 +96,10 @@ class LLM_Base:
         Print each raw response (default: False).
     seed : int, optional
         Seed for the fallback RNG (default: 42).
+    batch_size : int, optional
+        Number of query points packed into one request. 1 keeps the one call
+        per query point behaviour; only the batched subclasses honour a larger
+        value (default: 1).
 
     Attributes
     ----------
@@ -112,7 +119,8 @@ class LLM_Base:
                  show_progress: bool = False,
                  show_prompt: bool = False,
                  show_response: bool = False,
-                 seed: int = 42):
+                 seed: int = 42,
+                 batch_size: int = 1):
         self.client = client
         self.introduction = introduction
         self.max_retries = max_retries
@@ -123,6 +131,7 @@ class LLM_Base:
         self.show_response = show_response
 
         self.seed = seed
+        self.batch_size = max(1, int(batch_size))
         self.fit_prompts: Optional[List[str]] = None
         self.Train_Xs: Optional[np.ndarray] = None
         self.Train_ys: Optional[np.ndarray] = None
@@ -413,3 +422,194 @@ class LLM_Regression(LLM_Base):
 
         self.client.budget.record_fallback(self.role)
         return self._fallback_rng(prompt).random()
+
+
+class _BatchedPredict:
+    """
+    Ask about several query points in a single request.
+
+    The in-context examples dominate a LAEA prompt -- around 97% of it -- and
+    the serial path resends them once per query point. Packing ``batch_size``
+    points into one request sends them once per batch instead, which cuts both
+    the number of calls and the prompt tokens by roughly the batch size.
+
+    Subclasses supply :meth:`_batch_instruction`, :meth:`_response_key` and
+    :meth:`_coerce`; everything else -- normalization, the inverse mapping of
+    the regression targets, the budget accounting and the fallback RNG -- is
+    inherited unchanged, so a batched surrogate answers exactly the questions
+    its serial counterpart would.
+    """
+
+    def _chunks(self, Norm_Test_Xs):
+        """Split the query matrix into consecutive blocks of ``batch_size``."""
+        size = max(1, int(self.batch_size))
+        return [Norm_Test_Xs[start:start + size]
+                for start in range(0, len(Norm_Test_Xs), size)]
+
+    def _render_batch(self, Xs) -> str:
+        """Render one prompt covering every row of ``Xs``."""
+        if self.fit_prompts is None:
+            raise Exception("fit_prompts is None. Please call generate_fit_prompts() first.")
+
+        prompts = copy.deepcopy(self.fit_prompts)
+        prompts.append("\n\nNew Evaluations:\n")
+        for index, X in enumerate(Xs, start=1):
+            prompts.append(f"{index}: <{', '.join(map(str, X))}>\n")
+        prompts.append(self._batch_instruction(len(Xs)))
+
+        final_prompt = " ".join(prompts)
+        if self.show_prompt:
+            print(final_prompt)
+        return final_prompt
+
+    def _predict_serial(self, Norm_Test_Xs) -> list:
+        res = []
+        for chunk in tqdm.tqdm(self._chunks(Norm_Test_Xs),
+                               disable=not self.show_progress, leave=False):
+            res.extend(self.call_llm_batch(chunk))
+        return res
+
+    def _predict_parallel(self, Norm_Test_Xs) -> list:
+        chunks = self._chunks(Norm_Test_Xs)
+        with ThreadPoolExecutor(max_workers=self.parallel) as executor:
+            out = list(tqdm.tqdm(
+                executor.map(self.call_llm_batch, chunks),
+                total=len(chunks), disable=not self.show_progress, leave=False
+            ))
+        return [value for chunk_values in out for value in chunk_values]
+
+    def call_llm_batch(self, Xs) -> list:
+        """
+        Issue one request for ``Xs`` and return one value per row.
+
+        A response that cannot be parsed, or that does not carry exactly one
+        answer per query point, is retried like any other. Once the retries are
+        spent each row falls back independently, seeded from the batch prompt
+        and the row's position so that a replay reproduces it exactly.
+
+        Parameters
+        ----------
+        Xs : ndarray
+            Normalized query points of one batch, shape (b, d).
+
+        Returns
+        -------
+        list
+            One prediction per row, length b.
+        """
+        n = len(Xs)
+        for _ in range(n):
+            self.client.budget.record_prediction(self.role)
+
+        prompt = self._render_batch(Xs)
+        for attempt in range(self.max_retries):
+            raw_res = self._query(prompt, attempt)
+            if not raw_res:
+                continue
+
+            values = self._parse_batch(raw_res, n)
+            if values is not None:
+                return values
+            self.client.budget.record_parse_failure(self.role)
+
+        for _ in range(n):
+            self.client.budget.record_fallback(self.role)
+        return [self._fallback_value(prompt, index) for index in range(n)]
+
+    def _parse_batch(self, raw_res: str, n: int):
+        """
+        Pull ``n`` answers out of one response, or None when that is not possible.
+
+        Parameters
+        ----------
+        raw_res : str
+            Raw model output.
+        n : int
+            Number of query points the batch asked about.
+
+        Returns
+        -------
+        list or None
+        """
+        match = re.search(r'\{.*\}', raw_res.replace("'", '"'), re.DOTALL)
+        if not match:
+            return None
+        try:
+            data = json.loads(re.sub(r',\s*([\]}])', r'\1', match.group(0)))
+        except (json.JSONDecodeError, ValueError):
+            return None
+        if not isinstance(data, dict):
+            return None
+
+        items = data.get(self._response_key())
+        if not isinstance(items, list) or len(items) != n:
+            # A short or long list means the answers cannot be lined up with the
+            # query points; silently truncating would mislabel solutions
+            return None
+
+        values = []
+        for item in items:
+            value = self._coerce(item)
+            if value is None:
+                return None
+            values.append(value)
+        return values
+
+    def _batch_instruction(self, n: int) -> str:
+        raise NotImplementedError
+
+    def _response_key(self) -> str:
+        raise NotImplementedError
+
+    def _coerce(self, item):
+        raise NotImplementedError
+
+    def _fallback_value(self, prompt: str, index: int):
+        raise NotImplementedError
+
+
+class LLM_ClassificationBatch(_BatchedPredict, LLM_Classification):
+    """Batched :class:`LLM_Classification`: one request per block of points."""
+
+    def _batch_instruction(self, n: int) -> str:
+        return ("\n\nNote: Respond in Json with the format "
+                "{'Classes':['result', ...]} only, containing exactly "
+                f"{n} entries, each 'better' or 'worse', in the same order as "
+                "the evaluations above.")
+
+    def _response_key(self) -> str:
+        return 'Classes'
+
+    def _coerce(self, item):
+        label = str(item).strip().lower()
+        if label == 'better':
+            return 1
+        if label == 'worse':
+            return -1
+        return None
+
+    def _fallback_value(self, prompt: str, index: int):
+        return self._fallback_rng(f"{prompt}#{index}").choice([-1, 1])
+
+
+class LLM_RegressionBatch(_BatchedPredict, LLM_Regression):
+    """Batched :class:`LLM_Regression`: one request per block of points."""
+
+    def _batch_instruction(self, n: int) -> str:
+        return ("\n\nNote: Respond in Json with the format "
+                "{'Targets':[result, ...]} only, containing exactly "
+                f"{n} numeric entries, in the same order as the evaluations "
+                "above.")
+
+    def _response_key(self) -> str:
+        return 'Targets'
+
+    def _coerce(self, item):
+        try:
+            value = float(item)
+        except (ValueError, TypeError):
+            return None
+        return value if np.isfinite(value) else None
+
+    def _fallback_value(self, prompt: str, index: int):
+        return self._fallback_rng(f"{prompt}#{index}").random()
