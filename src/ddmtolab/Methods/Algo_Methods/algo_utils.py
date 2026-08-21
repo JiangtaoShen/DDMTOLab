@@ -16,6 +16,10 @@ from sklearn.cluster import KMeans
 from dataclasses import dataclass
 import copy
 from typing import Any, List, Tuple, Union, Optional
+# Imported for the 'MTOP' annotations below. Without it those forward references
+# never resolve, so typing.get_type_hints and autodoc raise NameError. mtop pulls
+# in nothing from the package, so this cannot become a cycle.
+from ddmtolab.Methods.mtop import MTOP
 
 
 def set_seed(seed: int) -> int:
