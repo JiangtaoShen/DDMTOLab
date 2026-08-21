@@ -2,6 +2,258 @@ import numpy as np
 from typing import Callable, List, Tuple, Optional, Dict, Any, Union
 
 
+# -------------------------
+# Decision variable types
+# -------------------------
+# A task declares what each of its variables is, so a problem can say "this
+# stretch is float, the next is integer, the next picks from a list" instead of
+# leaving that knowledge inside its objective. The declaration is descriptive:
+# nothing here rounds, clamps or repairs a value, so adding one to an existing
+# problem cannot change what it evaluates to.
+VAR_TYPE_CODES = ('F', 'I', 'B', 'C', 'O')
+
+VAR_TYPE_NAMES = {
+    'F': 'float',
+    'I': 'integer',
+    'B': 'binary',
+    'C': 'categorical',
+    'O': 'ordinal',
+}
+
+# Spelled-out names accepted wherever a code is. Looked up case-insensitively.
+_VAR_TYPE_ALIASES = {
+    'f': 'F', 'float': 'F', 'real': 'F', 'continuous': 'F',
+    'i': 'I', 'int': 'I', 'integer': 'I',
+    'b': 'B', 'bin': 'B', 'binary': 'B',
+    'c': 'C', 'cat': 'C', 'categorical': 'C', 'nominal': 'C',
+    'o': 'O', 'ord': 'O', 'ordinal': 'O',
+}
+
+# Types whose values are indices into an explicit list supplied via var_values.
+_INDEXED_TYPES = ('C', 'O')
+
+# Types that may only take integral values.
+_INTEGRAL_TYPES = ('I', 'B', 'C', 'O')
+
+
+def _as_var_code(token: Any) -> str:
+    """Map one spelling of a variable type onto its single-letter code."""
+    if not isinstance(token, str):
+        raise ValueError(
+            f"var_type entries must be strings, got {type(token).__name__}")
+    code = _VAR_TYPE_ALIASES.get(token.strip().lower())
+    if code is None:
+        raise ValueError(
+            f"unknown variable type {token!r}; expected one of "
+            f"{', '.join(VAR_TYPE_CODES)} or their names "
+            f"({', '.join(sorted(set(VAR_TYPE_NAMES.values())))})")
+    return code
+
+
+def normalize_var_type(var_type: Any, dim: int) -> np.ndarray:
+    """
+    Expand any accepted spelling of ``var_type`` into one code per variable.
+
+    Parameters
+    ----------
+    var_type : None, str, sequence, or dict
+        Accepted forms, all describing the same thing:
+
+        - ``None`` : every variable is a float (the default).
+        - ``'I'`` or ``'integer'`` : one type, broadcast to every variable.
+        - ``'FFFIIB'`` : one letter per variable, length must equal ``dim``.
+        - ``[('F', 3), ('I', 2), ('B', 1)]`` : runs of (type, count), which is
+          the compact way to say "this stretch is float, the next is integer".
+        - ``['F', 'F', 'integer']`` : one entry per variable, names allowed.
+        - ``{'I': [3, 4], 'C': range(8, 12)}`` : the indices of each type, with
+          everything not mentioned left float.
+    dim : int
+        Number of decision variables the task declares.
+
+    Returns
+    -------
+    np.ndarray
+        Array of shape (dim,) and dtype '<U1', one code per variable.
+
+    Raises
+    ------
+    ValueError
+        If a type is unknown, a length disagrees with ``dim``, or an index in
+        the dict form falls outside the task.
+    """
+    if var_type is None:
+        return np.full(dim, 'F', dtype='<U1')
+
+    if isinstance(var_type, str):
+        # A name always means "this type, for every variable". Checking names
+        # first keeps 'integer' from being read as the seven letters i,n,t,...
+        alias = _VAR_TYPE_ALIASES.get(var_type.strip().lower())
+        if alias is not None:
+            return np.full(dim, alias, dtype='<U1')
+        codes = [_as_var_code(ch) for ch in var_type.strip()]
+        if len(codes) != dim:
+            raise ValueError(
+                f"var_type has {len(codes)} entries but the task has {dim} "
+                f"variables")
+        return np.array(codes, dtype='<U1')
+
+    if isinstance(var_type, dict):
+        codes = np.full(dim, 'F', dtype='<U1')
+        claimed = {}
+        for key, indices in var_type.items():
+            code = _as_var_code(key)
+            for i in indices:
+                i = int(i)
+                if not 0 <= i < dim:
+                    raise ValueError(
+                        f"var_type index {i} is outside the task's {dim} "
+                        f"variables")
+                if i in claimed and claimed[i] != code:
+                    raise ValueError(
+                        f"var_type assigns variable {i} to both "
+                        f"{claimed[i]!r} and {code!r}")
+                claimed[i] = code
+                codes[i] = code
+        return codes
+
+    if isinstance(var_type, (list, tuple, np.ndarray)):
+        items = list(var_type)
+        if not items:
+            raise ValueError("var_type is empty; pass None for all-float")
+        first = items[0]
+        is_run_length = (
+            isinstance(first, (list, tuple)) and len(first) == 2
+            and not isinstance(first[1], str))
+        if is_run_length:
+            codes = []
+            for entry in items:
+                if not (isinstance(entry, (list, tuple)) and len(entry) == 2):
+                    raise ValueError(
+                        "var_type runs must all be (type, count) pairs, got "
+                        f"{entry!r}")
+                code, count = _as_var_code(entry[0]), int(entry[1])
+                if count < 0:
+                    raise ValueError(f"var_type run count must not be negative, got {count}")
+                codes.extend([code] * count)
+        else:
+            codes = [_as_var_code(t) for t in items]
+        if len(codes) != dim:
+            raise ValueError(
+                f"var_type covers {len(codes)} variables but the task has {dim}")
+        return np.array(codes, dtype='<U1')
+
+    raise ValueError(
+        f"var_type must be None, a string, a sequence or a dict, got "
+        f"{type(var_type).__name__}")
+
+
+def _is_single_var_type_spec(spec: Tuple) -> bool:
+    """
+    Tell one run-length spec apart from one spec per task.
+
+    ``(('F', 3), ('I', 2))`` is a single task's runs, while ``('FFI', 'IIB')``
+    is one spec for each of two tasks. Only the first is built entirely of
+    (type, count) pairs, and reading it per task would fail anyway, so that
+    shape always wins.
+    """
+    return all(isinstance(e, (list, tuple)) and len(e) == 2
+               and isinstance(e[0], str) and not isinstance(e[1], str)
+               for e in spec)
+
+
+def normalize_var_values(var_values: Any, codes: np.ndarray,
+                         lb: np.ndarray, ub: np.ndarray) -> Dict[int, Tuple]:
+    """
+    Check and freeze the value list attached to each indexed variable.
+
+    A categorical or ordinal variable is an index into an explicit list: the
+    decision variable ranges over ``lb..ub`` and picks ``values[x - lb]``. The
+    list is what makes a problem self-describing, and for an ordinal variable
+    its order is the order the codes stand for.
+
+    Parameters
+    ----------
+    var_values : dict or None
+        Maps a variable index to the values it draws from.
+    codes : np.ndarray
+        Per-variable type codes, as returned by :func:`normalize_var_type`.
+    lb, ub : np.ndarray
+        Bounds of the task, one entry per variable.
+
+    Returns
+    -------
+    Dict[int, Tuple]
+        The same mapping with tuples for values, empty when none were given.
+
+    Raises
+    ------
+    ValueError
+        If an index is out of range, names a variable that is not categorical
+        or ordinal, or carries a list whose length does not match its bounds.
+    """
+    if var_values is None:
+        return {}
+    if not isinstance(var_values, dict):
+        raise ValueError(
+            f"var_values must be a dict keyed by variable index, got "
+            f"{type(var_values).__name__}")
+
+    out: Dict[int, Tuple] = {}
+    dim = len(codes)
+    for key, values in var_values.items():
+        i = int(key)
+        if not 0 <= i < dim:
+            raise ValueError(
+                f"var_values index {i} is outside the task's {dim} variables")
+        if codes[i] not in _INDEXED_TYPES:
+            raise ValueError(
+                f"var_values given for variable {i}, which is declared "
+                f"{VAR_TYPE_NAMES[codes[i]]}; only "
+                f"{' and '.join(VAR_TYPE_NAMES[c] for c in _INDEXED_TYPES)} "
+                f"variables index into a list")
+        seq = tuple(values)
+        expected = int(round(ub[i] - lb[i])) + 1
+        if len(seq) != expected:
+            raise ValueError(
+                f"variable {i} has bounds [{lb[i]:g}, {ub[i]:g}], which spans "
+                f"{expected} values, but var_values lists {len(seq)}")
+        out[i] = seq
+    return out
+
+
+def validate_var_bounds(codes: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> None:
+    """
+    Check that the bounds can express the declared types.
+
+    Binary variables have to run over exactly {0, 1}; integer, binary,
+    categorical and ordinal variables need integral bounds, since every value
+    they can take is one of the integers between them.
+
+    Raises
+    ------
+    ValueError
+        If a bound cannot represent the type declared for that variable.
+    """
+    integral = np.isin(codes, _INTEGRAL_TYPES)
+    if integral.any():
+        bad = integral & ((lb != np.round(lb)) | (ub != np.round(ub)))
+        if bad.any():
+            i = int(np.flatnonzero(bad)[0])
+            raise ValueError(
+                f"variable {i} is declared {VAR_TYPE_NAMES[codes[i]]} but its "
+                f"bounds [{lb[i]:g}, {ub[i]:g}] are not integral")
+
+    binary = codes == 'B'
+    if binary.any():
+        bad = binary & ((lb != 0) | (ub != 1))
+        if bad.any():
+            i = int(np.flatnonzero(bad)[0])
+            raise ValueError(
+                f"variable {i} is declared binary but its bounds are "
+                f"[{lb[i]:g}, {ub[i]:g}]; binary variables run over [0, 1]")
+
+
+
 class ObjectiveFunctionWrapper:
     """
     Pickle-compatible objective function wrapper for cross-platform parallel execution.
@@ -413,7 +665,9 @@ class MTOP:
             upper_bound: Optional[
                 Union[float, List[float], np.ndarray, Tuple[Union[float, List[float], np.ndarray], ...]]] = None,
             budget: Optional[Union[int, Tuple[Optional[int], ...]]] = None,
-            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None
+            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None,
+            var_type: Optional[Union[Any, Tuple[Any, ...]]] = None,
+            var_values: Optional[Union[Dict[int, Any], Tuple[Optional[Dict[int, Any]], ...]]] = None
     ) -> Union[int, List[int]]:
         """
         Add one or more tasks to MTOP.
@@ -505,10 +759,10 @@ class MTOP:
         """
         if isinstance(objective_func, tuple):
             return self._add_multiple_tasks(objective_func, dim, constraint_func, lower_bound, upper_bound,
-                                            budget, metadata)
+                                            budget, metadata, var_type, var_values)
         else:
             return self._add_single_task(objective_func, dim, constraint_func, lower_bound, upper_bound,
-                                         budget, metadata)
+                                         budget, metadata, var_type, var_values)
 
     def _add_single_task(
             self,
@@ -518,7 +772,9 @@ class MTOP:
             lower_bound: Optional[Union[float, List[float], np.ndarray]] = None,
             upper_bound: Optional[Union[float, List[float], np.ndarray]] = None,
             budget: Optional[int] = None,
-            metadata: Optional[Dict[str, Any]] = None
+            metadata: Optional[Dict[str, Any]] = None,
+            var_type: Optional[Any] = None,
+            var_values: Optional[Dict[int, Any]] = None
     ) -> int:
         """
         Add a single task to MTOP.
@@ -603,12 +859,20 @@ class MTOP:
         if metadata is not None and not isinstance(metadata, dict):
             raise ValueError(f"metadata must be a dict or None, got {type(metadata).__name__}")
 
+        # Declared variable types, defaulting to all-float so a task that says
+        # nothing behaves exactly as it did before this existed.
+        var_codes = normalize_var_type(var_type, dim)
+        validate_var_bounds(var_codes, lb, ub)
+        var_value_map = normalize_var_values(var_values, var_codes, lb, ub)
+
         task = {
             'raw_objective': objective_func,
             'objective': wrapped_obj,  # callable: X (n,dim) -> (n, n_obj)
             'n_objectives': n_obj,
             'constraints': constraint_wrappers,  # list of callables X -> (n, k_i)
-            'n_constraints': n_constraints
+            'n_constraints': n_constraints,
+            'var_type': var_codes,
+            'var_values': var_value_map
         }
 
         self.tasks.append(task)
@@ -626,7 +890,9 @@ class MTOP:
             lower_bounds: Optional[Tuple[Union[float, List[float], np.ndarray], ...]] = None,
             upper_bounds: Optional[Tuple[Union[float, List[float], np.ndarray], ...]] = None,
             budgets: Optional[Union[int, Tuple[Optional[int], ...]]] = None,
-            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None
+            metadata: Optional[Union[Dict[str, Any], Tuple[Optional[Dict[str, Any]], ...]]] = None,
+            var_type: Optional[Union[Any, Tuple[Any, ...]]] = None,
+            var_values: Optional[Union[Dict[int, Any], Tuple[Optional[Dict[int, Any]], ...]]] = None
     ) -> List[int]:
         """
         Add multiple tasks to MTOP.
@@ -694,6 +960,22 @@ class MTOP:
         elif len(metadata) != n_tasks:
             raise ValueError("metadata length must match number of objective_funcs")
 
+        # var_type broadcasts unless it is a tuple holding one spec per task.
+        # A tuple can also be a single run-length spec, which always wins when
+        # every entry is a (type, count) pair.
+        if isinstance(var_type, tuple) and var_type and not _is_single_var_type_spec(var_type):
+            if len(var_type) != n_tasks:
+                raise ValueError(
+                    f"var_type reads as one spec per task but has {len(var_type)} "
+                    f"entries for {n_tasks} tasks; pass a list for a run-length spec")
+        else:
+            var_type = (var_type,) * n_tasks
+
+        if var_values is None or isinstance(var_values, dict):
+            var_values = (var_values,) * n_tasks
+        elif len(var_values) != n_tasks:
+            raise ValueError("var_values length must match number of objective_funcs")
+
         indices = []
         for i in range(n_tasks):
             idx = self._add_single_task(
@@ -703,7 +985,9 @@ class MTOP:
                 lower_bound=lower_bounds[i],
                 upper_bound=upper_bounds[i],
                 budget=budgets[i],
-                metadata=metadata[i]
+                metadata=metadata[i],
+                var_type=var_type[i],
+                var_values=var_values[i]
             )
             indices.append(idx)
         return indices
@@ -761,7 +1045,9 @@ class MTOP:
                 dim=cfg['dim'],
                 constraint_func=cfg.get('constraint_func', None),
                 lower_bound=cfg.get('lower_bound', None),
-                upper_bound=cfg.get('upper_bound', None)
+                upper_bound=cfg.get('upper_bound', None),
+                var_type=cfg.get('var_type', None),
+                var_values=cfg.get('var_values', None)
             )
             indices.append(idx)
         return indices
@@ -1301,6 +1587,10 @@ class MTOP:
             - 'upper_bounds' : np.ndarray - Upper bounds
             - 'objective_func' : Callable - Raw objective function
             - 'constraint_funcs' : List[Callable] - Constraint function wrappers
+            - 'var_type' : np.ndarray - One type code per variable, 'F' float,
+              'I' integer, 'B' binary, 'C' categorical, 'O' ordinal
+            - 'var_values' : dict - For each categorical or ordinal variable,
+              the values its index stands for; empty when none were declared
             - 'budget' : int or None - Declared evaluation budget of the task
             - 'metadata' : dict - Free-form descriptor supplied when the task was
               added (e.g. data source, fidelity, units); never populated or
@@ -1334,7 +1624,9 @@ class MTOP:
             'objective_func': t['raw_objective'],
             'constraint_funcs': [w for w in t['constraints']],
             'budget': self.budgets[task_idx],
-            'metadata': self.metadata[task_idx]
+            'metadata': self.metadata[task_idx],
+            'var_type': t['var_type'].copy(),
+            'var_values': dict(t['var_values'])
         }
 
     def __str__(self) -> str:
@@ -1379,6 +1671,19 @@ class MTOP:
             Number of objectives for each task.
         """
         return self.get_all_n_objectives()
+
+    @property
+    def var_types(self) -> List[np.ndarray]:
+        """
+        Declared type code of every variable, one array per task.
+
+        Returns
+        -------
+        List[np.ndarray]
+            Arrays of shape (dim,) and dtype '<U1'. A task that declared
+            nothing reads as all 'F'.
+        """
+        return [t['var_type'].copy() for t in self.tasks]
 
     @property
     def n_cons(self) -> List[int]:

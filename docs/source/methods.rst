@@ -1096,6 +1096,82 @@ Adding Tasks
         upper_bound=([1]*3, [2]*4)
     )
 
+**Declaring Variable Types:**
+
+By default every variable is a float, exactly as before. A task can instead say
+what each of its variables is, so the knowledge lives in the problem rather than
+inside its objective:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 8 18 74
+
+   * - Code
+     - Name
+     - Meaning
+   * - ``F``
+     - float
+     - Continuous over ``[lower, upper]``. The default.
+   * - ``I``
+     - integer
+     - Integral, and arithmetic on it means something: 21 teeth is one more
+       tooth than 20.
+   * - ``B``
+     - binary
+     - Runs over ``{0, 1}``. Selection masks, knapsack items, feature subsets.
+   * - ``O``
+     - ordinal
+     - An index into an **ordered** list. The order counts, the spacing does
+       not: consecutive steel sections in a catalogue differ by whatever they
+       differ by.
+   * - ``C``
+     - categorical
+     - An index into an **unordered** list. Only equality means anything, as
+       for a choice of activation function.
+
+The same declaration can be written whichever way reads best:
+
+.. code-block:: python
+
+    mtop.add_task(objective, dim=14,
+                  lower_bound=[0]*14, upper_bound=[1]*3 + [10]*5 + [4]*6,
+                  var_type='FFFIIIIICCCCCC')                       # per variable
+
+    mtop.add_task(objective, dim=14, lower_bound=..., upper_bound=...,
+                  var_type=[('float', 3), ('integer', 5), ('categorical', 6)])
+
+    mtop.add_task(objective, dim=14, lower_bound=..., upper_bound=...,
+                  var_type={'I': range(3, 8), 'C': range(8, 14)})   # rest float
+
+    mtop.add_task(objective, dim=14, var_type='I')                  # one type throughout
+
+Categorical and ordinal variables are indices, so ``var_values`` can record what
+each index stands for. The list runs from ``lower`` to ``upper``:
+
+.. code-block:: python
+
+    mtop.add_task(objective, dim=2,
+                  lower_bound=[0, 1], upper_bound=[4, 37],
+                  var_type='CO',
+                  var_values={0: ['tanh', 'relu', 'sigmoid', 'sin', 'swish'],
+                              1: catalogue_of_37_sections})
+
+Read it back through :meth:`~ddmtolab.Methods.mtop.MTOP.get_task_info`:
+
+.. code-block:: python
+
+    info = mtop.get_task_info(0)
+    info['var_type']     # array(['C', 'O'], dtype='<U1')
+    info['var_values'][0]  # ('tanh', 'relu', 'sigmoid', 'sin', 'swish')
+
+.. note::
+
+   The declaration is descriptive. MTOP does not round, clamp or repair a value
+   because of it, and no algorithm reads it yet, so adding one to an existing
+   problem cannot change what that problem evaluates to. It is there so problems
+   can express themselves fully, and so type-aware operators have something to
+   build on.
+
 **Task with Constraints:**
 
 .. code-block:: python

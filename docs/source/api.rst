@@ -1194,9 +1194,17 @@ MTOP Class
 The **MTOP (Multitask Optimization Problem)** class is the core component for defining optimization problems.
 
 .. autoclass:: ddmtolab.Methods.mtop.MTOP
-   :members: add_task, add_tasks, evaluate_task, evaluate_tasks, get_task_info, set_unified_eval_mode
+   :members: add_task, add_tasks, evaluate_task, evaluate_tasks, get_task_info, set_unified_eval_mode, var_types
    :undoc-members:
    :show-inheritance:
+
+Decision variable types
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. automodule:: ddmtolab.Methods.mtop
+   :members: normalize_var_type, normalize_var_values, validate_var_bounds
+   :noindex:
+   :undoc-members:
 
 Benchmark Problem Suites
 ~~~~~~~~~~~~~~~~~~~~~~~~
