@@ -1,0 +1,305 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../../../../">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ddmtolab.Algorithms.STSO.LAEA_light &mdash; DDMTOLab 1.0.10 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../../../../_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="../../../../_static/css/theme.css?v=9edc463e" />
+
+  
+      <script src="../../../../_static/jquery.js?v=5d32c60e"></script>
+      <script src="../../../../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="../../../../_static/documentation_options.js?v=377e76b0"></script>
+      <script src="../../../../_static/doctools.js?v=fd6eb6e6"></script>
+      <script src="../../../../_static/sphinx_highlight.js?v=6ffebe34"></script>
+    <script src="../../../../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../../../../genindex.html" />
+    <link rel="search" title="Search" href="../../../../search.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../../../../index.html" class="icon icon-home">
+            DDMTOLab
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../../../../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul>
+<li class="toctree-l1"><a class="reference internal" href="../../../../installation.html">Installation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../demos.html">Demos</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../gui.html">Desktop GUI</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../algorithms.html">Algorithms</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../methods.html">Methods</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../problems.html">Problems</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../../../../api.html">API Reference</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../../../../index.html">DDMTOLab</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../../../../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="../../../index.html">Module code</a></li>
+      <li class="breadcrumb-item active">ddmtolab.Algorithms.STSO.LAEA_light</li>
+      <li class="wy-breadcrumbs-aside">
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <h1>Source code for ddmtolab.Algorithms.STSO.LAEA_light</h1><div class="highlight"><pre>
+<span></span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">Batched LLM-Assisted Evolutionary Algorithm (LAEA-light)</span>
+
+<span class="sd">This module implements LAEA-light, a drop-in variant of</span>
+<span class="sd">:class:`~ddmtolab.Algorithms.STSO.LAEA.LAEA` that asks the language model about</span>
+<span class="sd">a whole generation of offspring in one request instead of one request per</span>
+<span class="sd">candidate.</span>
+
+<span class="sd">The search itself is untouched -- same variable-width histogram EDA, same</span>
+<span class="sd">quadratic local search, same one-real-evaluation-per-generation policy, and the</span>
+<span class="sd">same two questions asked of the same in-context examples. Only the transport</span>
+<span class="sd">changes: the regression prompt and the classification prompt each carry every</span>
+<span class="sd">candidate of the current generation and come back with one answer per candidate.</span>
+
+<span class="sd">Why this is worth a separate class: in LAEA about 97% of every prompt is the</span>
+<span class="sd">in-context archive, and the serial path resends it once per candidate. At</span>
+<span class="sd">``n_initial=50`` a generation therefore costs ``2 * 50 = 100`` requests and, at</span>
+<span class="sd">D=10 with ``tao=50``, roughly 149,000 prompt tokens -- to buy a single real</span>
+<span class="sd">function evaluation. Batching the whole generation brings that down to two</span>
+<span class="sd">requests and about 3,500 prompt tokens.</span>
+
+<span class="sd">``llm_batch_size`` caps how many candidates share a request, so a generation</span>
+<span class="sd">costs ``2 * ceil(n_initial / llm_batch_size)`` requests. The default packs the</span>
+<span class="sd">whole generation into one request per surrogate.</span>
+
+<span class="sd">Notes on fidelity</span>
+<span class="sd">-----------------</span>
+<span class="sd">The two surrogates stay independent, as in LAEA: the regression answer never</span>
+<span class="sd">appears in the classification prompt or the other way round. What does change is</span>
+<span class="sd">that a candidate is now judged alongside its siblings rather than alone, so</span>
+<span class="sd">predictions are not bit-identical to the serial ones and existing serial</span>
+<span class="sd">``llm_cache`` files do not carry over. A response that cannot be parsed, or that</span>
+<span class="sd">does not return exactly one answer per candidate, is retried and then falls back</span>
+<span class="sd">per candidate exactly as the serial path does.</span>
+
+<span class="sd">References</span>
+<span class="sd">----------</span>
+<span class="sd">    [1] Hao, H., Zhang, X., &amp; Zhou, A. (2024). Large Language Models as Surrogate Models in Evolutionary Algorithms: A Preliminary Study. arXiv preprint arXiv:2406.10675.</span>
+
+<span class="sd">Notes</span>
+<span class="sd">-----</span>
+<span class="sd">Author: Jiangtao Shen</span>
+<span class="sd">Email: j.shen5@exeter.ac.uk</span>
+<span class="sd">Date: 2026.08.15</span>
+<span class="sd">Version: 1.0</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Algorithms.STSO.LAEA</span><span class="w"> </span><span class="kn">import</span> <span class="n">LAEA</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.Algo_Methods.algo_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">get_algorithm_information</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ddmtolab.Methods.LLM_Methods.llm_surrogate</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">LLM_ClassificationBatch</span><span class="p">,</span>
+    <span class="n">LLM_RegressionBatch</span><span class="p">,</span>
+<span class="p">)</span>
+
+
+<div class="viewcode-block" id="LAEA_light">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.LAEA_light.LAEA_light">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">LAEA_light</span><span class="p">(</span><span class="n">LAEA</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">    LAEA with one LLM request per surrogate per generation instead of one</span>
+<span class="sd">    request per candidate.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="n">regression_cls</span> <span class="o">=</span> <span class="n">LLM_RegressionBatch</span>
+    <span class="n">classification_cls</span> <span class="o">=</span> <span class="n">LLM_ClassificationBatch</span>
+
+    <span class="c1"># Declared literally rather than copied from LAEA: the GUI reads these two</span>
+    <span class="c1"># dicts out of the source with the AST, so a computed value would show up</span>
+    <span class="c1"># as an empty capability panel</span>
+    <span class="n">algorithm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;n_tasks&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, K]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;dims&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;objs&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_objs&#39;</span><span class="p">:</span> <span class="s1">&#39;1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;cons&#39;</span><span class="p">:</span> <span class="s1">&#39;equal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_cons&#39;</span><span class="p">:</span> <span class="s1">&#39;0&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;expensive&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;knowledge_transfer&#39;</span><span class="p">:</span> <span class="s1">&#39;False&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;n_initial&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_nfes&#39;</span><span class="p">:</span> <span class="s1">&#39;unequal&#39;</span>
+    <span class="p">}</span>
+
+    <span class="n">llm_information</span> <span class="o">=</span> <span class="p">{</span>
+        <span class="s1">&#39;llm_role&#39;</span><span class="p">:</span> <span class="s1">&#39;surrogate&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;backend&#39;</span><span class="p">:</span> <span class="s1">&#39;openai_compatible&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;default_model&#39;</span><span class="p">:</span> <span class="s1">&#39;deepseek-chat&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;max_llm_calls&#39;</span><span class="p">:</span> <span class="s1">&#39;[1, L]&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;prompt_version&#39;</span><span class="p">:</span> <span class="s1">&#39;laea_reg_v1 + laea_cla_v1&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;calls_per_generation&#39;</span><span class="p">:</span> <span class="s1">&#39;2 * ceil(n_initial / llm_batch_size)&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;offline_replay&#39;</span><span class="p">:</span> <span class="s1">&#39;True&#39;</span><span class="p">,</span>
+        <span class="s1">&#39;deterministic&#39;</span><span class="p">:</span> <span class="s1">&#39;cache_only&#39;</span>
+    <span class="p">}</span>
+
+    <span class="nd">@classmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+        <span class="k">return</span> <span class="n">get_algorithm_information</span><span class="p">(</span><span class="bp">cls</span><span class="p">,</span> <span class="n">print_info</span><span class="p">)</span>
+
+<div class="viewcode-block" id="LAEA_light.__init__">
+<a class="viewcode-back" href="../../../../api.html#ddmtolab.Algorithms.STSO.LAEA_light.LAEA_light.__init__">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">tao</span><span class="o">=</span><span class="mi">50</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="mf">0.3</span><span class="p">,</span> <span class="n">pb</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">pc</span><span class="o">=</span><span class="mf">0.2</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="mi">15</span><span class="p">,</span>
+                 <span class="n">llm_batch_size</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">llm_backend</span><span class="o">=</span><span class="s1">&#39;replay&#39;</span><span class="p">,</span> <span class="n">llm_model</span><span class="o">=</span><span class="s1">&#39;deepseek-chat&#39;</span><span class="p">,</span> <span class="n">llm_base_url</span><span class="o">=</span><span class="s1">&#39;https://api.deepseek.com&#39;</span><span class="p">,</span>
+                 <span class="n">llm_api_key_env</span><span class="o">=</span><span class="s1">&#39;DEEPSEEK_API_KEY&#39;</span><span class="p">,</span> <span class="n">llm_temperature</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_max_tokens</span><span class="o">=</span><span class="mi">2048</span><span class="p">,</span>
+                 <span class="n">llm_max_retries</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">llm_parallel</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">llm_beta</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">llm_seed</span><span class="o">=</span><span class="mi">42</span><span class="p">,</span> <span class="n">max_llm_calls</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+                 <span class="n">llm_price_prompt</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_price_completion</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">llm_cache_path</span><span class="o">=</span><span class="s1">&#39;&#39;</span><span class="p">,</span>
+                 <span class="n">strict_source</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">save_data</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="s1">&#39;./Data&#39;</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s1">&#39;LAEA-light&#39;</span><span class="p">,</span> <span class="n">disable_tqdm</span><span class="o">=</span><span class="kc">True</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">        Initialize LAEA-light.</span>
+
+<span class="sd">        Parameters</span>
+<span class="sd">        ----------</span>
+<span class="sd">        problem : MTOP</span>
+<span class="sd">            Multi-task optimization problem instance</span>
+<span class="sd">        n_initial : int or List[int], optional</span>
+<span class="sd">            Number of initial samples per task, also the population size and the</span>
+<span class="sd">            number of offspring per generation (default: 50)</span>
+<span class="sd">        max_nfes : int or List[int], optional</span>
+<span class="sd">            Maximum number of function evaluations per task (default: 300)</span>
+<span class="sd">        tao : int, optional</span>
+<span class="sd">            Number of best archive members shown to the LLM as examples (default: 50)</span>
+<span class="sd">        rate : float, optional</span>
+<span class="sd">            Quantile splitting good from bad solutions when labelling (default: 0.3)</span>
+<span class="sd">        pb : float, optional</span>
+<span class="sd">            Fraction of the population refined by local search (default: 0.2)</span>
+<span class="sd">        pc : float, optional</span>
+<span class="sd">            Per-variable probability of crossing an offspring with a</span>
+<span class="sd">            locally-refined solution (default: 0.2)</span>
+<span class="sd">        m : int, optional</span>
+<span class="sd">            Number of histogram bins per dimension in the VWH model (default: 15)</span>
+<span class="sd">        llm_batch_size : int, optional</span>
+<span class="sd">            Number of candidates packed into one request. ``None`` puts the whole</span>
+<span class="sd">            generation into one request per surrogate, which is the point of this</span>
+<span class="sd">            variant and costs two requests per real evaluation. A smaller value</span>
+<span class="sd">            trades that back for shorter, easier to parse responses and costs</span>
+<span class="sd">            ``2 * ceil(n_initial / llm_batch_size)`` (default: None)</span>
+<span class="sd">        llm_backend : str, optional</span>
+<span class="sd">            &#39;openai_compatible&#39; to call a real endpoint, &#39;replay&#39; to serve only</span>
+<span class="sd">            from the cache, or &#39;mock&#39; for offline synthetic responses</span>
+<span class="sd">            (default: &#39;replay&#39;)</span>
+<span class="sd">        llm_model : str, optional</span>
+<span class="sd">            Model identifier (default: &#39;deepseek-chat&#39;)</span>
+<span class="sd">        llm_base_url : str, optional</span>
+<span class="sd">            Endpoint root, passed through verbatim (default: &#39;https://api.deepseek.com&#39;)</span>
+<span class="sd">        llm_api_key_env : str, optional</span>
+<span class="sd">            Environment variable holding the API key (default: &#39;DEEPSEEK_API_KEY&#39;)</span>
+<span class="sd">        llm_temperature : float, optional</span>
+<span class="sd">            Sampling temperature (default: 0.0)</span>
+<span class="sd">        llm_max_tokens : int, optional</span>
+<span class="sd">            Completion cap. A batched answer carries one entry per candidate, so</span>
+<span class="sd">            this is far larger than the serial default of 10 (default: 2048)</span>
+<span class="sd">        llm_max_retries : int, optional</span>
+<span class="sd">            Attempts per request before falling back (default: 3)</span>
+<span class="sd">        llm_parallel : int, optional</span>
+<span class="sd">            Worker threads issuing requests. Reduces wall-clock time, not the</span>
+<span class="sd">            number of requests (default: 1)</span>
+<span class="sd">        llm_beta : int, optional</span>
+<span class="sd">            Decimal places kept when rounding normalized features (default: 3)</span>
+<span class="sd">        llm_seed : int, optional</span>
+<span class="sd">            Seed forwarded to the endpoint and used by the fallback RNG (default: 42)</span>
+<span class="sd">        max_llm_calls : int, optional</span>
+<span class="sd">            Hard cap on requests; the run stops early when it is reached</span>
+<span class="sd">            (default: None)</span>
+<span class="sd">        llm_price_prompt : float, optional</span>
+<span class="sd">            USD per 1M prompt tokens, for the cost estimate (default: 0.0)</span>
+<span class="sd">        llm_price_completion : float, optional</span>
+<span class="sd">            USD per 1M completion tokens, for the cost estimate (default: 0.0)</span>
+<span class="sd">        llm_cache_path : str, optional</span>
+<span class="sd">            Cache file; defaults to ``&lt;save_path&gt;/llm_cache/&lt;name&gt;.jsonl``.</span>
+<span class="sd">            Serial LAEA caches are not compatible because the prompts differ</span>
+<span class="sd">            (default: &#39;&#39;)</span>
+<span class="sd">        strict_source : bool, optional</span>
+<span class="sd">            Accept only the ``Value`` JSON key, reproducing the reference parser</span>
+<span class="sd">            (default: False)</span>
+<span class="sd">        save_data : bool, optional</span>
+<span class="sd">            Whether to save optimization data (default: True)</span>
+<span class="sd">        save_path : str, optional</span>
+<span class="sd">            Path to save results (default: &#39;./Data&#39;)</span>
+<span class="sd">        name : str, optional</span>
+<span class="sd">            Name for the experiment (default: &#39;LAEA-light&#39;)</span>
+<span class="sd">        disable_tqdm : bool, optional</span>
+<span class="sd">            Whether to disable progress bar (default: True)</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+            <span class="n">problem</span><span class="p">,</span> <span class="n">n_initial</span><span class="o">=</span><span class="n">n_initial</span><span class="p">,</span> <span class="n">max_nfes</span><span class="o">=</span><span class="n">max_nfes</span><span class="p">,</span> <span class="n">tao</span><span class="o">=</span><span class="n">tao</span><span class="p">,</span> <span class="n">rate</span><span class="o">=</span><span class="n">rate</span><span class="p">,</span>
+            <span class="n">pb</span><span class="o">=</span><span class="n">pb</span><span class="p">,</span> <span class="n">pc</span><span class="o">=</span><span class="n">pc</span><span class="p">,</span> <span class="n">m</span><span class="o">=</span><span class="n">m</span><span class="p">,</span> <span class="n">llm_backend</span><span class="o">=</span><span class="n">llm_backend</span><span class="p">,</span> <span class="n">llm_model</span><span class="o">=</span><span class="n">llm_model</span><span class="p">,</span>
+            <span class="n">llm_base_url</span><span class="o">=</span><span class="n">llm_base_url</span><span class="p">,</span> <span class="n">llm_api_key_env</span><span class="o">=</span><span class="n">llm_api_key_env</span><span class="p">,</span>
+            <span class="n">llm_temperature</span><span class="o">=</span><span class="n">llm_temperature</span><span class="p">,</span> <span class="n">llm_max_tokens</span><span class="o">=</span><span class="n">llm_max_tokens</span><span class="p">,</span>
+            <span class="n">llm_max_retries</span><span class="o">=</span><span class="n">llm_max_retries</span><span class="p">,</span> <span class="n">llm_parallel</span><span class="o">=</span><span class="n">llm_parallel</span><span class="p">,</span>
+            <span class="n">llm_beta</span><span class="o">=</span><span class="n">llm_beta</span><span class="p">,</span> <span class="n">llm_seed</span><span class="o">=</span><span class="n">llm_seed</span><span class="p">,</span> <span class="n">max_llm_calls</span><span class="o">=</span><span class="n">max_llm_calls</span><span class="p">,</span>
+            <span class="n">llm_price_prompt</span><span class="o">=</span><span class="n">llm_price_prompt</span><span class="p">,</span> <span class="n">llm_price_completion</span><span class="o">=</span><span class="n">llm_price_completion</span><span class="p">,</span>
+            <span class="n">llm_cache_path</span><span class="o">=</span><span class="n">llm_cache_path</span><span class="p">,</span> <span class="n">strict_source</span><span class="o">=</span><span class="n">strict_source</span><span class="p">,</span>
+            <span class="n">save_data</span><span class="o">=</span><span class="n">save_data</span><span class="p">,</span> <span class="n">save_path</span><span class="o">=</span><span class="n">save_path</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span>
+            <span class="n">disable_tqdm</span><span class="o">=</span><span class="n">disable_tqdm</span>
+        <span class="p">)</span>
+        <span class="c1"># None means the whole generation in one request; n_initial is also the</span>
+        <span class="c1"># number of offspring, so it is the largest batch that can occur</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">llm_batch_size</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">llm_batch_size</span><span class="p">)</span> <span class="k">if</span> <span class="n">llm_batch_size</span> <span class="k">else</span> <span class="nb">int</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">n_initial</span><span class="p">)</span></div>
+</div>
+
+</pre></div>
+
+           </div>
+          </div>
+          <footer>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Jiangtao Shen.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

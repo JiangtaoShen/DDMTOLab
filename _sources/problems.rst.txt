@@ -560,9 +560,9 @@ For problems requiring complex metrics (e.g., multiobjective optimization), prov
 
     # Metric configuration dictionary
     SETTINGS = {
-        'metric': 'IGD',           # Performance metric type
-        'n_pf': 10000,             # Number of reference PF points
-        'pf_path': './MOReference', # Pre-stored PF data path (optional)
+        'metric': 'IGD',            # Performance metric type
+        'n_ref': 10000,             # Number of reference points to sample
+        'ref_path': './MOReference',  # Directory of pre-stored reference files (optional)
         'P1': {'T1': P1_T1_PF, 'T2': P1_T2_PF}  # PF generators per task
     }
 
@@ -572,14 +572,21 @@ Implementation Guidelines
 **Problem Class Structure**
 
 1. Class name should clearly reflect problem source (e.g., ``CEC17MTMO``)
-2. Each problem instance method (e.g., ``P1``, ``P2``) returns a configured MTOP object
-3. Task functions support batch computation using ``np.atleast_2d``
+2. Each problem instance method (e.g., ``P1``, ``P2``) is annotated ``-> MTOP`` and
+   returns a configured MTOP object. The annotation is the contract problem
+   discovery keys off: a public method without it is treated as a helper, not a
+   benchmark problem
+3. Configurable sizes always use the standard parameter names: ``D`` (decision
+   variables), ``M`` (objectives), ``K`` (tasks), ``Kp`` (WFG position parameters)
+4. Task functions support batch computation using ``np.atleast_2d``
 
 **Configuration Dictionary**
 
 1. ``metric``: Performance metric type (**required**), e.g., ``'IGD'``, ``'HV'``
-2. ``n_pf``: Number of reference front points (optional), recommended: 10000
-3. ``pf_path``: Data file path (optional)
+2. ``n_ref``: Number of reference points to sample from a PF generator
+   (optional, default 10000)
+3. ``ref_path``: Directory holding pre-stored reference files, used when a
+   reference is given as a file name (optional, default ``'./MOReference'``)
 4. Problem-task mapping: Nested dictionary structure ``{'P#': {'T#': reference_info}}``
 
 **File Organization**
@@ -592,236 +599,302 @@ Implementation Guidelines
 Benchmark Problems
 ------------------
 
-D²MTOLab provides 180+ benchmark problems organized by optimization type. All problems are implemented as classes that return configured MTOP instances.
+D²MTOLab ships 29 problem suites holding 212 benchmark problems. Every
+problem is a method annotated ``-> MTOP`` that returns a fully configured MTOP
+instance; ``D``, ``M``, ``K`` and ``Kp`` in the tables below are the parameter
+names those methods accept.
 
 Single-Task Single-Objective (STSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 20 15 15 15 35
+   :widths: 16 8 10 14 10 42
 
-   * - Class
+   * - Suite
+     - Problems
      - Tasks
      - Dim
-     - Obj/Con
+     - Obj / Con
      - Description
    * - ``CLASSICALSO``
+     - 9
      - 1
-     - 50 (configurable)
+     - D
      - 1 / 0
-     - Classical functions: Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Schwefel 2.22, Sphere, Weierstrass (P1-P9)
-   * - ``CEC10CSO``
+     - Classical landscapes (Ackley, Elliptic, Griewank, Rastrigin, Rosenbrock, Schwefel, Schwefel 2.22, Sphere, Weierstrass), unrotated and unshifted
+   * - ``STSOtest``
+     - 9
      - 1
-     - 1000 (configurable)
+     - D
      - 1 / 0
-     - CEC 2010 Large-Scale Global Optimization: 20 large-scale benchmark functions (F1-F20)
+     - The same classical landscapes, rotated and shifted so the optimum is not at the origin
+   * - ``CEC10_CSO``
+     - 18
+     - 1
+     - 10-30
+     - 1 / 2-5
+     - CEC 2010 constrained real-parameter optimization (P1-P18); D is capped at 30 by the shipped offset vectors
 
 **Usage Example:**
 
 .. code-block:: python
 
-   from ddmtolab.Problems.STSO.classical_so import CLASSICALSO
+   from ddmtolab.Problems.STSO import CLASSICALSO
 
-   problem_suite = CLASSICALSO()
-   problem = problem_suite.P1(D=30)  # Ackley function
+   problem = CLASSICALSO().P1(D=30)   # 30-dimensional Ackley
 
-Single-Task Multiobjective (STMO)
+Single-Task Multi-Objective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 15 10 20 15 40
+   :widths: 16 8 10 14 10 42
 
-   * - Class
+   * - Suite
+     - Problems
      - Tasks
      - Dim
-     - Obj/Con
+     - Obj / Con
      - Description
    * - ``ZDT``
+     - 6
      - 1
-     - 10-30 (configurable)
+     - D
      - 2 / 0
-     - ZDT test suite (ZDT1-ZDT6): Convex, non-convex, disconnected, and multi-modal Pareto fronts
+     - ZDT suite (ZDT1-ZDT6): convex, non-convex, disconnected and multi-modal Pareto fronts
    * - ``DTLZ``
+     - 9
      - 1
-     - M+k-1 (scalable)
-     - M / 0 or M
-     - DTLZ test suite (DTLZ1-DTLZ9): Scalable objectives (M=2-10+), DTLZ8-9 are constrained
+     - D
+     - M / 0-M
+     - DTLZ suite (DTLZ1-DTLZ9), scalable in M and D; DTLZ8-DTLZ9 are constrained. Default D = M + k - 1
    * - ``WFG``
+     - 9
      - 1
-     - k+l (scalable)
+     - D
      - M / 0
-     - WFG test suite (WFG1-WFG9): Bias, flatness, multi-modality, and mixed Pareto fronts
+     - WFG suite (WFG1-WFG9), scalable in M, D and the position parameter Kp. Default D = Kp + 10
    * - ``UF``
+     - 10
      - 1
-     - 30 (configurable)
+     - D
      - 2-3 / 0
-     - CEC 2009 Unconstrained test suite (UF1-UF10): Complex landscapes
+     - CEC 2009 unconstrained suite (UF1-UF10): complicated Pareto sets
    * - ``CF``
+     - 10
      - 1
-     - 10 (configurable)
+     - D
      - 2-3 / 1-2
-     - CEC 2009 Constrained test suite (CF1-CF10): Various constraint types
+     - CEC 2009 constrained suite (CF1-CF10); CF6 and CF7 carry two constraints
    * - ``MW``
+     - 14
      - 1
-     - 15 (configurable)
-     - 2-3 / 1-3
-     - Ma-Wang constrained test suite (MW1-MW14): Challenging constraint boundaries
+     - D
+     - 2-3 / 1-4
+     - Ma-Wang constrained suite (MW1-MW14): challenging constraint boundaries
 
 **Usage Example:**
 
 .. code-block:: python
 
-   from ddmtolab.Problems.STMO.ZDT import ZDT
-   from ddmtolab.Problems.STMO.DTLZ import DTLZ
+   from ddmtolab.Problems.STMO import ZDT, DTLZ
 
-   # ZDT problem with 30 dimensions
-   zdt = ZDT()
-   problem = zdt.ZDT1(dim=30)
+   problem = ZDT().ZDT1(D=30)         # 30 decision variables
+   problem = DTLZ().DTLZ2(M=5)        # 5 objectives, D defaults to M + k - 1
 
-   # DTLZ problem with 5 objectives
-   dtlz = DTLZ()
-   problem = dtlz.DTLZ2(M=5)
+   # the reference Pareto fronts live next to the suite
+   from ddmtolab.Problems.STMO.DTLZ import SETTINGS
 
-Multitask Single-Objective (MTSO)
+Multi-Task Single-Objective (MTSO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 18 10 18 12 42
+   :widths: 16 8 10 14 10 42
 
-   * - Class
+   * - Suite
+     - Problems
      - Tasks
      - Dim
-     - Obj/Con
+     - Obj / Con
      - Description
    * - ``CEC17MTSO``
+     - 9
      - 2
      - 25-50
      - 1 / 0
-     - CEC 2017 EMTO competition (P1-P9): Complete/Partial/No intersection with High/Medium/Low similarity
-   * - ``CEC17MTSO10D``
+     - CEC 2017 EMTO competition (P1-P9): complete/partial/no intersection at high/medium/low similarity. Task 2 of P6 is 25-dimensional
+   * - ``CEC17MTSO_10D``
+     - 9
      - 2
      - 10
      - 1 / 0
-     - 10-dimensional variant of CEC17MTSO benchmark
+     - 10-dimensional variant of CEC17MTSO, for expensive / surrogate-assisted studies
    * - ``CEC19MaTSO``
-     - 10-50
+     - 6
+     - K
      - 50
      - 1 / 0
-     - CEC 2019 Many-Task Optimization: Large-scale multitask scenarios
+     - CEC 2019 many-task optimization: K tasks generated from one landscape by rotation and shift
    * - ``CMT``
+     - 9
      - 2
-     - 50 (configurable)
-     - 1 / 0
-     - Combinatorial Multitask benchmark: Varying task correlations
-   * - ``STOP``
-     - 2
-     - 50
-     - 1 / 0
-     - STOP benchmark: Single-objective transfer optimization problems
+     - D
+     - 1 / 1-2
+     - Constrained multi-task benchmark (CMT1-CMT9); task 2 of CMT6 and CMT8 carries two constraints
    * - ``ManyTask_10D``
+     - 4
      - 3-5
      - 10
      - 1 / 0
-     - Many-task optimization benchmark (4 problems): Varying similarity and task counts
+     - Compact many-task problems (P1-P4) with 3 or 5 tasks and varying similarity
+   * - ``STOP``
+     - 12
+     - K
+     - 25-50
+     - 1 / 0
+     - Scalable test problem generator for sequential transfer optimization (STOP1-STOP12)
 
 **Usage Example:**
 
 .. code-block:: python
 
-   from ddmtolab.Problems.MTSO.cec17_mtso import CEC17MTSO
+   from ddmtolab.Problems.MTSO import CEC17MTSO
 
-   problem_suite = CEC17MTSO()
-   problem = problem_suite.P1()  # CI-HS: Complete Intersection - High Similarity
-   print(f"Tasks: {problem.n_tasks}, Dims: {problem.dims}")
+   problem = CEC17MTSO().P1()         # CI-HS: complete intersection, high similarity
+   print(problem.n_tasks, problem.dims)
 
-Multitask Multiobjective (MTMO)
+Multi-Task Multi-Objective (MTMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. list-table::
    :header-rows: 1
-   :widths: 18 10 18 12 42
+   :widths: 16 8 10 14 10 42
 
-   * - Class
+   * - Suite
+     - Problems
      - Tasks
      - Dim
-     - Obj/Con
+     - Obj / Con
      - Description
    * - ``CEC17MTMO``
+     - 9
      - 2
      - 10-50
      - 2-3 / 0
-     - CEC 2017 MTMO competition (P1-P9): Bi-objective and tri-objective combinations
+     - CEC 2017 MTMO competition (P1-P9): bi-objective and tri-objective task pairs
    * - ``CEC19MTMO``
+     - 10
      - 2
-     - 25-50
+     - 10-30
      - 2-3 / 0
-     - CEC 2019 MTMO benchmark: Extended multiobjective scenarios
-   * - ``CEC19MaTMO``
+     - CEC 2019 CPLX benchmark (P1-P10), LZ09-based, with complicated Pareto sets
+   * - ``CEC19_MaTMO``
+     - 6
+     - K
      - 10-50
-     - 25-50
-     - 2-3 / 0
-     - CEC 2019 Many-Task Multiobjective: Large-scale MO multitask
+     - 2 / 0
+     - CEC 2019 many-task multi-objective benchmark (P1-P6); P3 is 10-dimensional
    * - ``CEC21MTMO``
+     - 10
      - 2
-     - 25-50
-     - 2-3 / 0
-     - CEC 2021 MTMO benchmark: Latest competition problems
-   * - ``MTMODTLZ``
-     - 2-10
-     - M+k-1
+     - 50
+     - 2 / 0
+     - CEC 2021 MTMO benchmark (P1-P10)
+   * - ``MTMO_DTLZ``
+     - 1
+     - 2
+     - D
      - M / 0
-     - Multitask DTLZ variants: Configurable task relationships
+     - Multi-task DTLZ illustration: DTLZ2 (uni-modal g) paired with DTLZ3 (multi-modal g)
+   * - ``MTMOInstances``
+     - 2
+     - 2
+     - 10
+     - 2 / 0-1
+     - Compact ZDT4-based instances (P1-P2); P2 is constrained
 
 **Usage Example:**
 
 .. code-block:: python
 
-   from ddmtolab.Problems.MTMO.cec17_mtmo import CEC17MTMO
+   from ddmtolab.Problems.MTMO import CEC17MTMO
+   from ddmtolab.Problems.MTMO.cec17_mtmo import SETTINGS
 
-   problem_suite = CEC17MTMO()
-   problem = problem_suite.P8()  # T1: 3-obj DTLZ-like, T2: 2-obj ZDT-like
-   print(f"Task 0 objectives: {problem.n_objs[0]}")  # 3
-   print(f"Task 1 objectives: {problem.n_objs[1]}")  # 2
+   problem = CEC17MTMO().P8()         # T1: 3-objective, T2: 2-objective
+   print(problem.n_objs)
 
 Real-World Optimization (RWO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-D²MTOLab includes real-world optimization problems in the ``Problems/RWO/`` directory:
-
 .. list-table::
    :header-rows: 1
-   :widths: 20 15 65
+   :widths: 16 8 10 14 10 42
 
-   * - Problem
-     - Type
+   * - Suite
+     - Problems
+     - Tasks
+     - Dim
+     - Obj / Con
      - Description
    * - ``PEPVM``
-     - MTSO
-     - Process Equipment Portfolio Value Maximization
+     - 1
+     - 3
+     - 5-7
+     - 1 / 0
+     - Parameter extraction of photovoltaic models: single-diode, double-diode and PV-module tasks
    * - ``SOPM``
-     - STSO
-     - Single-Objective Portfolio Management
-   * - ``PINN_HPO``
-     - STSO
-     - Physics-Informed Neural Network Hyperparameter Optimization
-   * - ``MO_SCP``
-     - STMO
-     - Multiobjective Ship Course Planning
-   * - ``SCP``
-     - STSO
-     - Ship Course Planning
-   * - ``PKACP``
-     - STMO
-     - Power Keeping & Anti-Collision Path Planning
+     - 2
+     - 3
+     - 25-30
+     - 2 / 24-29
+     - Synchronous optimal pulse-width modulation: harmonic distortion vs switching loss, monotone-angle constraints
    * - ``NN_Training``
-     - STSO
-     - Neural Network Weight Training via Neuroevolution
+     - 6
+     - 1
+     - 101-1867
+     - 1 / 0
+     - Neural network weight optimization by neuroevolution on scikit-learn datasets
    * - ``TSP``
-     - STSO
-     - Traveling Salesman Problem
+     - 6
+     - 1
+     - 20-200
+     - 1 / 0
+     - Traveling salesman problem via random-keys encoding (20-200 cities)
+   * - ``SCP``
+     - 1
+     - 11
+     - 75-105
+     - 1 / 0
+     - Sensor coverage problem: one task per sensor count, so tasks differ in dimension
+   * - ``MO_SCP``
+     - 2
+     - 4-5
+     - 75-102
+     - 2 / 0
+     - Multi-objective sensor coverage problem: coverage vs deployment cost
+   * - ``PKACP``
+     - 1
+     - K
+     - D
+     - 1 / 0
+     - Planar kinematic arm control: reach a target with a D-joint arm, K tasks with different arm geometries
+   * - ``PINN_HPO``
+     - 12
+     - 2-4
+     - 6
+     - 1 / 0
+     - Hyperparameter optimization of physics-informed neural networks (convection, reaction, wave, Helmholtz)
+
+**Usage Example:**
+
+.. code-block:: python
+
+   from ddmtolab.Problems.RWO import PEPVM
+
+   problem = PEPVM().P1()             # 3 photovoltaic model-fitting tasks
+   print(problem.n_tasks, problem.dims)
 
 See Also
 --------

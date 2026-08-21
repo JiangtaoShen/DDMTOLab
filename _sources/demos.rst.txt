@@ -535,8 +535,8 @@ This demo compares surrogate-assisted MOEAs on expensive multiobjective problems
    from ddmtolab.Algorithms.STMO.K_RVEA import K_RVEA
 
    # DTLZ2: scalable multiobjective benchmark
-   # M=4: 4 objectives, dim=10: 10 decision variables
-   problem = DTLZ().DTLZ2(M=4, dim=10)
+   # M=4: 4 objectives, D=10: 10 decision variables
+   problem = DTLZ().DTLZ2(M=4, D=10)
 
    # Compare with limited budget (200 evaluations)
    # NSGA-II: standard MOEA (baseline)
@@ -606,8 +606,8 @@ This demo runs batch experiments comparing surrogate-assisted MOEAs on DTLZ benc
 
        # Add DTLZ problems with 3 objectives
        problems = DTLZ()
-       batch_exp.add_problem(problems.DTLZ1, 'DTLZ1', M=3, dim=10)
-       batch_exp.add_problem(problems.DTLZ2, 'DTLZ2', M=3, dim=10)
+       batch_exp.add_problem(problems.DTLZ1, 'DTLZ1', M=3, D=10)
+       batch_exp.add_problem(problems.DTLZ2, 'DTLZ2', M=3, D=10)
 
        # Add surrogate-assisted algorithms
        # NSGA-II: baseline MOEA
