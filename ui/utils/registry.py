@@ -102,8 +102,24 @@ def get_all_categories() -> List[str]:
 
 
 def is_multi_objective(category: str) -> bool:
-    """Check if a category is multi-objective."""
+    """Check if a category is multi-objective.
+
+    RWO mixes single- and multiobjective suites, so this returns False for it.
+    Use :func:`suite_is_multi_objective` when a suite is known.
+    """
     return category in ["STMO", "MTMO"]
+
+
+def suite_is_multi_objective(category: str, suite: str) -> bool:
+    """Check if a specific suite is multi-objective.
+
+    STMO and MTMO are multiobjective throughout. RWO holds both kinds, so decide
+    from the suite itself: the multiobjective ones ship the reference data that
+    IGD and HV need, under the module-level SETTINGS dict.
+    """
+    if is_multi_objective(category):
+        return True
+    return get_problem_settings(category, suite) is not None
 
 
 def is_multi_task(category: str) -> bool:

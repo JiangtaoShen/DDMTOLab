@@ -12,7 +12,7 @@ import dearpygui.dearpygui as dpg
 from utils.registry import (
     get_algorithm_names, get_algorithm_class,
     get_problem_suites, get_problem_methods, get_problem_creator,
-    is_multi_objective, get_problem_settings, get_problem_module_path,
+    suite_is_multi_objective, get_problem_settings, get_problem_module_path,
 )
 from utils.algo_scanner import (
     scan_all_algorithms,
@@ -612,8 +612,8 @@ def _run_clicked(sender, app_data):
     # Build SETTINGS for metric calculation (always provide so MO data works)
     metric = dpg.get_value("batch_metric_combo") if dpg.does_item_exist("batch_metric_combo") else "IGD"
     settings = {'metric': metric, 'n_ref': 10000}
-    if is_multi_objective(prob_cat):
-        # Load Pareto front references from suite for MO categories
+    if any(suite_is_multi_objective(prob_cat, suite) for suite, _ in selected_probs):
+        # Load Pareto front references from every multiobjective suite in the batch
         problem_names = []
         suite_settings_cache = {}
         for i, (suite, method) in enumerate(selected_probs):

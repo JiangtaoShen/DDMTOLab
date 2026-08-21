@@ -12,7 +12,7 @@ from pathlib import Path
 from utils.registry import (
     get_algorithm_names, get_algorithm_class,
     get_problem_suites, get_problem_methods, create_problem,
-    is_multi_objective, get_problem_settings,
+    suite_is_multi_objective, get_problem_settings,
 )
 from utils.algo_scanner import (
     get_algorithm_params_from_scan, scan_all_algorithms,
@@ -688,7 +688,7 @@ def _run_analysis():
 
         metric = dpg.get_value("test_metric_combo") if dpg.does_item_exist("test_metric_combo") else "IGD"
         settings = {'metric': metric, 'n_ref': 10000}
-        if is_multi_objective(prob_cat):
+        if suite_is_multi_objective(prob_cat, suite):
             suite_settings = get_problem_settings(prob_cat, suite)
             if suite_settings:
                 settings.update(suite_settings)
