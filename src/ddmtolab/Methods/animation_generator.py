@@ -1368,7 +1368,7 @@ def create_optimization_animation(pkl_path=None, output_path=None, fps=10, dpi=1
     save_path : str, optional
         Directory to save animations when pkl_path is None (default: './Results')
     pattern : str, optional
-        File pattern to search for when pkl_path is None (default: '*.pkl')
+        File pattern to search for when pkl_path is None (default: ``'*.pkl'``)
     format : str, optional
         Output format: 'gif' or 'mp4' (default: 'gif')
     merge : int, optional
@@ -1486,7 +1486,7 @@ def generate_all_animations(data_path='./Data', save_path='./Results',
     interval : int
         Interval between frames in milliseconds (default: 100)
     pattern : str
-        File pattern to search for (default: '*.pkl')
+        File pattern to search for (default: ``'*.pkl'``)
     format : str
         Output format: 'gif' or 'mp4' (default: 'gif')
     merge : int

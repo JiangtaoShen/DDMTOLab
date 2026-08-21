@@ -909,7 +909,10 @@ class MTOP:
             - objectives: shape (n_samples, n_evaluated_objectives)
               or padded to (n_samples, m_max) if unified_eval_mode is True
             - constraints: shape (n_samples, n_evaluated_constraints)
-              or padded to (n_samples, c_max) if unified_eval_mode is True
+              or padded to (n_samples, c_max) if unified_eval_mode is True.
+              A task with no constraints yields zeros of shape (n_samples, 1),
+              a trivially satisfied constraint, rather than an empty array;
+              eval_constraints=False is what returns shape (n_samples, 0).
 
         Raises
         ------

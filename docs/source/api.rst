@@ -286,6 +286,16 @@ Single-Task Single-Objective (STSO)
    :special-members: __init__
    :exclude-members: algorithm_information, get_algorithm_information, llm_information
 
+.. automodule:: ddmtolab.Algorithms.STSO.LAEA_light
+   :no-members:
+
+.. autoclass:: ddmtolab.Algorithms.STSO.LAEA_light.LAEA_light
+   :members: optimize
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information, llm_information
+
 Single-Task Multiobjective (STMO)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -683,6 +693,26 @@ Single-Task Multiobjective (STMO)
    :no-members:
 
 .. autoclass:: ddmtolab.Algorithms.STMO.TEA.TEA
+   :members: optimize
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+.. automodule:: ddmtolab.Algorithms.STMO.GSAEA
+   :no-members:
+
+.. autoclass:: ddmtolab.Algorithms.STMO.GSAEA.GSAEA
+   :members: optimize
+   :undoc-members:
+   :show-inheritance:
+   :special-members: __init__
+   :exclude-members: algorithm_information, get_algorithm_information
+
+.. automodule:: ddmtolab.Algorithms.STMO.AS_SMEA
+   :no-members:
+
+.. autoclass:: ddmtolab.Algorithms.STMO.AS_SMEA.AS_SMEA
    :members: optimize
    :undoc-members:
    :show-inheritance:
@@ -1378,6 +1408,17 @@ Reporting layer
 
 .. autoclass:: ddmtolab.Methods.data_analysis.FriedmanPostHocResult
    :members:
+
+Animation Generator
+~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: ddmtolab.Methods.animation_generator.AnimationGenerator
+   :members:
+   :undoc-members:
+
+.. autofunction:: ddmtolab.Methods.animation_generator.create_optimization_animation
+
+.. autofunction:: ddmtolab.Methods.animation_generator.generate_all_animations
 
 Performance Metrics
 ~~~~~~~~~~~~~~~~~~~
