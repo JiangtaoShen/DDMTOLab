@@ -28,15 +28,15 @@
 
 <!-- Rolling list: keep only the 5 most recent items, newest first. When adding a new item, delete the oldest so the list never exceeds 5. -->
 
+- **2026-08-21** — A task can now declare what each of its variables is, one code per variable: `F` float, `I` integer, `B` binary, `O` ordinal, `C` categorical, with `var_values` recording what a categorical or ordinal index stands for. The declaration is descriptive, so every existing problem keeps evaluating exactly as before.
+- **2026-08-21** — Cross-checked every benchmark against its MATLAB reference, PlatEMO for the single-task suites and MToP for the multitask ones. **Results obtained on MW before this date are not valid**: all fourteen problems fed their g function one distance variable too few and shifted every offset, so objectives and constraints were wrong by 10% to 100% of their range. WFG1 lost the flat bias rounding, and the DTLZ8 and ZDT3 reference fronts carried points that were outside the front. All four are corrected and pinned by tests; every other suite already agreed to machine precision. MTMO-DTLZ was dropped, leaving 28 suites and 211 problems.
 - **2026-08-15** — Added LAEA-light, a batched variant of LAEA that asks the language model about a whole generation in one request: 2 LLM calls per infill instead of 2N.
 - **2026-08-14** — Added two surrogate-assisted algorithms for high-dimensional expensive multiobjective optimization (GSAEA, AS-SMEA).
 - **2026-08-06** — Added nonparametric statistical tests for comparing algorithms over a benchmark suite (sign test, Wilcoxon signed-rank, Friedman / Friedman aligned ranks / Quade, adjusted p-values under seven control and four all-pairs post-hoc procedures, critical difference diagrams, contrast estimation).
-- **2026-08-03** — Verified and validated an LLM-assisted expensive single-task optimization algorithm (LAEA).
-- **2026-08-03** — Added an expensive multitask multiobjective optimization algorithm (SAEA-AKT).
 
 ## 📖 Overview
 
-**D<sup>2</sup>MTOLab (Data-Driven Multitask Optimization Laboratory)** is a comprehensive Python platform for optimization research, featuring **115 algorithms**, **212 benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
+**D<sup>2</sup>MTOLab (Data-Driven Multitask Optimization Laboratory)** is a comprehensive Python platform for optimization research, featuring **115 algorithms**, **211 benchmark problems**, and powerful experiment tools for problem definition, algorithm development, and performance evaluation.
 
 Whether you're working on expensive black-box optimization, multiobjective optimization, or complex multitask scenarios, D<sup>2</sup>MTOLab provides a flexible and extensible framework to accelerate your **research** and support real-world **applications**.
 
