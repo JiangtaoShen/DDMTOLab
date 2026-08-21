@@ -57,8 +57,8 @@ class MW:
 
             # Calculate g function
             # g = 1 + sum(1 - exp(-10*((x_i^(D-M)) - 0.5 - (i-1)/(2*D))^2))
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             obj = np.zeros((N, M))
@@ -109,8 +109,8 @@ class MW:
 
             # Calculate z transformation
             # z = 1 - exp(-10*(x_i - (i-1)/D)^2)
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Calculate g function with multi-modal term
             # g = 1 + sum(1.5 + (0.1/D)*z^2 - 1.5*cos(2*pi*z))
@@ -165,7 +165,7 @@ class MW:
             # Calculate g function
             # g = 1 + sum(2*(x_i + (x_{i-1} - 0.5)^2 - 1)^2)
             # Note: x_{i-1} for i >= M means x[:, M-1:end-1]
-            term = x[:, M:] + (x[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = x[:, M - 1:] + (x[:, M - 2:-1] - 0.5) ** 2 - 1
             g = 1 + np.sum(2 * term ** 2, axis=1)
 
             obj = np.zeros((N, M))
@@ -223,8 +223,8 @@ class MW:
 
             # Calculate g function
             # g = sum(1 - exp(-10*((x_i^(D-M)) - 0.5 - (i-1)/(2*D))^2))
-            indices = np.arange(num_obj, D)
-            terms = (x[:, num_obj:] ** (D - num_obj) - 0.5 - (indices - num_obj) / (2 * D)) ** 2
+            indices = np.arange(num_obj - 1, D)
+            terms = (x[:, num_obj - 1:] ** (D - num_obj) - 0.5 - indices / (2 * D)) ** 2
             g = np.sum(1 - np.exp(-10 * terms), axis=1)
 
             # Calculate objectives using cumulative product
@@ -284,8 +284,8 @@ class MW:
             N, D = x.shape
 
             # Calculate g function
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             obj = np.zeros((N, M))
@@ -339,8 +339,8 @@ class MW:
             N, D = x.shape
 
             # Calculate z transformation
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Calculate g function with multi-modal term
             g = 1 + np.sum(1.5 + (0.1 / D) * z ** 2 - 1.5 * np.cos(2 * np.pi * z), axis=1)
@@ -393,7 +393,7 @@ class MW:
             N, D = x.shape
 
             # Calculate g function (same as MW3)
-            term = x[:, M:] + (x[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = x[:, M - 1:] + (x[:, M - 2:-1] - 0.5) ** 2 - 1
             g = 1 + np.sum(2 * term ** 2, axis=1)
 
             obj = np.zeros((N, M))
@@ -447,8 +447,8 @@ class MW:
 
             # Calculate z transformation
             # z = 1 - exp(-10*(x_i - (i-1)/D)^2)
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Calculate g function with multi-modal term
             # g = sum(1.5 + (0.1/D)*z^2 - 1.5*cos(2*pi*z))
@@ -513,8 +513,8 @@ class MW:
 
             # Calculate g function
             # g = 1 + sum(1 - exp(-10*((x_i^(D-M)) - 0.5 - (i-1)/(2*D))^2))
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             obj = np.zeros((N, M))
@@ -528,8 +528,8 @@ class MW:
             N, D = x.shape
 
             # Recalculate g function
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             # Recalculate objectives
@@ -586,8 +586,8 @@ class MW:
 
             # Calculate z transformation
             # z = 1 - exp(-10*(x_i - (i-1)/D)^2)
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Calculate g function with multi-modal term
             # g = 1 + sum(1.5 + (0.1/D)*z^2 - 1.5*cos(2*pi*z))
@@ -604,8 +604,8 @@ class MW:
             N, D = x.shape
 
             # Recalculate z transformation
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Recalculate g function
             g = 1 + np.sum(1.5 + (0.1 / D) * z ** 2 - 1.5 * np.cos(2 * np.pi * z), axis=1)
@@ -663,7 +663,7 @@ class MW:
 
             # Calculate g function (same as MW3 and MW7)
             # g = 1 + sum(2*(x_i + (x_{i-1} - 0.5)^2 - 1)^2)
-            term = x[:, M:] + (x[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = x[:, M - 1:] + (x[:, M - 2:-1] - 0.5) ** 2 - 1
             g = 1 + np.sum(2 * term ** 2, axis=1)
 
             obj = np.zeros((N, M))
@@ -677,7 +677,7 @@ class MW:
             N, D = x.shape
 
             # Recalculate g function
-            term = x[:, M:] + (x[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = x[:, M - 1:] + (x[:, M - 2:-1] - 0.5) ** 2 - 1
             g = 1 + np.sum(2 * term ** 2, axis=1)
 
             # Recalculate objectives
@@ -736,8 +736,8 @@ class MW:
 
             # Calculate g function
             # g = 1 + sum(1 - exp(-10*((x_i^(D-M)) - 0.5 - (i-1)/(2*D))^2))
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             obj = np.zeros((N, M))
@@ -752,8 +752,8 @@ class MW:
             N, D = x.shape
 
             # Recalculate g function
-            indices = np.arange(M, D)
-            terms = (x[:, M:] ** (D - M) - 0.5 - (indices - M) / (2 * D)) ** 2
+            indices = np.arange(M - 1, D)
+            terms = (x[:, M - 1:] ** (D - M) - 0.5 - indices / (2 * D)) ** 2
             g = 1 + np.sum(1 - np.exp(-10 * terms), axis=1)
 
             # Recalculate objectives
@@ -812,8 +812,8 @@ class MW:
 
             # Calculate z transformation
             # z = 1 - exp(-10*(x_i - (i-1)/D)^2)
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Calculate g function with multi-modal term
             # g = 1 + sum(1.5 + (0.1/D)*z^2 - 1.5*cos(2*pi*z))
@@ -831,8 +831,8 @@ class MW:
             N, D = x.shape
 
             # Recalculate z transformation
-            indices = np.arange(M, D)
-            z = 1 - np.exp(-10 * (x[:, M:] - (indices - M) / D) ** 2)
+            indices = np.arange(M - 1, D)
+            z = 1 - np.exp(-10 * (x[:, M - 1:] - indices / D) ** 2)
 
             # Recalculate g function
             g = 1 + np.sum(1.5 + (0.1 / D) * z ** 2 - 1.5 * np.cos(2 * np.pi * z), axis=1)
@@ -893,7 +893,7 @@ class MW:
 
             # Calculate g function (same as MW3, MW7, MW11)
             # g = sum(2*(X_i + (X_{i-1} - 0.5)^2 - 1)^2)
-            term = X[:, M:] + (X[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = X[:, M - 1:] + (X[:, M - 2:-1] - 0.5) ** 2 - 1
             g = np.sum(2 * term ** 2, axis=1)
 
             obj = np.zeros((N, M))
@@ -916,7 +916,7 @@ class MW:
             X = 1.5 * x
 
             # Recalculate g function
-            term = X[:, M:] + (X[:, M - 1:-1] - 0.5) ** 2 - 1
+            term = X[:, M - 1:] + (X[:, M - 2:-1] - 0.5) ** 2 - 1
             g = np.sum(2 * term ** 2, axis=1)
 
             # Recalculate objectives
