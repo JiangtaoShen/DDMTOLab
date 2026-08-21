@@ -404,7 +404,12 @@ def ZDT3_PF(N: int, M: int = 2) -> np.ndarray:
             f2 = 1 - np.sqrt(f1) - f1 * np.sin(10 * np.pi * f1)
             pf_segments.append(np.hstack([f1, f2]))
 
-    return np.vstack(pf_segments)
+    R = np.vstack(pf_segments)
+    # The region bounds above are rounded to four decimals, so a few points at
+    # the edges fall just inside the gaps and end up dominated. PlatEMO samples
+    # the whole curve and keeps the first front; do the same to the segments.
+    front_no, _ = nd_sort(R, len(R))
+    return R[front_no == 1]
 
 
 def ZDT4_PF(N: int, M: int = 2) -> np.ndarray:

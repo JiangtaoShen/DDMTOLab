@@ -629,7 +629,11 @@ def DTLZ8_PF(N: int, M: int) -> np.ndarray:
         gap_values = np.unique(optimum[:, M - 1])
         if len(gap_values) > 1:
             gap = np.sort(gap_values)[1] - np.sort(gap_values)[0]
-            temp_extra = np.arange(1 / 3, 1 + gap, gap).reshape(-1, 1)
+            # MATLAB writes this as (1/3:gap:1), which stops at the last value
+            # not exceeding 1. np.arange with a stop of 1 + gap runs one step
+            # past it, and that point makes (1 - temp)/4 negative.
+            n_extra = int(np.floor((1 - 1 / 3) / gap + 1e-10)) + 1
+            temp_extra = (1 / 3 + gap * np.arange(n_extra)).reshape(-1, 1)
             extra_points = np.hstack([
                 np.tile((1 - temp_extra) / 4, (1, M - 1)),
                 temp_extra
