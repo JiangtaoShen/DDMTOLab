@@ -599,7 +599,7 @@ Implementation Guidelines
 Benchmark Problems
 ------------------
 
-D²MTOLab ships 29 problem suites holding 212 benchmark problems. Every
+D²MTOLab ships 28 problem suites holding 211 benchmark problems. Every
 problem is a method annotated ``-> MTOP`` that returns a fully configured MTOP
 instance; ``D``, ``M``, ``K`` and ``Kp`` in the tables below are the parameter
 names those methods accept.
@@ -802,12 +802,6 @@ Multi-Task Multi-Objective (MTMO)
      - 50
      - 2 / 0
      - CEC 2021 MTMO benchmark (P1-P10)
-   * - ``MTMO_DTLZ``
-     - 1
-     - 2
-     - D
-     - M / 0
-     - Multi-task DTLZ illustration: DTLZ2 (uni-modal g) paired with DTLZ3 (multi-modal g)
    * - ``MTMOInstances``
      - 2
      - 2
