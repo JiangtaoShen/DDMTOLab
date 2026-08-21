@@ -23,6 +23,7 @@ Date: 2025.12.01
 Version: 1.1
 """
 import time
+import warnings
 import numpy as np
 import torch
 import torch.nn as nn
@@ -369,7 +370,7 @@ class MFEA_SSG:
         'n_cons': '[0, C]',
         'expensive': 'True',
         'knowledge_transfer': 'True',
-        'n': 'equal',
+        'n_initial': 'equal',
         'max_nfes': 'equal'
     }
 
@@ -377,11 +378,12 @@ class MFEA_SSG:
     def get_algorithm_information(cls, print_info=True):
         return get_algorithm_information(cls, print_info)
 
-    def __init__(self, problem, n=None, max_nfes=None, rmp=0.3, muc=2, mum=5,
+    def __init__(self, problem, n_initial=None, max_nfes=None, rmp=0.3, muc=2, mum=5,
                  max_gen=None, refine_freq=1, n_pairs_per_gen=None,
                  n_diffusion_steps=100, train_epochs=50, distill_epochs=50,
                  batch_size=512, lr=5e-4, base_ch=64,
-                 save_data=True, save_path='./Data', name='MFEA-SSG', disable_tqdm=True):
+                 save_data=True, save_path='./Data', name='MFEA-SSG', disable_tqdm=True,
+                 n=None):
         """
         Initialize MFEA-SSG algorithm.
 
@@ -389,8 +391,8 @@ class MFEA_SSG:
         ----------
         problem : MTOP
             Multi-task optimization problem instance
-        n : int, optional
-            Population size per task (default: 100)
+        n_initial : int, optional
+            Size of the initial design evaluated per task (default: 100)
         max_nfes : int, optional
             Maximum number of function evaluations per task (default: 10000)
         rmp : float, optional
@@ -422,6 +424,8 @@ class MFEA_SSG:
             Learning rate for Adam optimizer (default: 5e-4)
         base_ch : int, optional
             Base channel count for U-Net models (default: 64)
+        n : int, optional
+            Deprecated spelling of n_initial, still accepted
         save_data : bool, optional
             Whether to save optimization data (default: True)
         save_path : str, optional
@@ -432,7 +436,18 @@ class MFEA_SSG:
             Whether to disable progress bar (default: True)
         """
         self.problem = problem
-        self.n = n if n is not None else 100
+        # n_initial is the size of the one design this algorithm evaluates up
+        # front, which is what every other expensive algorithm calls it. The
+        # older name is still accepted so existing scripts keep running.
+        if n is not None:
+            if n_initial is not None:
+                raise ValueError("pass either n_initial or the older n, not both")
+            warnings.warn(
+                "MFEA_SSG's 'n' is now 'n_initial', matching the other expensive "
+                "algorithms; 'n' still works but will not always",
+                DeprecationWarning, stacklevel=2)
+            n_initial = n
+        self.n = n_initial if n_initial is not None else 100
         self.max_nfes = max_nfes if max_nfes is not None else 10000
         self.rmp = rmp
         self.muc = muc
