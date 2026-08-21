@@ -19,7 +19,6 @@ PROBLEM_PARAMS = {
     "UF": {"D": {"type": "int", "default": 30}},
     "CF": {"M": {"type": "int", "default": 2}, "D": {"type": "int", "default": 10}},
     "MW": {"M": {"type": "int", "default": 2}, "D": {"type": "int", "default": 15}},
-    "MTMO_DTLZ": {"M": {"type": "int", "default": 3}, "D": {"type": "int", "default": 10}},
     "CEC10_CSO": {"D": {"type": "int", "default": 10}},
     "CLASSICALSO": {"D": {"type": "int", "default": 50}},
     "STSOtest": {"D": {"type": "int", "default": 50}},
@@ -40,5 +39,5 @@ FIXED_DIMENSION_SUITES = [
 
 # Suites with fixed objectives (no M parameter)
 # CF: CF1-CF7=2obj, CF8-CF10=3obj; ZDT: all 2obj; UF: UF1-7=2obj, UF8-10=3obj;
-# MW: fixed per problem. M stays configurable only for DTLZ, WFG and MTMO_DTLZ.
+# MW: fixed per problem. M stays configurable only for DTLZ and WFG.
 FIXED_OBJECTIVES_SUITES = ["ZDT", "CF", "UF", "MW"]

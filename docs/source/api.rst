@@ -1285,10 +1285,6 @@ Benchmark Problem Suites
    :members:
    :undoc-members:
 
-.. autoclass:: ddmtolab.Problems.MTMO.mtmo_dtlz.MTMO_DTLZ
-   :members:
-   :undoc-members:
-
 .. autoclass:: ddmtolab.Problems.MTMO.mtmo_instance.MTMOInstances
    :members:
    :undoc-members:

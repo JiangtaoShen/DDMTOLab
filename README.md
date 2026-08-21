@@ -43,7 +43,7 @@ Whether you're working on expensive black-box optimization, multiobjective optim
 ## ✨ Features
 
 - 🚀 **Comprehensive Algorithms** - 115 algorithms for expensive/inexpensive, single/multitask, single/multiobjective, unconstrained/constrained optimization
-- 📊 **Rich Problem Suite** - 212 benchmark problems in 29 suites, synthetic and real-world
+- 📊 **Rich Problem Suite** - 211 benchmark problems in 28 suites, synthetic and real-world
 - 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
 - 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
 - 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
@@ -170,14 +170,14 @@ animation = create_optimization_animation(max_nfes=100, merge=2, title='BO vs MT
 | **MTMO** | Inexpensive | MO_MFEA, MO_MFEA_II, MO_EMEA, MO_MTEA_SaO, MTDE_MKTA, MTEA_D_DN, EMT_ET, EMT_PD, EMT_GS, MO_MTEA_PAE, MO_SBO, MTEA_D_TSD, MTEA_DCK |
 | **MTMO** | Expensive | ParEGO_KT, SAEA_AKT |
 
-### Problems (29 suites, 212 problems)
+### Problems (28 suites, 211 problems)
 
 | Category | Problem Suites |
 |----------|----------------|
 | **STSO** | CLASSICALSO (9), STSOtest (9), CEC10_CSO (18) |
 | **STMO** | ZDT (6), DTLZ (9), WFG (9), UF (10), CF (10), MW (14) |
 | **MTSO** | CEC17MTSO (9), CEC17MTSO_10D (9), CEC19MaTSO (6), CMT (9), STOP (12), ManyTask_10D (4) |
-| **MTMO** | CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (6), CEC21MTMO (10), MTMO_DTLZ (1), MTMOInstances (2) |
+| **MTMO** | CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (6), CEC21MTMO (10), MTMOInstances (2) |
 | **Real-World** | PEPVM (1), PINN_HPO (12), SOPM (2), SCP (1), MO_SCP (2), PKACP (1), NN_Training (6), TSP (6) |
 
 ### Methods

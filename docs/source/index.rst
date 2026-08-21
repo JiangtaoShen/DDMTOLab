@@ -45,7 +45,7 @@ Features
 --------
 
 * **Comprehensive Algorithms** - 115 algorithms for expensive/inexpensive, single/multitask, single/multiobjective optimization
-* **Rich Problem Suites** - 212 benchmark problems in 29 suites, synthetic and real-world
+* **Rich Problem Suites** - 211 benchmark problems in 28 suites, synthetic and real-world
 * **Data-Driven Optimization** - Surrogate modelling (GP, BO) for expensive optimization
 * **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
 * **Fully Extensible** - Easy to add custom algorithms and problems
@@ -170,7 +170,7 @@ Algorithms (115)
      - Expensive
      - ParEGO_KT, SAEA_AKT
 
-Problems (29 suites, 212 problems)
+Problems (28 suites, 211 problems)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. list-table::
@@ -186,7 +186,7 @@ Problems (29 suites, 212 problems)
    * - **MTSO**
      - CEC17MTSO (9), CEC17MTSO_10D (9), CEC19MaTSO (6), CMT (9), STOP (12), ManyTask_10D (4)
    * - **MTMO**
-     - CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (6), CEC21MTMO (10), MTMO_DTLZ (1), MTMOInstances (2)
+     - CEC17MTMO (9), CEC19MTMO (10), CEC19_MaTMO (6), CEC21MTMO (10), MTMOInstances (2)
    * - **RWO**
      - PEPVM (1), PINN_HPO (12), SOPM (2), SCP (1), MO_SCP (2), PKACP (1), NN_Training (6), TSP (6)
 
