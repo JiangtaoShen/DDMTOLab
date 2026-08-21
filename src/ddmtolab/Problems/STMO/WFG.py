@@ -182,7 +182,11 @@ class WFG:
         """Bias function: flat region (legacy)."""
         Output = A + np.minimum(0, np.floor(y - B)) * A * (B - y) / B - \
                  np.minimum(0, np.floor(C - y)) * (1 - A) * (y - C) / (1 - C)
-        return np.clip(Output, 0, 1)
+        # The WFG toolkit snaps the flat region to four decimals. Without it the
+        # plateau keeps the float noise the rounding exists to remove, and WFG1
+        # drifts from the reference by about 1e-4. MATLAB rounds halves away from
+        # zero where numpy rounds them to even, so spell the rule out.
+        return np.trunc(Output * 1e4 + np.copysign(0.5, Output)) / 1e4
 
     @staticmethod
     def _b_poly(y, alpha):
@@ -1020,7 +1024,11 @@ def WFG1_PF(N: int, M: int) -> np.ndarray:
     def _b_flat(y, A, B, C):
         Output = A + np.minimum(0, np.floor(y - B)) * A * (B - y) / B - \
                  np.minimum(0, np.floor(C - y)) * (1 - A) * (y - C) / (1 - C)
-        return np.clip(Output, 0, 1)
+        # The WFG toolkit snaps the flat region to four decimals. Without it the
+        # plateau keeps the float noise the rounding exists to remove, and WFG1
+        # drifts from the reference by about 1e-4. MATLAB rounds halves away from
+        # zero where numpy rounds them to even, so spell the rule out.
+        return np.trunc(Output * 1e4 + np.copysign(0.5, Output)) / 1e4
 
     y[:, k:] = _b_flat(y[:, k:], 0.8, 0.75, 0.85)
 
