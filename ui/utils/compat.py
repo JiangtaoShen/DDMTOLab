@@ -4,6 +4,7 @@ algorithm_information uses string descriptors like:
     'n_tasks': '[1, K]' / '[2, K]'      (allowed task-count range)
     'n_objs':  '1' / '[2, M]' / '[2, 3]' (allowed objectives per task)
     'dims':    'equal' / 'unequal'       (whether task dims must be equal)
+    'n_cons':  '0' / '[0, C]'            (allowed constraints per task)
 """
 import re
 from typing import List, Optional, Tuple
@@ -52,6 +53,21 @@ def check_algorithm_compatibility(problem, info: dict) -> List[str]:
         for i, m in enumerate(task_objs):
             if m < lo or (hi is not None and m > hi):
                 issues.append(f"supports {info['n_objs']} objectives, task {i + 1} has {m}")
+                break
+
+    # Constraints per task. Algorithms that declare n_cons '0' carry no feasibility
+    # handling at all, so pairing one with a constrained problem silently optimizes
+    # the objectives and ignores every constraint.
+    task_cons = []
+    for t in getattr(problem, 'tasks', []) or []:
+        if isinstance(t, dict) and t.get('n_constraints') is not None:
+            task_cons.append(int(t['n_constraints']))
+    rng = _parse_range(info.get('n_cons'))
+    if rng and task_cons:
+        lo, hi = rng
+        for i, c in enumerate(task_cons):
+            if c < lo or (hi is not None and c > hi):
+                issues.append(f"supports {info['n_cons']} constraints, task {i + 1} has {c}")
                 break
 
     # Equal-dimension requirement
