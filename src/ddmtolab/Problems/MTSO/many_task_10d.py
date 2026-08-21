@@ -19,10 +19,14 @@ from ddmtolab.Methods.mtop import MTOP
 
 
 def _random_rotation(dim: int, rng: np.random.Generator) -> np.ndarray:
-    """Generate a random orthogonal rotation matrix via QR decomposition."""
+    """Draw a random orthogonal matrix, Haar distributed, via QR decomposition."""
     H = rng.standard_normal((dim, dim))
     Q, R = np.linalg.qr(H)
-    Q = Q @ np.diag(np.sign(np.diag(R)))  # ensure det(Q) = +1
+    # Fixing the sign of R's diagonal makes the decomposition unique, which is
+    # what makes Q Haar distributed. It does not force det(Q) = +1: half the
+    # draws are reflections. Either way Q is an isometry, so the landscape it
+    # induces is a rigid transform of the base function.
+    Q = Q @ np.diag(np.sign(np.diag(R)))
     return Q
 
 
