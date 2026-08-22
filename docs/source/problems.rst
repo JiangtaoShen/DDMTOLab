@@ -15,6 +15,7 @@ The MTOP class provides the following key features:
 3. **Unified Evaluation Mode**: Pads evaluation results to uniform dimensions for algorithm processing
 4. **Selective Evaluation**: Evaluates only specified objectives or constraints for complex scenarios
 5. **Default Boundaries**: Uses [0, 1] as default search range when bounds are not specified
+6. **Declared Variable Types**: Records whether each variable is a float, integer, binary, ordinal or categorical, defaulting to all-float
 
 Initialization
 --------------
@@ -53,7 +54,9 @@ The ``add_task`` method is the primary way to add optimization tasks:
         lower_bound=None,    # Lower bounds (optional, default 0)
         upper_bound=None,    # Upper bounds (optional, default 1)
         budget=None,         # Evaluation budget of the task (optional)
-        metadata=None        # Free-form descriptor dict (optional)
+        metadata=None,       # Free-form descriptor dict (optional)
+        var_type=None,       # Type of each variable (optional, default all float)
+        var_values=None      # Values a categorical or ordinal index stands for (optional)
     ) -> int:               # Returns task index
 
 **Example: 2 Tasks with [1,3] Objectives and [2,0] Constraints**:
@@ -99,6 +102,30 @@ The ``add_task`` method is the primary way to add optimization tasks:
       Max number of constraints (n_cons_max): 2
       Task 0: dim=3, n_objs=1, n_cons=2, bounds=[-5.0..5.0]
       Task 1: dim=2, n_objs=3, n_cons=0, bounds=[-1.0..1.0]
+
+Declaring Variable Types
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Every variable is a float unless the task says otherwise. It can instead give
+one code per variable, ``F`` float, ``I`` integer, ``B`` binary, ``O`` ordinal
+or ``C`` categorical, and record what a categorical or ordinal index stands
+for:
+
+.. code-block:: python
+
+    problem.add_task(objective, dim=8,
+                     lower_bound=[0]*8, upper_bound=[1, 1, 1, 10, 10, 10, 4, 4],
+                     var_type=[('float', 3), ('integer', 3), ('categorical', 2)],
+                     var_values={6: ['tanh', 'relu', 'sigmoid', 'sin', 'swish'],
+                                 7: ['tanh', 'relu', 'sigmoid', 'sin', 'swish']})
+
+    info = problem.get_task_info(0)
+    info['var_type']       # array(['F','F','F','I','I','I','C','C'], dtype='<U1')
+    info['var_values'][6]  # ('tanh', 'relu', 'sigmoid', 'sin', 'swish')
+
+The declaration is descriptive: nothing rounds or repairs a value because of
+it, so it never changes what a problem evaluates to. See
+:ref:`the Methods chapter <methods>` for every accepted spelling.
 
 Batch Adding with Tuples
 ~~~~~~~~~~~~~~~~~~~~~~~~~

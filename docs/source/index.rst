@@ -47,6 +47,7 @@ Features
 * **Comprehensive Algorithms** - 115 algorithms for expensive/inexpensive, single/multitask, single/multiobjective optimization
 * **Rich Problem Suites** - 211 benchmark problems in 28 suites, synthetic and real-world
 * **Data-Driven Optimization** - Surrogate modelling (GP, BO) for expensive optimization
+* **Typed Decision Variables** - Problems declare each variable as float, integer, binary, ordinal or categorical
 * **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
 * **Fully Extensible** - Easy to add custom algorithms and problems
 * **Powerful Analysis Tools** - Built-in visualization and statistical analysis

@@ -45,6 +45,7 @@ Whether you're working on expensive black-box optimization, multiobjective optim
 - 🚀 **Comprehensive Algorithms** - 115 algorithms for expensive/inexpensive, single/multitask, single/multiobjective, unconstrained/constrained optimization
 - 📊 **Rich Problem Suite** - 211 benchmark problems in 28 suites, synthetic and real-world
 - 🤖 **Data-Driven Optimization** - Surrogate modelling for expensive optimization
+- 🏷️ **Typed Decision Variables** - Problems declare each variable as float, integer, binary, ordinal or categorical
 - 🔧 **Flexible Framework** - Simple API and intuitive workflow for rapid prototyping
 - 🔌 **Fully Extensible** - Easy to add custom algorithms and problems
 - ⚡ **Parallel Computing** - Multi-core support for batch experiments
